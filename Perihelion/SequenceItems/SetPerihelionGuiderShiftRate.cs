@@ -67,6 +67,22 @@ namespace Perihelion.SequenceItems {
         }
 
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
+            // A shift rate with nothing actively guiding is a no-op at best (PHD2 has no lock
+            // position yet to shift) -- calling StartGuiding here rather than just checking some
+            // "is guiding" flag is deliberate: NINA/PHD2 doesn't expose one via GuiderInfo at
+            // all (Connected is the only state field there), but PHD2Guider.StartGuiding already
+            // checks PHD2's own app state itself and returns almost immediately
+            // ("Phd2 - App is already guiding. Skipping start guiding") when it's already
+            // running, and otherwise does exactly what's needed anyway -- calibrate if needed,
+            // wait for a locked star, and wait for the settle the profile's own PHD2 settings
+            // define (GuiderSettings.SettlePixels/SettleTime/SettleTimeout) -- before returning.
+            // In the "Add to Sequence" path this duplicates that sequence's own explicit
+            // StartGuiding item, which is harmless: the second call is just that same fast
+            // already-guiding check again.
+            if (!await guiderMediator.StartGuiding(false, progress, token)) {
+                throw new SequenceEntityFailedException("Could not start guiding");
+            }
+
             var rate = await OrbitalTracking.ComputeOrbitalRateAsync(HttpClient, ObjectType, TargetName, DateTime.UtcNow, token);
             if (rate == null) {
                 throw new SequenceEntityFailedException($"Could not find current orbital elements for {ObjectType} '{TargetName}'");

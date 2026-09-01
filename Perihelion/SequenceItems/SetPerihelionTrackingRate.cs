@@ -77,6 +77,18 @@ namespace Perihelion.SequenceItems {
         }
 
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
+            // A parked mount silently ignores a custom tracking rate -- SetCustomTrackingRate
+            // returns true regardless (TelescopeVM only checks Connected, not AtPark; see
+            // CLAUDE.md/session notes), so this is the only place that can catch it. Real NINA
+            // sequences always run an explicit UnparkScope item first; Quick Track has no
+            // equivalent step of its own, so it needs to do this itself rather than silently
+            // reporting success while the mount stays parked.
+            if (telescopeMediator.GetInfo().AtPark) {
+                if (!await telescopeMediator.UnparkTelescope(progress, token)) {
+                    throw new SequenceEntityFailedException("Mount is parked and could not be unparked");
+                }
+            }
+
             var rate = await OrbitalTracking.ComputeOrbitalRateAsync(HttpClient, ObjectType, TargetName, DateTime.UtcNow, token);
             if (rate == null) {
                 throw new SequenceEntityFailedException($"Could not find current orbital elements for {ObjectType} '{TargetName}'");

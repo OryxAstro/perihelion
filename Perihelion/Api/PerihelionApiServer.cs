@@ -1,5 +1,6 @@
 using EmbedIO;
 using EmbedIO.WebApi;
+using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.Mediator;
 using System;
 using System.Threading;
@@ -30,12 +31,25 @@ namespace Perihelion.Api {
             PerihelionApiController.GuiderMediator = guiderMediator;
         }
 
+        /// <summary>
+        /// Deliberately does NOT let an exception propagate out of here -- PerihelionPlugin.
+        /// Initialize() calls this directly, and a real startup failure (e.g. port already in
+        /// use) throwing out of Initialize() risks NINA treating the whole plugin as failed to
+        /// activate (a real, previously-silent bug: the very first version of this method had
+        /// no logging at all here, so a startup failure was completely invisible -- nothing in
+        /// the NINA log, no exception anywhere, just a port that silently never opened).
+        /// </summary>
         public void Start() {
-            server = new WebServer(o => o
-                    .WithUrlPrefix($"http://*:{port}")
-                    .WithMode(HttpListenerMode.EmbedIO))
-                .WithModule(new PerihelionCorsModule())
-                .WithWebApi("/perihelion/api", m => m.WithController<PerihelionApiController>());
+            try {
+                server = new WebServer(o => o
+                        .WithUrlPrefix($"http://*:{port}")
+                        .WithMode(HttpListenerMode.EmbedIO))
+                    .WithModule(new PerihelionCorsModule())
+                    .WithWebApi("/perihelion/api", m => m.WithController<PerihelionApiController>());
+            } catch (Exception ex) {
+                Logger.Error($"Perihelion: failed to construct API server on port {port}: {ex}");
+                return;
+            }
 
             cts = new CancellationTokenSource();
             var token = cts.Token;
@@ -43,15 +57,22 @@ namespace Perihelion.Api {
             serverThread = new Thread(() => {
                 try {
                     runningServer.RunAsync(token).Wait();
-                } catch (Exception) {
-                    // Swallowed on shutdown (Stop() cancels the token, which surfaces here as an
-                    // exception from RunAsync) -- same shape as ninaAPI's own APITask.
+                } catch (Exception ex) when (token.IsCancellationRequested) {
+                    // Expected: Stop() cancelled the token, which surfaces here as an exception
+                    // from RunAsync/Wait -- same shape as ninaAPI's own APITask. Not an error.
+                    Logger.Debug($"Perihelion: API server stopped ({ex.GetType().Name})");
+                } catch (Exception ex) {
+                    // NOT a shutdown -- a genuine startup/runtime failure (e.g. port already in
+                    // use, permission denied). Must be logged: this is the exact failure mode
+                    // that was previously invisible.
+                    Logger.Error($"Perihelion: API server on port {port} failed: {ex}");
                 }
             }) {
                 Name = "Perihelion API Thread",
                 IsBackground = true,
             };
             serverThread.Start();
+            Logger.Info($"Perihelion: API server starting on port {port}");
         }
 
         public void Stop() {

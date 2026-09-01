@@ -4,9 +4,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyTitle("Perihelion")]
 [assembly: AssemblyDescription("Standalone comet/asteroid non-sidereal tracking for PiNStars/Touch-N-Stars.")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("vbrik")]
+[assembly: AssemblyCompany("OryxAstro")]
 [assembly: AssemblyProduct("Perihelion")]
-[assembly: AssemblyCopyright("Copyright © 2026 vbrik")]
+[assembly: AssemblyCopyright("Copyright © 2026 OryxAstro")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -19,11 +19,11 @@ using System.Runtime.InteropServices;
 // The minimum version of PiNStars/N.I.N.A. this plugin is compatible with.
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.0.0.1031")]
 
-[assembly: AssemblyMetadata("Homepage", "https://github.com/vbrik-ha/perihelion")]
+[assembly: AssemblyMetadata("Homepage", "https://github.com/OryxAstro/perihelion")]
 [assembly: AssemblyMetadata("License", "MIT")]
-[assembly: AssemblyMetadata("LicenseURL", "https://github.com/vbrik-ha/perihelion/blob/main/LICENSE")]
-[assembly: AssemblyMetadata("Repository", "https://github.com/vbrik-ha/perihelion")]
-[assembly: AssemblyMetadata("ChangelogURL", "https://github.com/vbrik-ha/perihelion/blob/main/CHANGELOG.md")]
+[assembly: AssemblyMetadata("LicenseURL", "https://github.com/OryxAstro/perihelion/blob/main/LICENSE")]
+[assembly: AssemblyMetadata("Repository", "https://github.com/OryxAstro/perihelion")]
+[assembly: AssemblyMetadata("ChangelogURL", "https://github.com/OryxAstro/perihelion/blob/main/CHANGELOG.md")]
 [assembly: AssemblyMetadata("Tags", "Comet,Asteroid,Tracking,Orbital")]
 [assembly: AssemblyMetadata("FeaturedImageURL", "")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
