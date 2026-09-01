@@ -4,6 +4,7 @@ using NINA.Core.Model;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Sequencer.SequenceItem;
 using NINA.Sequencer.Validations;
+using Perihelion.Api;
 using Perihelion.Astrometry;
 using System;
 using System.Collections.Generic;
@@ -29,7 +30,8 @@ namespace Perihelion.SequenceItems {
     [Export(typeof(ISequenceItem))]
     [JsonObject(MemberSerialization.OptIn)]
     public class SetPerihelionGuiderShiftRate : SequenceItem, IValidatable {
-        private static readonly HttpClient HttpClient = new();
+        // One shared HttpClient across the whole plugin (PerihelionHttpClient.cs).
+        private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
 
         private readonly IGuiderMediator guiderMediator;
 

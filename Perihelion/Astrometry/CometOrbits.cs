@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -43,6 +44,63 @@ namespace Perihelion.Astrometry {
         private static List<CometElements>? _cache;
         private static DateTime _cacheFetchedAtUtc;
         private static readonly SemaphoreSlim CacheLock = new(1, 1);
+
+        // Sibling to the Plugins/ folder under NINA's own data root (CoreUtil.APPLICATIONTEMPPATH,
+        // ~/.local/share/NINA on Linux) -- deliberately NOT under Plugins/3.0.0/Perihelion/ itself,
+        // so a plugin update/reinstall (which replaces that folder's contents) doesn't wipe a
+        // dataset the user may have specifically synced before heading out with no connectivity.
+        private static readonly string CacheDirectory = Path.Combine(NINA.Core.Utility.CoreUtil.APPLICATIONTEMPPATH, "PerihelionData");
+        private static readonly string CacheFilePath = Path.Combine(CacheDirectory, "comet-elements-cache.json");
+
+        private sealed class DiskCache {
+            public DateTime FetchedAtUtc { get; set; }
+            public string RawText { get; set; } = string.Empty;
+        }
+
+        /// <summary>Last time comet elements were actually fetched from MPC (in this run or a
+        /// previous one, via the on-disk cache) -- null if never successfully synced at all.
+        /// Surfaced via the API so the panel can show "last synced: X ago" rather than pretending
+        /// the data is always current.</summary>
+        public static DateTime? LastSyncedUtc => _cache != null ? _cacheFetchedAtUtc : LoadDiskCacheTimestampOnly();
+
+        private static DateTime? LoadDiskCacheTimestampOnly() {
+            try {
+                if (!File.Exists(CacheFilePath)) return null;
+                var disk = Newtonsoft.Json.JsonConvert.DeserializeObject<DiskCache>(File.ReadAllText(CacheFilePath));
+                return disk?.FetchedAtUtc;
+            } catch {
+                return null;
+            }
+        }
+
+        /// <summary>Seeds _cache from disk if this is the first call this run -- so a fresh PINS
+        /// restart with no connectivity still has whatever was last successfully synced, instead
+        /// of starting from nothing until the next live fetch succeeds.</summary>
+        private static void LoadDiskCacheIfNeeded() {
+            if (_cache != null) return;
+            try {
+                if (!File.Exists(CacheFilePath)) return;
+                var disk = Newtonsoft.Json.JsonConvert.DeserializeObject<DiskCache>(File.ReadAllText(CacheFilePath));
+                if (disk == null || string.IsNullOrEmpty(disk.RawText)) return;
+                _cache = ParseCometElementsText(disk.RawText);
+                _cacheFetchedAtUtc = disk.FetchedAtUtc;
+            } catch (Exception ex) {
+                NINA.Core.Utility.Logger.Warning($"Perihelion: could not read comet elements disk cache: {ex.Message}");
+            }
+        }
+
+        private static void PersistToDisk(string rawText, DateTime fetchedAtUtc) {
+            try {
+                Directory.CreateDirectory(CacheDirectory);
+                var json = Newtonsoft.Json.JsonConvert.SerializeObject(new DiskCache { FetchedAtUtc = fetchedAtUtc, RawText = rawText });
+                File.WriteAllText(CacheFilePath, json);
+            } catch (Exception ex) {
+                // Not fatal -- the in-memory cache from this fetch is still good for the rest of
+                // this run, it just won't survive the next restart. Worth knowing about, not
+                // worth failing the fetch over.
+                NINA.Core.Utility.Logger.Warning($"Perihelion: could not persist comet elements to disk cache: {ex.Message}");
+            }
+        }
 
         private static string ParseFixed(string line, int startCol1, int endCol1) {
             var start = startCol1 - 1;
@@ -106,8 +164,7 @@ namespace Perihelion.Astrometry {
             }
         }
 
-        private static async Task<List<CometElements>> FetchCometElementsUncachedAsync(HttpClient httpClient, CancellationToken ct) {
-            var text = await httpClient.GetStringAsync(CometElementsUrl, ct).ConfigureAwait(false);
+        private static List<CometElements> ParseCometElementsText(string text) {
             var result = new List<CometElements>();
             foreach (var line in text.Split('\n')) {
                 var parsed = ParseCometElementsLine(line);
@@ -116,16 +173,63 @@ namespace Perihelion.Astrometry {
             return result;
         }
 
+        private static async Task<string> FetchCometElementsRawTextAsync(HttpClient httpClient, CancellationToken ct) {
+            return await httpClient.GetStringAsync(CometElementsUrl, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Returns the best available comet elements: a still-fresh cache, or a live refetch when
+        /// stale. Deliberately does NOT throw when a live fetch fails and a cache (even a stale,
+        /// disk-loaded one) already exists -- a parked field rig with no signal should keep
+        /// tracking off whatever was last synced, not hard-fail every lookup the moment the
+        /// 6-hour window lapses. Only throws when there is truly nothing to fall back to (never
+        /// synced, ever, on this install, and the live fetch also failed).
+        /// </summary>
         public static async Task<IReadOnlyList<CometElements>> FetchCometElementsAsync(HttpClient httpClient, CancellationToken ct = default) {
             await CacheLock.WaitAsync(ct).ConfigureAwait(false);
             try {
+                LoadDiskCacheIfNeeded();
                 if (_cache != null && DateTime.UtcNow - _cacheFetchedAtUtc < CacheMaxAge) {
                     return _cache;
                 }
-                var fresh = await FetchCometElementsUncachedAsync(httpClient, ct).ConfigureAwait(false);
+                try {
+                    var rawText = await FetchCometElementsRawTextAsync(httpClient, ct).ConfigureAwait(false);
+                    var fresh = ParseCometElementsText(rawText);
+                    _cache = fresh;
+                    _cacheFetchedAtUtc = DateTime.UtcNow;
+                    PersistToDisk(rawText, _cacheFetchedAtUtc);
+                    return fresh;
+                } catch (Exception ex) when (_cache != null) {
+                    // Stale beats nothing -- log it so a genuinely broken feed doesn't go
+                    // unnoticed forever, but keep tracking off the last good sync.
+                    NINA.Core.Utility.Logger.Warning($"Perihelion: comet elements refresh failed, using data from {_cacheFetchedAtUtc:u}: {ex.Message}");
+                    return _cache;
+                }
+            } finally {
+                CacheLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Explicit "Sync Now" action for the panel's own sync button (matching NINA Orbitals'
+        /// own per-object-type "download" screen) -- unlike FetchCometElementsAsync, this always
+        /// attempts a live fetch regardless of cache age, and reports success/failure directly
+        /// rather than silently falling back, since an explicit user action deserves a real
+        /// answer about whether it worked. Leaves the existing cache (disk and in-memory) alone
+        /// on failure, so a failed manual sync attempt can't make things worse.
+        /// </summary>
+        public static async Task<bool> SyncNowAsync(HttpClient httpClient, CancellationToken ct = default) {
+            await CacheLock.WaitAsync(ct).ConfigureAwait(false);
+            try {
+                var rawText = await FetchCometElementsRawTextAsync(httpClient, ct).ConfigureAwait(false);
+                var fresh = ParseCometElementsText(rawText);
                 _cache = fresh;
                 _cacheFetchedAtUtc = DateTime.UtcNow;
-                return fresh;
+                PersistToDisk(rawText, _cacheFetchedAtUtc);
+                return true;
+            } catch (Exception ex) {
+                NINA.Core.Utility.Logger.Error($"Perihelion: comet elements sync failed: {ex.Message}");
+                return false;
             } finally {
                 CacheLock.Release();
             }

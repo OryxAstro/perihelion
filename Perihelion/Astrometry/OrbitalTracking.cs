@@ -147,33 +147,48 @@ namespace Perihelion.Astrometry {
                 });
             }
 
-            var comets = await CometOrbits.FetchCometElementsAsync(httpClient, ct).ConfigureAwait(false);
-            var cometResults = new List<BrowseObject>();
-            // Some real MPC feed entries share the same display Name (e.g. distinct fragments
-            // of a split comet) -- FindByNameAsync/tracking match by Name via FirstOrDefault, so
-            // a later duplicate is functionally indistinguishable from the first for tracking
-            // purposes anyway (both resolve to the same match). Skip it here rather than show
-            // two list rows that would behave identically if either were tracked.
-            var seenNames = new HashSet<string>();
-            foreach (var comet in comets) {
-                if (!seenNames.Add(comet.Name)) continue;
+            // Isolated from the asteroid loop above on purpose -- FetchCometElementsAsync only
+            // throws when there's truly no comet data anywhere (never synced, live fetch also
+            // failed); that shouldn't take the already-built, fully offline asteroid list down
+            // with it. A comet-less Browse tab beats an empty one.
+            try {
+                var comets = await CometOrbits.FetchCometElementsAsync(httpClient, ct).ConfigureAwait(false);
+                var cometResults = new List<BrowseObject>();
+                // Some real MPC feed entries share the same display Name (e.g. distinct fragments
+                // of a split comet) -- FindByNameAsync/tracking match by Name via FirstOrDefault, so
+                // a later duplicate is functionally indistinguishable from the first for tracking
+                // purposes anyway (both resolve to the same match). Skip it here rather than show
+                // two list rows that would behave identically if either were tracked.
+                var seenNames = new HashSet<string>();
+                foreach (var comet in comets) {
+                    if (!seenNames.Add(comet.Name)) continue;
 
-                var mag = CometOrbits.PredictedMagnitude(comet, atDateUtc, t);
-                if (mag == null || mag > CometMagnitudeThreshold) continue;
+                    var mag = CometOrbits.PredictedMagnitude(comet, atDateUtc, t);
+                    if (mag == null || mag > CometMagnitudeThreshold) continue;
 
-                var helio = CometOrbits.HeliocentricEcliptic(comet, atDateUtc);
-                var geo = helio - earth;
-                cometResults.Add(new BrowseObject {
-                    Id = comet.Designation,
-                    Name = comet.Name,
-                    ObjectType = OrbitalObjectType.Comet,
-                    Magnitude = mag,
-                    RaHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t),
-                    DecDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t),
-                });
+                    var helio = CometOrbits.HeliocentricEcliptic(comet, atDateUtc);
+                    var geo = helio - earth;
+                    cometResults.Add(new BrowseObject {
+                        Id = comet.Designation,
+                        Name = comet.Name,
+                        ObjectType = OrbitalObjectType.Comet,
+                        Magnitude = mag,
+                        RaHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t),
+                        DecDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t),
+                    });
+                }
+                cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
+                results.AddRange(cometResults.GetRange(0, Math.Min(MaxComets, cometResults.Count)));
+            } catch (Exception ex) {
+                NINA.Core.Utility.Logger.Warning($"Perihelion: comet list unavailable, showing asteroids only: {ex.Message}");
             }
-            cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
-            results.AddRange(cometResults.GetRange(0, Math.Min(MaxComets, cometResults.Count)));
+
+            // The asteroid loop above adds entries in BrightAsteroids' own hardcoded order, not
+            // by brightness -- only cometResults got sorted, so without this the combined list
+            // is really "asteroids in list-definition order, then comets sorted", not a single
+            // brightest-first ranking across both (the sort must run after both halves are in
+            // one list, or the asteroid half never gets touched at all).
+            results.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
 
             return results;
         }

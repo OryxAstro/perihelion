@@ -47,6 +47,39 @@ namespace Perihelion.Api {
         public double DecDeg { get; set; }
     }
 
+    internal class SyncStatusResponse {
+        [JsonProperty]
+        public DateTime? CometsLastSyncedUtc { get; set; }
+    }
+
+    internal class SyncResponse {
+        [JsonProperty]
+        public bool Success { get; set; }
+
+        [JsonProperty]
+        public string Message { get; set; } = string.Empty;
+
+        [JsonProperty]
+        public DateTime? CometsLastSyncedUtc { get; set; }
+    }
+
+    internal class CometActivityResponse {
+        [JsonProperty]
+        public bool Available { get; set; }
+
+        [JsonProperty]
+        public DateTime? MostRecentDateUtc { get; set; }
+
+        [JsonProperty]
+        public double? MostRecentMagnitude { get; set; }
+
+        [JsonProperty]
+        public double? RecentAverageMagnitude { get; set; }
+
+        [JsonProperty]
+        public int ObservationCount { get; set; }
+    }
+
     internal class BrowseObjectResponse {
         [JsonProperty]
         public string Id { get; set; } = string.Empty;
@@ -82,9 +115,8 @@ namespace Perihelion.Api {
         internal static ITelescopeMediator? TelescopeMediator;
         internal static IGuiderMediator? GuiderMediator;
 
-        // Shared, not created per request -- same reasoning as the sequence items' own HttpClient
-        // (SetPerihelionTrackingRate.cs): per-request instances risk socket exhaustion.
-        private static readonly HttpClient HttpClient = new();
+        // One shared HttpClient across the whole plugin (PerihelionHttpClient.cs).
+        private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
 
         /// <summary>
         /// Every bright asteroid plus every comet in the current MPC feed worth showing, each
@@ -118,6 +150,35 @@ namespace Perihelion.Api {
         }
 
         /// <summary>
+        /// When comet data was last actually fetched from MPC (on this run or a previous one, via
+        /// the on-disk cache) -- null if never synced at all. Backs the panel's "last synced: X
+        /// ago" indicator, matching NINA Orbitals' own per-object-type download screen.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/sync/status")]
+        public async Task SyncStatus() {
+            var json = JsonConvert.SerializeObject(new SyncStatusResponse { CometsLastSyncedUtc = CometOrbits.LastSyncedUtc });
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Explicit "download comets now" action -- the deliberate "do this while I still have a
+        /// connection, before heading to the dark site" step. Unlike ListObjects/Track's own
+        /// passive stale-cache fallback, this always attempts a live fetch and reports whether it
+        /// actually worked, since a user pressing a sync button deserves a real answer.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/sync/comets")]
+        public async Task SyncComets() {
+            var success = await CometOrbits.SyncNowAsync(HttpClient, HttpContext.CancellationToken);
+            var response = new SyncResponse {
+                Success = success,
+                Message = success ? "Comet elements synced" : "Sync failed -- check the connection and try again",
+                CometsLastSyncedUtc = CometOrbits.LastSyncedUtc,
+            };
+            var json = JsonConvert.SerializeObject(response);
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
         /// One position per day for the requested number of nights -- backs the Position &amp;
         /// Path tab's finder-chart plot (the object's real path against the fixed stars, not
         /// movement within a tracked frame).
@@ -143,6 +204,34 @@ namespace Perihelion.Api {
                 foreach (var p in points) {
                     response.Add(new PathPointResponse { Date = p.date.ToString("yyyy-MM-dd"), RaHours = p.raHours, DecDeg = p.decDeg });
                 }
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
+
+        /// <summary>
+        /// Real, observer-reported "last seen" brightness for a comet, as a cross-check against
+        /// the predicted (H, G model) magnitude already in the /objects list -- see
+        /// CometActivity.cs's own doc comment for real verified cases where the two disagreed by
+        /// 4+ magnitudes. Comet-only, so there's no objectType param; asteroids have no COBS
+        /// equivalent. Available: false (not a 404) when COBS simply has nothing for this comet,
+        /// or the fetch failed -- that's a normal, expected case for most comets, not an error.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/objects/activity")]
+        public async Task GetActivity([QueryField] string targetName) {
+            try {
+                var status = await CometActivity.FetchAsync(HttpClient, targetName, HttpContext.CancellationToken);
+                var response = status == null
+                    ? new CometActivityResponse { Available = false }
+                    : new CometActivityResponse {
+                        Available = true,
+                        MostRecentDateUtc = status.MostRecent.DateUtc,
+                        MostRecentMagnitude = status.MostRecent.Magnitude,
+                        RecentAverageMagnitude = status.RecentAverageMagnitude,
+                        ObservationCount = status.ObservationCount,
+                    };
                 await HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
             } catch (Exception ex) {
                 HttpContext.Response.StatusCode = 500;

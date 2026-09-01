@@ -5,6 +5,7 @@ using NINA.Core.Model;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Sequencer.SequenceItem;
 using NINA.Sequencer.Validations;
+using Perihelion.Api;
 using Perihelion.Astrometry;
 using System;
 using System.Collections.Generic;
@@ -29,9 +30,9 @@ namespace Perihelion.SequenceItems {
     [Export(typeof(ISequenceItem))]
     [JsonObject(MemberSerialization.OptIn)]
     public class SetPerihelionTrackingRate : SequenceItem, IValidatable {
-        // Shared across all instances/executions -- HttpClient is designed to be reused, not
-        // created per request (per-request instances risk socket exhaustion under load).
-        private static readonly HttpClient HttpClient = new();
+        // One shared HttpClient across the whole plugin (PerihelionHttpClient.cs) -- HttpClient
+        // is designed to be reused, not created per request or per class.
+        private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
 
         private readonly ITelescopeMediator telescopeMediator;
 
