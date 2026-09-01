@@ -25,6 +25,12 @@ namespace Perihelion.Astrometry {
         public required double ArgPeriDeg { get; init; }
         public required double NodeDeg { get; init; }
         public required double InclinationDeg { get; init; }
+
+        /// <summary>Absolute magnitude -- null when the feed has no reliable value.</summary>
+        public double? H { get; init; }
+
+        /// <summary>Magnitude slope parameter -- defaults to 4.0 (a common generic value for long-period comets) when the feed has none.</summary>
+        public double G { get; init; } = 4.0;
     }
 
     public static class CometOrbits {
@@ -61,6 +67,8 @@ namespace Perihelion.Astrometry {
                 var argPeriDeg = double.Parse(ParseFixed(line, 52, 59));
                 var nodeDeg = double.Parse(ParseFixed(line, 62, 69));
                 var inclinationDeg = double.Parse(ParseFixed(line, 72, 79));
+                var hRaw = ParseFixed(line, 92, 95);
+                var gRaw = ParseFixed(line, 97, 100);
                 var name = ParseFixed(line, 103, 158);
 
                 // Periodic comets carry their number in columns 1-4 (e.g. "0022P") with columns
@@ -78,6 +86,9 @@ namespace Perihelion.Astrometry {
                 var perihelionDate = new DateTime(periYear, periMonth, dayInt, 0, 0, 0, DateTimeKind.Utc)
                     .AddMilliseconds(dayFraction * 86400000);
 
+                var h = double.TryParse(hRaw, out var hParsed) ? hParsed : (double?)null;
+                var g = double.TryParse(gRaw, out var gParsed) ? gParsed : 4.0;
+
                 return new CometElements {
                     Designation = designation,
                     Name = name,
@@ -87,6 +98,8 @@ namespace Perihelion.Astrometry {
                     ArgPeriDeg = argPeriDeg,
                     NodeDeg = nodeDeg,
                     InclinationDeg = inclinationDeg,
+                    H = h,
+                    G = g,
                 };
             } catch {
                 return null;
@@ -212,6 +225,23 @@ namespace Perihelion.Astrometry {
             var yOrbit = gLagrange * v0;
 
             return OrbitalMechanics.RotatePerifocalToEcliptic(xOrbit, yOrbit, comet.InclinationDeg, comet.NodeDeg, comet.ArgPeriDeg);
+        }
+
+        /// <summary>
+        /// Standard (and well-known to be approximate) comet magnitude formula:
+        /// m = H + 5*log10(delta) + 2.5*G*log10(r), where r = heliocentric distance and
+        /// delta = geocentric distance, both AU. Null when the comet has no H value.
+        /// </summary>
+        public static double? PredictedMagnitude(CometElements comet, DateTime date, AstroTime t) {
+            if (comet.H == null) return null;
+            var helio = HeliocentricEcliptic(comet, date);
+            var earth = OrbitalMechanics.EarthHeliocentricEcliptic(t);
+            var r = Math.Sqrt(helio.X * helio.X + helio.Y * helio.Y + helio.Z * helio.Z);
+            var dx = helio.X - earth.X;
+            var dy = helio.Y - earth.Y;
+            var dz = helio.Z - earth.Z;
+            var delta = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+            return comet.H.Value + 5 * Math.Log10(delta) + 2.5 * comet.G * Math.Log10(r);
         }
     }
 }

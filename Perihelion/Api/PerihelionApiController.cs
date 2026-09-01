@@ -7,6 +7,8 @@ using NINA.Equipment.Interfaces.Mediator;
 using Perihelion.Astrometry;
 using Perihelion.SequenceItems;
 using System;
+using System.Collections.Generic;
+using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -33,6 +35,27 @@ namespace Perihelion.Api {
         public string Message { get; set; } = string.Empty;
     }
 
+    internal class BrowseObjectResponse {
+        [JsonProperty]
+        public string Id { get; set; } = string.Empty;
+
+        [JsonProperty]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonProperty]
+        [JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
+        public OrbitalObjectType ObjectType { get; set; }
+
+        [JsonProperty]
+        public double? Magnitude { get; set; }
+
+        [JsonProperty]
+        public double RaHours { get; set; }
+
+        [JsonProperty]
+        public double DecDeg { get; set; }
+    }
+
     /// <summary>
     /// Perihelion's own tiny HTTP API, independent of ninaAPI -- exists specifically for
     /// "Quick Track": running SetPerihelionTrackingRate (and optionally
@@ -46,6 +69,41 @@ namespace Perihelion.Api {
         // Set once by PerihelionApiServer.Start() before the server begins accepting requests.
         internal static ITelescopeMediator? TelescopeMediator;
         internal static IGuiderMediator? GuiderMediator;
+
+        // Shared, not created per request -- same reasoning as the sequence items' own HttpClient
+        // (SetPerihelionTrackingRate.cs): per-request instances risk socket exhaustion.
+        private static readonly HttpClient HttpClient = new();
+
+        /// <summary>
+        /// Every bright asteroid plus every comet in the current MPC feed worth showing, each
+        /// with today's real magnitude/RA/Dec -- backs the Touch-N-Stars panel's Browse tab.
+        /// The panel is a thin client of this computation, not a second implementation of the
+        /// same orbital math in JavaScript (see CLAUDE.md's "Quick Track" architecture section
+        /// for the fuller reasoning -- the panel and this plugin run on the same Pi, so there's
+        /// no internet-round-trip argument for duplicating it client-side).
+        /// </summary>
+        [Route(HttpVerbs.Get, "/objects")]
+        public async Task ListObjects() {
+            try {
+                var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, HttpContext.CancellationToken);
+                var response = new List<BrowseObjectResponse>(objects.Count);
+                foreach (var o in objects) {
+                    response.Add(new BrowseObjectResponse {
+                        Id = o.Id,
+                        Name = o.Name,
+                        ObjectType = o.ObjectType,
+                        Magnitude = o.Magnitude,
+                        RaHours = o.RaHours,
+                        DecDeg = o.DecDeg,
+                    });
+                }
+                var json = JsonConvert.SerializeObject(response);
+                await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
 
         [Route(HttpVerbs.Post, "/track")]
         public async Task Track() {

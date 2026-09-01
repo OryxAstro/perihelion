@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,12 +32,36 @@ namespace Perihelion.Astrometry {
     }
 
     /// <summary>
+    /// One object's current on-sky position, for the Touch-N-Stars panel's Browse tab -- the
+    /// panel is a thin client of these already-computed values rather than a second
+    /// implementation of the orbital math in JavaScript (both the panel and this plugin run on
+    /// the same Pi, so there's no "avoid an internet round-trip" reason to duplicate it the way
+    /// there was for avoiding a call to OryxAstro's own website API).
+    /// </summary>
+    public sealed class BrowseObject {
+        public required string Id { get; init; }
+        public required string Name { get; init; }
+        public required OrbitalObjectType ObjectType { get; init; }
+
+        /// <summary>Null for a comet with no reliable H in the current MPC feed.</summary>
+        public double? Magnitude { get; init; }
+
+        public required double RaHours { get; init; }
+        public required double DecDeg { get; init; }
+    }
+
+    /// <summary>
     /// Entry point: given a comet or (bright, catalogued) asteroid by name, computes its current
-    /// on-sky tracking rate. Ported from OryxAstro's server/utils/orbitalTracking.ts -- only
-    /// ComputeOrbitalRateAsync itself; the magnitude/finder-chart exports in the original file
-    /// aren't needed for a tracking-rate sequence item and were left out of this port.
+    /// on-sky tracking rate. Ported from OryxAstro's server/utils/orbitalTracking.ts.
     /// </summary>
     public static class OrbitalTracking {
+        // Matches OryxAstro's own COMET_MAGNITUDE_THRESHOLD (cometOrbits.ts) -- "reachable with
+        // a typical astrophotography setup", not a hard physical limit.
+        private const double CometMagnitudeThreshold = 16;
+
+        // Keeps ListBrowseObjectsAsync's response bounded -- the live MPC feed has thousands of
+        // rows; nobody's picking a tracking target from more than this many candidates anyway.
+        private const int MaxComets = 30;
         private static (double raHours, double decDeg) GeocentricPosition(Func<DateTime, EclipticVector> heliocentricAt, DateTime date) {
             var t = new AstroTime(date);
             var helio = heliocentricAt(date);
@@ -79,6 +104,67 @@ namespace Perihelion.Astrometry {
                 raArcsecPerSec: dRaDeg * Math.Cos(decRad) * 3600 / dtSec,
                 decArcsecPerSec: (p2.decDeg - p1.decDeg) * 3600 / dtSec
             );
+        }
+
+        /// <summary>Real apparent magnitude right now (or at any given date) -- null if the object isn't found, or is a comet with no reliable H in the current feed.</summary>
+        public static async Task<double?> ComputeCurrentMagnitudeAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, DateTime atDateUtc, CancellationToken ct = default) {
+            var t = new AstroTime(atDateUtc);
+            if (objectType == OrbitalObjectType.Comet) {
+                var comet = await CometOrbits.FindByNameAsync(httpClient, name, ct).ConfigureAwait(false);
+                return comet == null ? null : CometOrbits.PredictedMagnitude(comet, atDateUtc, t);
+            } else {
+                var asteroid = AsteroidOrbits.FindByName(name);
+                if (asteroid == null) return null;
+                var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
+                var earth = OrbitalMechanics.EarthHeliocentricEcliptic(t);
+                return AsteroidOrbits.ApparentMagnitude(asteroid, helio, earth);
+            }
+        }
+
+        /// <summary>
+        /// Every bright asteroid (always -- it's a small, fixed list) plus every comet in the
+        /// current MPC feed bright enough to be worth showing, each with today's real
+        /// magnitude/RA/Dec -- backs the Touch-N-Stars panel's Browse tab.
+        /// </summary>
+        public static async Task<IReadOnlyList<BrowseObject>> ListBrowseObjectsAsync(HttpClient httpClient, DateTime atDateUtc, CancellationToken ct = default) {
+            var t = new AstroTime(atDateUtc);
+            var earth = OrbitalMechanics.EarthHeliocentricEcliptic(t);
+            var results = new List<BrowseObject>();
+
+            foreach (var asteroid in AsteroidOrbits.BrightAsteroids) {
+                var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
+                var geo = helio - earth;
+                results.Add(new BrowseObject {
+                    Id = asteroid.Id,
+                    Name = asteroid.Name,
+                    ObjectType = OrbitalObjectType.Asteroid,
+                    Magnitude = AsteroidOrbits.ApparentMagnitude(asteroid, helio, earth),
+                    RaHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t),
+                    DecDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t),
+                });
+            }
+
+            var comets = await CometOrbits.FetchCometElementsAsync(httpClient, ct).ConfigureAwait(false);
+            var cometResults = new List<BrowseObject>();
+            foreach (var comet in comets) {
+                var mag = CometOrbits.PredictedMagnitude(comet, atDateUtc, t);
+                if (mag == null || mag > CometMagnitudeThreshold) continue;
+
+                var helio = CometOrbits.HeliocentricEcliptic(comet, atDateUtc);
+                var geo = helio - earth;
+                cometResults.Add(new BrowseObject {
+                    Id = comet.Designation,
+                    Name = comet.Name,
+                    ObjectType = OrbitalObjectType.Comet,
+                    Magnitude = mag,
+                    RaHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t),
+                    DecDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t),
+                });
+            }
+            cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
+            results.AddRange(cometResults.GetRange(0, Math.Min(MaxComets, cometResults.Count)));
+
+            return results;
         }
     }
 }
