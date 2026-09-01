@@ -78,18 +78,21 @@ namespace Perihelion.Astrometry {
         /// asteroid not in AsteroidOrbits.BrightAsteroids).
         /// </summary>
         /// <param name="atDateUtc">Must have DateTime.Kind == Utc.</param>
-        public static async Task<OrbitalRate?> ComputeOrbitalRateAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, DateTime atDateUtc, CancellationToken ct = default) {
-            Func<DateTime, EclipticVector> heliocentricAt;
-
+        private static async Task<Func<DateTime, EclipticVector>?> ResolveHeliocentricAtAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, CancellationToken ct) {
             if (objectType == OrbitalObjectType.Comet) {
                 var comet = await CometOrbits.FindByNameAsync(httpClient, name, ct).ConfigureAwait(false);
                 if (comet == null) return null;
-                heliocentricAt = d => CometOrbits.HeliocentricEcliptic(comet, d);
+                return d => CometOrbits.HeliocentricEcliptic(comet, d);
             } else {
                 var asteroid = AsteroidOrbits.FindByName(name);
                 if (asteroid == null) return null;
-                heliocentricAt = d => AsteroidOrbits.HeliocentricEcliptic(asteroid, new AstroTime(d));
+                return d => AsteroidOrbits.HeliocentricEcliptic(asteroid, new AstroTime(d));
             }
+        }
+
+        public static async Task<OrbitalRate?> ComputeOrbitalRateAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, DateTime atDateUtc, CancellationToken ct = default) {
+            var heliocentricAt = await ResolveHeliocentricAtAsync(httpClient, objectType, name, ct).ConfigureAwait(false);
+            if (heliocentricAt == null) return null;
 
             const int dtSec = 60;
             var p1 = GeocentricPosition(heliocentricAt, atDateUtc);
@@ -146,7 +149,15 @@ namespace Perihelion.Astrometry {
 
             var comets = await CometOrbits.FetchCometElementsAsync(httpClient, ct).ConfigureAwait(false);
             var cometResults = new List<BrowseObject>();
+            // Some real MPC feed entries share the same display Name (e.g. distinct fragments
+            // of a split comet) -- FindByNameAsync/tracking match by Name via FirstOrDefault, so
+            // a later duplicate is functionally indistinguishable from the first for tracking
+            // purposes anyway (both resolve to the same match). Skip it here rather than show
+            // two list rows that would behave identically if either were tracked.
+            var seenNames = new HashSet<string>();
             foreach (var comet in comets) {
+                if (!seenNames.Add(comet.Name)) continue;
+
                 var mag = CometOrbits.PredictedMagnitude(comet, atDateUtc, t);
                 if (mag == null || mag > CometMagnitudeThreshold) continue;
 
@@ -165,6 +176,25 @@ namespace Perihelion.Astrometry {
             results.AddRange(cometResults.GetRange(0, Math.Min(MaxComets, cometResults.Count)));
 
             return results;
+        }
+
+        /// <summary>
+        /// One position per day for <paramref name="days"/> days starting at
+        /// <paramref name="fromDateUtc"/> -- the object's real path against the fixed star
+        /// background, for the Position &amp; Path tab's finder-chart plot. Null if the object
+        /// isn't found.
+        /// </summary>
+        public static async Task<IReadOnlyList<(DateTime date, double raHours, double decDeg)>?> ComputeOrbitalPathAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, DateTime fromDateUtc, int days, CancellationToken ct = default) {
+            var heliocentricAt = await ResolveHeliocentricAtAsync(httpClient, objectType, name, ct).ConfigureAwait(false);
+            if (heliocentricAt == null) return null;
+
+            var points = new List<(DateTime, double, double)>(days);
+            for (var i = 0; i < days; i++) {
+                var date = fromDateUtc.AddDays(i);
+                var p = GeocentricPosition(heliocentricAt, date);
+                points.Add((date, p.raHours, p.decDeg));
+            }
+            return points;
         }
     }
 }

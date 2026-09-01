@@ -3,6 +3,7 @@ using EmbedIO.Routing;
 using EmbedIO.WebApi;
 using Newtonsoft.Json;
 using NINA.Core.Model;
+using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
 using Perihelion.Astrometry;
 using Perihelion.SequenceItems;
@@ -33,6 +34,17 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public string Message { get; set; } = string.Empty;
+    }
+
+    internal class PathPointResponse {
+        [JsonProperty]
+        public string Date { get; set; } = string.Empty;
+
+        [JsonProperty]
+        public double RaHours { get; set; }
+
+        [JsonProperty]
+        public double DecDeg { get; set; }
     }
 
     internal class BrowseObjectResponse {
@@ -105,6 +117,39 @@ namespace Perihelion.Api {
             }
         }
 
+        /// <summary>
+        /// One position per day for the requested number of nights -- backs the Position &amp;
+        /// Path tab's finder-chart plot (the object's real path against the fixed stars, not
+        /// movement within a tracked frame).
+        /// </summary>
+        [Route(HttpVerbs.Get, "/objects/path")]
+        public async Task GetPath([QueryField] string objectType, [QueryField] string targetName, [QueryField] int days) {
+            try {
+                if (!Enum.TryParse<OrbitalObjectType>(objectType, ignoreCase: true, out var type)) {
+                    HttpContext.Response.StatusCode = 400;
+                    await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = $"Unknown objectType '{objectType}'" }), "application/json", Encoding.UTF8);
+                    return;
+                }
+                var effectiveDays = days > 0 ? days : 10;
+
+                var points = await OrbitalTracking.ComputeOrbitalPathAsync(HttpClient, type, targetName, DateTime.UtcNow.Date, effectiveDays, HttpContext.CancellationToken);
+                if (points == null) {
+                    HttpContext.Response.StatusCode = 404;
+                    await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = $"Could not find {type} '{targetName}'" }), "application/json", Encoding.UTF8);
+                    return;
+                }
+
+                var response = new List<PathPointResponse>(points.Count);
+                foreach (var p in points) {
+                    response.Add(new PathPointResponse { Date = p.date.ToString("yyyy-MM-dd"), RaHours = p.raHours, DecDeg = p.decDeg });
+                }
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
+
         [Route(HttpVerbs.Post, "/track")]
         public async Task Track() {
             var response = new TrackResponse();
@@ -134,6 +179,28 @@ namespace Perihelion.Api {
                 }
             } catch (SequenceEntityFailedException ex) {
                 response.Message = ex.Message;
+            } catch (Exception ex) {
+                response.Message = $"Unexpected error: {ex.Message}";
+            }
+
+            var json = JsonConvert.SerializeObject(response);
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>Undoes what Quick Track did: back to sidereal tracking, and stops any guider shift.</summary>
+        [Route(HttpVerbs.Post, "/stop")]
+        public async Task Stop() {
+            var response = new TrackResponse();
+            try {
+                if (TelescopeMediator == null) {
+                    response.Message = "Perihelion API server started before the telescope mediator was available";
+                } else {
+                    response.Success = TelescopeMediator.SetTrackingMode(TrackingMode.Sidereal);
+                    response.Message = response.Success ? "Back to sidereal tracking" : "Setting tracking mode failed";
+                    if (GuiderMediator != null) {
+                        await GuiderMediator.StopShifting(HttpContext.CancellationToken);
+                    }
+                }
             } catch (Exception ex) {
                 response.Message = $"Unexpected error: {ex.Message}";
             }
