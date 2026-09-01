@@ -1,0 +1,52 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Library</OutputType>
+    <RootNamespace>Perihelion</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!--
+    Perihelion's own source lives in this repo, but a NINA-compatible plugin needs NINA's
+    core assemblies (NINA.Sequencer, NINA.Astrometry, NINA.Equipment, ...) at build time.
+    Those come transitively from a single ProjectReference into a sibling clone of
+    nitr57/pins (see CLAUDE.md "Critical build fact" section), never edited from here.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\pins\NINA.Plugin\NINA.Plugin.csproj" />
+  </ItemGroup>
+
+  <!--
+    GeneratePathProperty="true" on each gives MSBuild a $(Pkg<Name>) property pointing at that
+    package's resolved root folder (dots in the id become underscores), used below to copy the
+    actual dependency DLLs the plugin needs at runtime — PINS' plugin loader does not resolve
+    PackageReference dependencies via .deps.json the way a normal app host would (confirmed:
+    nitr57/ninaAPI's own .csproj has the identical problem and explicitly copies EmbedIO.dll
+    itself), so anything beyond the NINA.* ProjectReference assemblies needs an explicit copy
+    or the plugin fails to load at runtime with a missing-assembly error.
+  -->
+  <ItemGroup>
+    <PackageReference Include="CosineKitty.AstronomyEngine" Version="2.1.19" GeneratePathProperty="true" />
+    <!-- Same version nitr57/ninaAPI itself uses on this exact PINS build, proven working here,
+         not just generically on EmbedIO's own docs. Hosts Perihelion's own tiny HTTP server for
+         Quick Track (see Api/), independent of ninaAPI: no third-party plugin code touched. -->
+    <PackageReference Include="EmbedIO" Version="3.5.2" GeneratePathProperty="true" />
+    <!-- Transitive dependency of EmbedIO (its Swan.Logging namespace) — pinned explicitly,
+         matching the version EmbedIO 3.5.2 itself resolves, purely to get its own $(Pkg...)
+         path property for the copy step below; not used directly by Perihelion's own code. -->
+    <PackageReference Include="Unosquare.Swan.Lite" Version="3.1.0" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <Target Name="PostBuildLinux" AfterTargets="PostBuildEvent" Condition="$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Linux)))">
+    <Exec Command="mkdir -p $HOME/.local/share/NINA/Plugins/3.0.0/Perihelion" />
+    <Exec Command="cp $(TargetPath) $HOME/.local/share/NINA/Plugins/3.0.0/Perihelion/" />
+    <!-- astronomy.dll is CosineKitty.AstronomyEngine's actual assembly name — NOT
+         CosineKitty.AstronomyEngine.dll, despite the package id (checked against the real
+         NuGet cache layout, not assumed from the package name). -->
+    <Exec Command="cp $(PkgCosineKitty_AstronomyEngine)/lib/netstandard2.0/astronomy.dll $HOME/.local/share/NINA/Plugins/3.0.0/Perihelion/" />
+    <Exec Command="cp $(PkgEmbedIO)/lib/netstandard2.0/EmbedIO.dll $HOME/.local/share/NINA/Plugins/3.0.0/Perihelion/" />
+    <Exec Command="cp $(PkgUnosquare_Swan_Lite)/lib/netstandard2.0/Swan.Lite.dll $HOME/.local/share/NINA/Plugins/3.0.0/Perihelion/" />
+  </Target>
+</Project>
