@@ -26,6 +26,10 @@ namespace Perihelion.Api {
         /// <summary>Also apply the guider shift rate (see SetPerihelionGuiderShiftRate) -- needed whenever the mount is guided.</summary>
         [JsonProperty]
         public bool Guiding { get; set; }
+
+        /// <summary>Null/omitted/&lt;=0 disables it. Otherwise, re-applies the rate on this interval -- see QuickTrackReapply.</summary>
+        [JsonProperty]
+        public int? AutoReapplyMinutes { get; set; }
     }
 
     internal class TrackResponse {
@@ -271,8 +275,16 @@ namespace Perihelion.Api {
                         await guiderItem.Execute(new Progress<ApplicationStatus>(), HttpContext.CancellationToken);
                     }
 
+                    if (request.AutoReapplyMinutes is > 0) {
+                        QuickTrackReapply.Start(TelescopeMediator, GuiderMediator, request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes.Value);
+                    } else {
+                        QuickTrackReapply.Stop();
+                    }
+
                     response.Success = true;
-                    response.Message = "Quick Track started";
+                    response.Message = request.AutoReapplyMinutes is > 0
+                        ? $"Quick Track started, re-applying every {request.AutoReapplyMinutes} min"
+                        : "Quick Track started";
                 }
             } catch (SequenceEntityFailedException ex) {
                 response.Message = ex.Message;
@@ -288,6 +300,7 @@ namespace Perihelion.Api {
         [Route(HttpVerbs.Post, "/stop")]
         public async Task Stop() {
             var response = new TrackResponse();
+            QuickTrackReapply.Stop();
             try {
                 if (TelescopeMediator == null) {
                     response.Message = "Perihelion API server started before the telescope mediator was available";

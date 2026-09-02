@@ -15,9 +15,12 @@ namespace Perihelion.Api {
     /// the Touch-N-Stars NINA plugin's own hardcoded controller list).
     /// </summary>
     public class PerihelionApiServer {
-        // TODO: make configurable (a plugin options page) once one exists -- picked to avoid
-        // colliding with ninaAPI's own common default (1888) and Stellarium Remote Control's
-        // (8090). Not yet checked against every other PINS plugin's own port choice.
+        // Picked to avoid colliding with ninaAPI's own common default (1888) and Stellarium
+        // Remote Control's (8090). Conflict avoidance beyond that is now automatic --
+        // PerihelionPlugin's constructor runs whatever port is configured (or this default)
+        // through CoreUtility.GetNearestAvailablePort(), the same mechanism nitr57/ninaAPI and
+        // the Touch-N-Stars PINS plugin already use for their own listener ports -- so an actual
+        // collision at startup self-resolves rather than silently failing to bind.
         public const int DefaultPort = 1899;
 
         private readonly int port;
@@ -76,6 +79,7 @@ namespace Perihelion.Api {
         }
 
         public void Stop() {
+            QuickTrackReapply.Stop();
             cts?.Cancel();
             server?.Dispose();
             server = null;

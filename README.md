@@ -16,7 +16,7 @@ The orbital mechanics itself isn't reinvented for this plugin — it's a direct 
 - Sets a mount's custom RA/Dec tracking rate for a comet or asteroid, computed live from current orbital elements — handles the RA/sidereal-rate unit conversion correctly (NINA's shared telescope layer mirrors ASCOM's own rate convention for every backend, INDI included; a real, easy-to-get-backwards trap — see `SetPerihelionTrackingRate.cs`).
 - Coordinates a guider shift rate so PHD2 doesn't fight the deliberate drift, starting guiding itself first if it isn't already running — and unparks the mount itself if needed, rather than silently doing nothing on a parked scope (both real failure modes caught by testing against actual hardware, not just the math in isolation).
 - **Add to Sequence** builds a real Advanced Sequencer container (unpark → slew/center → track → guide → imaging loop, with optional meridian-flip and autofocus triggers) and loads it for review — it doesn't auto-start, so nothing runs until you choose to.
-- **Quick Track** sets the rate directly, right now, for manual/visual use — independent of the sequencer.
+- **Quick Track** sets the rate directly, right now, for manual/visual use — independent of the sequencer. Optionally keeps re-applying it every 15 minutes on its own, entirely in the plugin, so a long unattended session stays accurate as the object's true rate drifts through the night, rather than holding the one rate computed when you pressed the button.
 - The exposure filter list is read from the actually-connected filter wheel, not a hardcoded guess — the sequence it builds only ever references filters that really exist on your setup.
 
 **Offline-first by design**
