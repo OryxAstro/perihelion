@@ -41,7 +41,7 @@ The orbital mechanics itself isn't reinvented for this plugin — it's a direct 
 
 **The rest of the app, reused rather than duplicated.** The panel doesn't carry its own copy of anything the app already does well: altitude uses the app's existing `raDecToAltAz()` and the connected profile's own location; the camera FOV overlay uses the same field-of-view calculation Celestia Atlas itself uses. It's built as another real Touch-N-Stars plugin — same design tokens, same plugin-registration pattern, its own code-split chunk, every user-facing string in the app's own locale files rather than hardcoded English — not a bolted-on separate app that happens to load in an iframe.
 
-**OryxAstro's own website** can already plan a comet/asteroid session and hand it straight to a PINS rig — the "Send to PINS" button in its Orbital Export modal builds a sequence and posts it to `ninaAPI`'s existing `/sequence/load` route, landing directly in the Advanced Sequencer with Perihelion's own tracking-rate items already wired in. Planning happens wherever's convenient (a desktop browser, days in advance, with COBS data and framing tools this panel doesn't need to duplicate); execution happens on the rig at the dark site, sequenced and ready.
+**Entirely optional: OryxAstro's own website.** Perihelion is a complete, standalone PINS plugin on its own — the Touch-N-Stars panel above is the whole thing, nothing else is required to browse, track, or build a sequence. If you also happen to use OryxAstro's website for planning, it can additionally hand a session straight to a PINS rig — the "Send to PINS" button in its Orbital Export modal builds a sequence and posts it to `ninaAPI`'s existing `/sequence/load` route, landing directly in the Advanced Sequencer with Perihelion's own tracking-rate items already wired in. Planning happens wherever's convenient (a desktop browser, days in advance, with COBS data and framing tools this panel doesn't need to duplicate); execution happens on the rig at the dark site, sequenced and ready. But this is a bonus integration, not a dependency — nothing about Perihelion needs the website to exist.
 
 ## Architecture
 
@@ -67,10 +67,10 @@ flowchart TB
     api -.sync.-> mpc
     api -.cross-check.-> cobs
 
-    website["OryxAstro website<br/>(sky-events planner)"]
+    website["OryxAstro website (optional)<br/>(sky-events planner)"]
     ninaapi["ninaAPI's own<br/>/sequence/load"]
-    website -->|Send to PINS| ninaapi
-    ninaapi --> nina
+    website -.->|"Send to PINS (optional)"| ninaapi
+    ninaapi -.-> nina
 ```
 
 ## Status
