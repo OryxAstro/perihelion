@@ -33,6 +33,7 @@ The orbital mechanics itself isn't reinvented for this plugin — it's a direct 
 
 **Framing**
 - A framing view centered on the object's real, live position (not a static catalog snapshot), with the camera's actual field of view overlaid — pan to compose the shot, then capture that framing as an offset for the built sequence.
+- Shows the object's real 10-night path against the fixed stars directly over the sky imagery, alongside a separate motion-overview chart with a cos(dec)-compensated drift readout and angular scale bar — the framing view answers "will this stay in my shot," the chart answers "how much and which way is it actually moving," since a fast mover's full path can exceed the camera's own field of view.
 
 ## How this fits with Touch-N-Stars
 
