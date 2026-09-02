@@ -16,7 +16,7 @@ The orbital mechanics itself isn't reinvented for this plugin — it's a direct 
 - Sets a mount's custom RA/Dec tracking rate for a comet or asteroid, computed live from current orbital elements — handles the RA/sidereal-rate unit conversion correctly (NINA's shared telescope layer mirrors ASCOM's own rate convention for every backend, INDI included; a real, easy-to-get-backwards trap — see `SetPerihelionTrackingRate.cs`).
 - Coordinates a guider shift rate so PHD2 doesn't fight the deliberate drift, starting guiding itself first if it isn't already running — and unparks the mount itself if needed, rather than silently doing nothing on a parked scope (both real failure modes caught by testing against actual hardware, not just the math in isolation).
 - **Add to Sequence** builds a real Advanced Sequencer container (unpark → slew/center → track → guide → imaging loop, with optional meridian-flip and autofocus triggers) and loads it for review — it doesn't auto-start, so nothing runs until you choose to.
-- **Quick Track** sets the rate directly, right now, for manual/visual use — independent of the sequencer. Optionally keeps re-applying it every 15 minutes on its own, entirely in the plugin, so a long unattended session stays accurate as the object's true rate drifts through the night, rather than holding the one rate computed when you pressed the button.
+- **Quick Track** sets the rate directly, right now, for manual/visual use — independent of the sequencer. Optionally keeps re-applying it every 15 minutes on its own, entirely in the plugin, so a long unattended session stays accurate as the object's true rate drifts through the night, rather than holding the one rate computed when you pressed the button. A live status readout shows the real RA/Dec rate actually sent (not just that a toggle was on), when it was last applied, and a countdown to the next re-apply — polled from the plugin itself, so it stays accurate even if you're not the one who started the session.
 - The exposure filter list is read from the actually-connected filter wheel, not a hardcoded guess — the sequence it builds only ever references filters that really exist on your setup.
 
 **Offline-first by design**
@@ -39,7 +39,7 @@ The orbital mechanics itself isn't reinvented for this plugin — it's a direct 
 
 **Celestia Atlas** can show a comet and center a mount on it — but that's a single, instantaneous coordinate. There's no non-sidereal tracking behind it: the object starts drifting out of frame the moment imaging begins, uncompensated, with no guider coordination. Perihelion is the layer underneath that keeps it centered for the rest of the session. The two are complementary, not overlapping — Celestia Atlas for browsing and framing at a glance, Perihelion for the tracking, automation, and offline reliability an actual session needs. Perihelion's own framing view goes a step further and embeds a second, independent Celestia Atlas viewer instance directly in its panel, reusing the same real sky imagery rather than building a separate rendering stack.
 
-**The rest of the app, reused rather than duplicated.** The panel doesn't carry its own copy of anything the app already does well: altitude uses the app's existing `raDecToAltAz()` and the connected profile's own location; the camera FOV overlay uses the same field-of-view calculation Celestia Atlas itself uses. It's built as another real Touch-N-Stars plugin — same design tokens, same plugin-registration pattern, its own code-split chunk — not a bolted-on separate app that happens to load in an iframe.
+**The rest of the app, reused rather than duplicated.** The panel doesn't carry its own copy of anything the app already does well: altitude uses the app's existing `raDecToAltAz()` and the connected profile's own location; the camera FOV overlay uses the same field-of-view calculation Celestia Atlas itself uses. It's built as another real Touch-N-Stars plugin — same design tokens, same plugin-registration pattern, its own code-split chunk, every user-facing string in the app's own locale files rather than hardcoded English — not a bolted-on separate app that happens to load in an iframe.
 
 **OryxAstro's own website** can already plan a comet/asteroid session and hand it straight to a PINS rig — the "Send to PINS" button in its Orbital Export modal builds a sequence and posts it to `ninaAPI`'s existing `/sequence/load` route, landing directly in the Advanced Sequencer with Perihelion's own tracking-rate items already wired in. Planning happens wherever's convenient (a desktop browser, days in advance, with COBS data and framing tools this panel doesn't need to duplicate); execution happens on the rig at the dark site, sequenced and ready.
 
@@ -53,7 +53,7 @@ flowchart TB
             mediator["Telescope / Guider<br/>mediators"]
             plugin -->|SetCustomTrackingRate<br/>SetShiftRate| mediator
         end
-        api["Perihelion's own HTTP server<br/>(port 1899)"]
+        api["Perihelion's own HTTP server<br/>(port 1899, self-resolving on conflict)"]
         cache[("On-disk cache<br/>~/.local/share/NINA/PerihelionData")]
         plugin --- api
         plugin --- cache
@@ -75,7 +75,7 @@ flowchart TB
 
 ## Status
 
-Working prototype, tested against real hardware (INDI mount + PHD2 guiding). Not yet packaged as a `.deb` for PINS' own plugin distribution — see the plugin's own build notes for the current dev setup.
+Working prototype, tested against real hardware (INDI mount + PHD2 guiding), and separately verified end-to-end against an INDI Telescope Simulator: the auto-reapply timer logged three real ticks exactly 15 minutes apart, each with a freshly recomputed (not cached) RA/Dec rate. Not yet packaged as a `.deb` for PINS' own plugin distribution — see the plugin's own build notes for the current dev setup.
 
 ## License
 
