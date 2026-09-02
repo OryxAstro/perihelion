@@ -193,7 +193,15 @@ namespace Perihelion.Api {
                 }
                 var effectiveDays = days > 0 ? days : 10;
 
-                var points = await OrbitalTracking.ComputeOrbitalPathAsync(HttpClient, type, targetName, DateTime.UtcNow.Date, effectiveDays, HttpContext.CancellationToken);
+                // Full precision, not .Date (midnight UTC) -- day 0 has to be the same reference
+                // instant as /objects' own current-position computation (also DateTime.UtcNow), or
+                // the framing view's "Tonight" path point silently drifts away from the object's
+                // true live position by however many hours have passed since midnight (a real bug:
+                // for a fast-moving comet this can be a large enough offset to land outside the
+                // framing view entirely, even though both endpoints are describing "now"). The
+                // displayed date label is unaffected -- PathPointResponse.Date is formatted
+                // "yyyy-MM-dd" below regardless of the time-of-day carried on each point.
+                var points = await OrbitalTracking.ComputeOrbitalPathAsync(HttpClient, type, targetName, DateTime.UtcNow, effectiveDays, HttpContext.CancellationToken);
                 if (points == null) {
                     HttpContext.Response.StatusCode = 404;
                     await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = $"Could not find {type} '{targetName}'" }), "application/json", Encoding.UTF8);
