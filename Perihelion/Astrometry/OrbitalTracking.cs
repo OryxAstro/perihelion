@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
@@ -45,6 +46,16 @@ namespace Perihelion.Astrometry {
 
         /// <summary>Null for a comet with no reliable H in the current MPC feed.</summary>
         public double? Magnitude { get; init; }
+
+        /// <summary>Comet-only: the most recent real COBS-reported magnitude, and the mean of
+        /// the last up-to-5 reports (see CometActivity's own doc comment for why an average).
+        /// Both null for an asteroid, or a comet COBS has no reports for. Shown alongside
+        /// Magnitude in the Browse list specifically because the predicted (H/G model) value can
+        /// be badly wrong during a real outburst -- 10P/Tempel and 220P/McNaught are verified
+        /// real cases several magnitudes off -- and that's invisible unless the real observed
+        /// value is right there next to it, not one tap away on a detail view.</summary>
+        public double? ObservedMagnitude { get; init; }
+        public double? ObservedAverageMagnitude { get; init; }
 
         public required double RaHours { get; init; }
         public required double DecDeg { get; init; }
@@ -255,7 +266,37 @@ namespace Perihelion.Astrometry {
                     });
                 }
                 cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
-                results.AddRange(cometResults.GetRange(0, Math.Min(MaxComets, cometResults.Count)));
+                var trimmedComets = cometResults.GetRange(0, Math.Min(MaxComets, cometResults.Count));
+
+                // Real observed brightness for each comet, fetched in parallel (capped
+                // concurrency, to stay a reasonable citizen of a third-party public API) rather
+                // than sequentially -- the list is already capped at MaxComets, and
+                // CometActivity's own 2h cache absorbs repeat loads, so this keeps a cold
+                // Browse-tab load from taking MaxComets times one COBS round-trip in sequence.
+                // Shown alongside the predicted Magnitude above specifically because that
+                // prediction can be badly wrong during a real outburst (10P/Tempel and
+                // 220P/McNaught are verified real cases several magnitudes off) -- invisible
+                // unless the real observed value sits right next to it, not one tap away.
+                using var cobsThrottle = new SemaphoreSlim(6);
+                var cometsWithActivity = await Task.WhenAll(trimmedComets.Select(async comet => {
+                    await cobsThrottle.WaitAsync(ct).ConfigureAwait(false);
+                    try {
+                        var activity = await CometActivity.FetchAsync(httpClient, comet.Name, ct).ConfigureAwait(false);
+                        return new BrowseObject {
+                            Id = comet.Id,
+                            Name = comet.Name,
+                            ObjectType = comet.ObjectType,
+                            Magnitude = comet.Magnitude,
+                            ObservedMagnitude = activity?.MostRecent.Magnitude,
+                            ObservedAverageMagnitude = activity?.RecentAverageMagnitude,
+                            RaHours = comet.RaHours,
+                            DecDeg = comet.DecDeg,
+                        };
+                    } finally {
+                        cobsThrottle.Release();
+                    }
+                })).ConfigureAwait(false);
+                results.AddRange(cometsWithActivity);
             } catch (Exception ex) {
                 NINA.Core.Utility.Logger.Warning($"Perihelion: comet list unavailable, showing asteroids only: {ex.Message}");
             }

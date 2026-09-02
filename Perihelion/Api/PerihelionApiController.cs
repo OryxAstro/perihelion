@@ -137,6 +137,12 @@ namespace Perihelion.Api {
         public double? Magnitude { get; set; }
 
         [JsonProperty]
+        public double? ObservedMagnitude { get; set; }
+
+        [JsonProperty]
+        public double? ObservedAverageMagnitude { get; set; }
+
+        [JsonProperty]
         public double RaHours { get; set; }
 
         [JsonProperty]
@@ -180,6 +186,8 @@ namespace Perihelion.Api {
                         Name = o.Name,
                         ObjectType = o.ObjectType,
                         Magnitude = o.Magnitude,
+                        ObservedMagnitude = o.ObservedMagnitude,
+                        ObservedAverageMagnitude = o.ObservedAverageMagnitude,
                         RaHours = o.RaHours,
                         DecDeg = o.DecDeg,
                     });
