@@ -53,13 +53,13 @@ flowchart TB
             mediator["Telescope / Guider<br/>mediators"]
             plugin -->|SetCustomTrackingRate<br/>SetShiftRate| mediator
         end
-        api["Perihelion's own HTTP server<br/>(port 1899, self-resolving on conflict)"]
+        api["Perihelion's own HTTP server<br/>(port 1899,<br/>self-resolving)"]
         cache[("On-disk cache<br/>~/.local/share/NINA/PerihelionData")]
         plugin --- api
         plugin --- cache
     end
 
-    tns["Touch-N-Stars panel<br/>(Browse / Position & Path / Track)"]
+    tns["Touch-N-Stars panel<br/>(Browse, Position & Path,<br/>Track)"]
     tns -->|Quick Track, Sync Now,<br/>Add to Sequence| api
 
     mpc[("MPC comet elements")]
@@ -67,9 +67,9 @@ flowchart TB
     api -.sync.-> mpc
     api -.cross-check.-> cobs
 
-    website["OryxAstro website (optional)<br/>(sky-events planner)"]
+    website["OryxAstro website<br/>(sky-events planner,<br/>optional)"]
     ninaapi["ninaAPI's own<br/>/sequence/load"]
-    website -.->|"Send to PINS (optional)"| ninaapi
+    website -.->|"Send to PINS<br/>(optional)"| ninaapi
     ninaapi -.-> nina
 ```
 
