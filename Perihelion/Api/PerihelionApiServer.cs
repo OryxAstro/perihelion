@@ -2,6 +2,7 @@ using EmbedIO;
 using EmbedIO.WebApi;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Profile.Interfaces;
 using System;
 using System.Threading;
 
@@ -28,10 +29,11 @@ namespace Perihelion.Api {
         private Thread? serverThread;
         private CancellationTokenSource? cts;
 
-        public PerihelionApiServer(ITelescopeMediator telescopeMediator, IGuiderMediator guiderMediator, int port = DefaultPort) {
+        public PerihelionApiServer(ITelescopeMediator telescopeMediator, IGuiderMediator guiderMediator, IProfileService profileService, int port = DefaultPort) {
             this.port = port;
             PerihelionApiController.TelescopeMediator = telescopeMediator;
             PerihelionApiController.GuiderMediator = guiderMediator;
+            PerihelionApiController.ProfileService = profileService;
         }
 
         /// <summary>

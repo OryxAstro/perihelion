@@ -1,7 +1,9 @@
+using CosineKitty;
 using Newtonsoft.Json;
 using NINA.Astrometry;
 using NINA.Core.Model;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Profile.Interfaces;
 using NINA.Sequencer.SequenceItem;
 using NINA.Sequencer.Validations;
 using Perihelion.Api;
@@ -34,13 +36,15 @@ namespace Perihelion.SequenceItems {
         private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
 
         private readonly IGuiderMediator guiderMediator;
+        private readonly IProfileService profileService;
 
         [ImportingConstructor]
-        public SetPerihelionGuiderShiftRate(IGuiderMediator guiderMediator) {
+        public SetPerihelionGuiderShiftRate(IGuiderMediator guiderMediator, IProfileService profileService) {
             this.guiderMediator = guiderMediator;
+            this.profileService = profileService;
         }
 
-        private SetPerihelionGuiderShiftRate(SetPerihelionGuiderShiftRate cloneMe) : this(cloneMe.guiderMediator) {
+        private SetPerihelionGuiderShiftRate(SetPerihelionGuiderShiftRate cloneMe) : this(cloneMe.guiderMediator, cloneMe.profileService) {
             CopyMetaData(cloneMe);
             ObjectType = cloneMe.ObjectType;
             TargetName = cloneMe.TargetName;
@@ -88,7 +92,9 @@ namespace Perihelion.SequenceItems {
                 throw new SequenceEntityFailedException("Could not start guiding");
             }
 
-            var rate = await OrbitalTracking.ComputeOrbitalRateAsync(HttpClient, ObjectType, TargetName, DateTime.UtcNow, token);
+            var site = profileService.ActiveProfile.AstrometrySettings;
+            var observer = new Observer(site.Latitude, site.Longitude, site.Elevation);
+            var rate = await OrbitalTracking.ComputeOrbitalRateAsync(HttpClient, ObjectType, TargetName, DateTime.UtcNow, token, observer);
             if (rate == null) {
                 throw new SequenceEntityFailedException($"Could not find current orbital elements for {ObjectType} '{TargetName}'");
             }

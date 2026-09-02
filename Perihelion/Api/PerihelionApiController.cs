@@ -1,3 +1,4 @@
+using CosineKitty;
 using EmbedIO;
 using EmbedIO.Routing;
 using EmbedIO.WebApi;
@@ -6,6 +7,7 @@ using NINA.Core.Model;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Profile.Interfaces;
 using Perihelion.Astrometry;
 using Perihelion.SequenceItems;
 using System;
@@ -154,6 +156,7 @@ namespace Perihelion.Api {
         // Set once by PerihelionApiServer.Start() before the server begins accepting requests.
         internal static ITelescopeMediator? TelescopeMediator;
         internal static IGuiderMediator? GuiderMediator;
+        internal static IProfileService? ProfileService;
 
         // One shared HttpClient across the whole plugin (PerihelionHttpClient.cs).
         private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
@@ -299,7 +302,7 @@ namespace Perihelion.Api {
                 } else {
                     QuickTrackStatus.Started(request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes is > 0 ? request.AutoReapplyMinutes : null);
 
-                    var trackingItem = new SetPerihelionTrackingRate(TelescopeMediator) {
+                    var trackingItem = new SetPerihelionTrackingRate(TelescopeMediator, ProfileService!) {
                         ObjectType = request.ObjectType,
                         TargetName = request.TargetName,
                     };
@@ -310,7 +313,7 @@ namespace Perihelion.Api {
                     }
 
                     if (request.Guiding && GuiderMediator != null) {
-                        var guiderItem = new SetPerihelionGuiderShiftRate(GuiderMediator) {
+                        var guiderItem = new SetPerihelionGuiderShiftRate(GuiderMediator, ProfileService!) {
                             ObjectType = request.ObjectType,
                             TargetName = request.TargetName,
                         };
@@ -318,7 +321,7 @@ namespace Perihelion.Api {
                     }
 
                     if (request.AutoReapplyMinutes is > 0) {
-                        QuickTrackReapply.Start(TelescopeMediator, GuiderMediator, request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes.Value);
+                        QuickTrackReapply.Start(TelescopeMediator, GuiderMediator, ProfileService!, request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes.Value);
                     } else {
                         QuickTrackReapply.Stop();
                     }

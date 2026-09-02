@@ -1,6 +1,7 @@
 using NINA.Core.Model;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Profile.Interfaces;
 using Perihelion.Astrometry;
 using Perihelion.SequenceItems;
 using System;
@@ -25,12 +26,12 @@ namespace Perihelion.Api {
         private static readonly object Gate = new();
         private static Timer? timer;
 
-        public static void Start(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, OrbitalObjectType objectType, string targetName, bool guiding, int intervalMinutes) {
+        public static void Start(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding, int intervalMinutes) {
             lock (Gate) {
                 StopLocked();
                 var interval = TimeSpan.FromMinutes(Math.Max(1, intervalMinutes));
                 timer = new Timer(
-                    _ => Reapply(telescopeMediator, guiderMediator, objectType, targetName, guiding),
+                    _ => Reapply(telescopeMediator, guiderMediator, profileService, objectType, targetName, guiding),
                     null,
                     interval,
                     interval);
@@ -49,13 +50,13 @@ namespace Perihelion.Api {
             timer = null;
         }
 
-        private static async void Reapply(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, OrbitalObjectType objectType, string targetName, bool guiding) {
+        private static async void Reapply(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding) {
             try {
-                var trackingItem = new SetPerihelionTrackingRate(telescopeMediator) { ObjectType = objectType, TargetName = targetName };
+                var trackingItem = new SetPerihelionTrackingRate(telescopeMediator, profileService) { ObjectType = objectType, TargetName = targetName };
                 await trackingItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
 
                 if (guiding && guiderMediator != null) {
-                    var guiderItem = new SetPerihelionGuiderShiftRate(guiderMediator) { ObjectType = objectType, TargetName = targetName };
+                    var guiderItem = new SetPerihelionGuiderShiftRate(guiderMediator, profileService) { ObjectType = objectType, TargetName = targetName };
                     await guiderItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
                 }
 

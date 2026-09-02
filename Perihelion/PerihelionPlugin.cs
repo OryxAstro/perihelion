@@ -33,7 +33,7 @@ namespace Perihelion {
             if (port != configuredPort) {
                 Logger.Info($"Perihelion: port {configuredPort} unavailable, using {port} instead");
             }
-            apiServer = new PerihelionApiServer(telescopeMediator, guiderMediator, port);
+            apiServer = new PerihelionApiServer(telescopeMediator, guiderMediator, profileService, port);
         }
 
         // PerihelionApiServer.Start() already catches its own exceptions (see its own comment

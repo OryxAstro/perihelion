@@ -70,6 +70,63 @@ namespace Perihelion.Astrometry {
             return (OrbitalMechanics.GeocentricRightAscensionHours(geo, t), OrbitalMechanics.GeocentricDeclinationDeg(geo, t));
         }
 
+        // Exact: 299792.458 km/s * 86400 s/day / 149597870.7 km/AU.
+        private const double AuPerDaySpeedOfLight = 173.14463267424031;
+
+        /// <summary>
+        /// The object's real apparent position -- light-time corrected (the direction light
+        /// actually left the object from, not its instantaneous "right now" position) and, when
+        /// an observer site is given, from that real site rather than Earth's center
+        /// (topocentric parallax) and corrected for the observer's own velocity (classical
+        /// stellar aberration, first order in v/c -- plenty accurate given v/c ~ 1e-4 for any
+        /// observer on or near Earth). This is what actually drives a mount and what a live
+        /// re-centered sequence target should show; GeocentricPosition above (no light-time, no
+        /// observer, no aberration) stays in use for the browse list and the multi-night finder
+        /// chart, where arcsecond-scale rigor buys nothing over a simple geometric position.
+        /// </summary>
+        private static (double raHours, double decDeg) ApparentPosition(Func<DateTime, EclipticVector> heliocentricAt, DateTime atDateUtc, Observer? observer) {
+            var t = new AstroTime(atDateUtc);
+            var observerState = OrbitalMechanics.ObserverHeliocentricState(t, observer);
+
+            // Light-time: solve for the retarded emission time by fixed-point iteration. This
+            // converges fast (light-time here is minutes; the object's own position barely
+            // changes across that span relative to the AU-scale distances involved), so a fixed
+            // 3 iterations is comfortably enough rather than needing a convergence check.
+            var lightTimeDays = 0.0;
+            var targetHelio = heliocentricAt(atDateUtc);
+            for (var i = 0; i < 3; i++) {
+                targetHelio = heliocentricAt(atDateUtc.AddDays(-lightTimeDays));
+                var dx = targetHelio.X - observerState.Position.X;
+                var dy = targetHelio.Y - observerState.Position.Y;
+                var dz = targetHelio.Z - observerState.Position.Z;
+                var dist = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                lightTimeDays = dist / AuPerDaySpeedOfLight;
+            }
+
+            var dirX = targetHelio.X - observerState.Position.X;
+            var dirY = targetHelio.Y - observerState.Position.Y;
+            var dirZ = targetHelio.Z - observerState.Position.Z;
+            var dirLen = Math.Sqrt(dirX * dirX + dirY * dirY + dirZ * dirZ);
+            var ux = dirX / dirLen;
+            var uy = dirY / dirLen;
+            var uz = dirZ / dirLen;
+
+            // Classical stellar aberration to first order in beta = v/c: u' = u + beta -
+            // (beta.u)u -- the same effect that makes stars trace a small annual ellipse,
+            // applied here to the observer's full velocity (Earth's orbital motion, plus the
+            // site's own rotational velocity when an observer is given).
+            var bx = observerState.Velocity.X / AuPerDaySpeedOfLight;
+            var by = observerState.Velocity.Y / AuPerDaySpeedOfLight;
+            var bz = observerState.Velocity.Z / AuPerDaySpeedOfLight;
+            var dot = ux * bx + uy * by + uz * bz;
+            var apparent = new EclipticVector(ux + bx - dot * ux, uy + by - dot * uy, uz + bz - dot * uz);
+
+            return (
+                OrbitalMechanics.GeocentricRightAscensionHours(apparent, t),
+                OrbitalMechanics.GeocentricDeclinationDeg(apparent, t)
+            );
+        }
+
         /// <summary>
         /// Instantaneous angular rate at <paramref name="atDateUtc"/>, via a 60-second finite
         /// difference -- matches Orbitals' own MaxExposureSeconds formula exactly
@@ -90,13 +147,21 @@ namespace Perihelion.Astrometry {
             }
         }
 
-        public static async Task<OrbitalRate?> ComputeOrbitalRateAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, DateTime atDateUtc, CancellationToken ct = default) {
+        /// <param name="observer">
+        /// The real observer site (lat/lon/elevation) -- ApparentPosition always applies
+        /// light-time and aberration correction regardless (neither needs a specific site,
+        /// only Earth's own position/velocity), but the topocentric parallax piece specifically
+        /// needs a real site to correct FROM. Null skips just that piece -- still strictly more
+        /// accurate than the old plain-geocentric calculation, just without the site-specific
+        /// correction on top.
+        /// </param>
+        public static async Task<OrbitalRate?> ComputeOrbitalRateAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, DateTime atDateUtc, CancellationToken ct = default, Observer? observer = null) {
             var heliocentricAt = await ResolveHeliocentricAtAsync(httpClient, objectType, name, ct).ConfigureAwait(false);
             if (heliocentricAt == null) return null;
 
             const int dtSec = 60;
-            var p1 = GeocentricPosition(heliocentricAt, atDateUtc);
-            var p2 = GeocentricPosition(heliocentricAt, atDateUtc.AddSeconds(dtSec));
+            var p1 = ApparentPosition(heliocentricAt, atDateUtc, observer);
+            var p2 = ApparentPosition(heliocentricAt, atDateUtc.AddSeconds(dtSec), observer);
 
             var dRaDeg = (p2.raHours - p1.raHours) * 15;
             if (dRaDeg > 180) dRaDeg -= 360;
@@ -107,6 +172,18 @@ namespace Perihelion.Astrometry {
                 raArcsecPerSec: dRaDeg * Math.Cos(decRad) * 3600 / dtSec,
                 decArcsecPerSec: (p2.decDeg - p1.decDeg) * 3600 / dtSec
             );
+        }
+
+        /// <summary>
+        /// The object's current real apparent position (see ApparentPosition's own doc comment)
+        /// -- backs the live coordinate-refresh loop in SetPerihelionTrackingRate, which keeps a
+        /// sequence's GoTo target current rather than frozen at whatever it was when the
+        /// sequence was built. Null if the object isn't found.
+        /// </summary>
+        public static async Task<(double raHours, double decDeg)?> ComputeApparentPositionAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, DateTime atDateUtc, Observer? observer, CancellationToken ct = default) {
+            var heliocentricAt = await ResolveHeliocentricAtAsync(httpClient, objectType, name, ct).ConfigureAwait(false);
+            if (heliocentricAt == null) return null;
+            return ApparentPosition(heliocentricAt, atDateUtc, observer);
         }
 
         /// <summary>Real apparent magnitude right now (or at any given date) -- null if the object isn't found, or is a comet with no reliable H in the current feed.</summary>
