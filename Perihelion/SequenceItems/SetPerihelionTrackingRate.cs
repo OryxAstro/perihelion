@@ -77,6 +77,15 @@ namespace Perihelion.SequenceItems {
             }
         }
 
+        /// <summary>
+        /// The exact rate this instance last successfully computed and sent, in Perihelion's own
+        /// arcsec/sec units -- exposed so callers (the Quick Track API controller, the auto-reapply
+        /// timer) can report the true applied value rather than a separately-recomputed
+        /// approximation, which could disagree from a few seconds' worth of real orbital motion or
+        /// simply obscure whether the call actually reached the mount.
+        /// </summary>
+        public OrbitalRate? LastAppliedRate { get; private set; }
+
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
             // A parked mount silently ignores a custom tracking rate -- SetCustomTrackingRate
             // returns true regardless (TelescopeVM only checks Connected, not AtPark; see
@@ -103,6 +112,7 @@ namespace Perihelion.SequenceItems {
             if (!telescopeMediator.SetCustomTrackingRate(shiftRate)) {
                 throw new SequenceEntityFailedException($"Setting tracking rate to {shiftRate} failed");
             }
+            LastAppliedRate = rate.Value;
         }
 
         public bool Validate() {

@@ -58,12 +58,21 @@ namespace Perihelion.Api {
                     var guiderItem = new SetPerihelionGuiderShiftRate(guiderMediator) { ObjectType = objectType, TargetName = targetName };
                     await guiderItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
                 }
-                Logger.Debug($"Perihelion: auto re-applied tracking rate for {targetName}");
+
+                if (trackingItem.LastAppliedRate is OrbitalRate rate) {
+                    QuickTrackStatus.Applied(rate);
+                }
+                // Info, not Debug -- this was originally Debug and, on a default PINS log level,
+                // never showed up at all, making a real 15-minute re-apply session look
+                // indistinguishable from a silently-dead timer purely because of log-level
+                // filtering. This is the one line that proves the timer is actually still firing.
+                Logger.Info($"Perihelion: auto re-applied tracking rate for {targetName} -- RA {trackingItem.LastAppliedRate?.RaArcsecPerSec:F4} arcsec/s, Dec {trackingItem.LastAppliedRate?.DecArcsecPerSec:F4} arcsec/s");
             } catch (Exception ex) {
                 // Swallowed -- this runs unattended on a background timer with no HTTP caller to
                 // report to, and the next scheduled tick retries regardless. Logged so a genuine
                 // recurring failure (mount disconnected, object dropped out of the feed) is still
                 // visible in the NINA log rather than silently going nowhere.
+                QuickTrackStatus.Failed(ex.Message);
                 Logger.Error($"Perihelion: auto re-apply failed for {targetName}: {ex.Message}");
             }
         }

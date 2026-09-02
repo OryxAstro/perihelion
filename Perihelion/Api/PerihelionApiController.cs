@@ -3,6 +3,7 @@ using EmbedIO.Routing;
 using EmbedIO.WebApi;
 using Newtonsoft.Json;
 using NINA.Core.Model;
+using NINA.Core.Utility;
 using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
 using Perihelion.Astrometry;
@@ -38,6 +39,41 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public string Message { get; set; } = string.Empty;
+    }
+
+    internal class QuickTrackStatusResponse {
+        [JsonProperty]
+        public bool Active { get; set; }
+
+        [JsonProperty]
+        public string? ObjectType { get; set; }
+
+        [JsonProperty]
+        public string? TargetName { get; set; }
+
+        [JsonProperty]
+        public bool Guiding { get; set; }
+
+        [JsonProperty]
+        public int? AutoReapplyMinutes { get; set; }
+
+        [JsonProperty]
+        public DateTime? StartedUtc { get; set; }
+
+        [JsonProperty]
+        public DateTime? LastAppliedUtc { get; set; }
+
+        [JsonProperty]
+        public double? LastRaArcsecPerSec { get; set; }
+
+        [JsonProperty]
+        public double? LastDecArcsecPerSec { get; set; }
+
+        [JsonProperty]
+        public bool LastApplySucceeded { get; set; }
+
+        [JsonProperty]
+        public string? LastError { get; set; }
     }
 
     internal class PathPointResponse {
@@ -261,11 +297,17 @@ namespace Perihelion.Api {
                 if (TelescopeMediator == null) {
                     response.Message = "Perihelion API server started before the telescope mediator was available";
                 } else {
+                    QuickTrackStatus.Started(request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes is > 0 ? request.AutoReapplyMinutes : null);
+
                     var trackingItem = new SetPerihelionTrackingRate(TelescopeMediator) {
                         ObjectType = request.ObjectType,
                         TargetName = request.TargetName,
                     };
                     await trackingItem.Execute(new Progress<ApplicationStatus>(), HttpContext.CancellationToken);
+                    if (trackingItem.LastAppliedRate is OrbitalRate appliedRate) {
+                        QuickTrackStatus.Applied(appliedRate);
+                        Logger.Info($"Perihelion: Quick Track applied for {request.TargetName} -- RA {appliedRate.RaArcsecPerSec:F4} arcsec/s, Dec {appliedRate.DecArcsecPerSec:F4} arcsec/s");
+                    }
 
                     if (request.Guiding && GuiderMediator != null) {
                         var guiderItem = new SetPerihelionGuiderShiftRate(GuiderMediator) {
@@ -288,8 +330,10 @@ namespace Perihelion.Api {
                 }
             } catch (SequenceEntityFailedException ex) {
                 response.Message = ex.Message;
+                QuickTrackStatus.Failed(ex.Message);
             } catch (Exception ex) {
                 response.Message = $"Unexpected error: {ex.Message}";
+                QuickTrackStatus.Failed(ex.Message);
             }
 
             var json = JsonConvert.SerializeObject(response);
@@ -301,6 +345,7 @@ namespace Perihelion.Api {
         public async Task Stop() {
             var response = new TrackResponse();
             QuickTrackReapply.Stop();
+            QuickTrackStatus.Stopped();
             try {
                 if (TelescopeMediator == null) {
                     response.Message = "Perihelion API server started before the telescope mediator was available";
@@ -317,6 +362,32 @@ namespace Perihelion.Api {
 
             var json = JsonConvert.SerializeObject(response);
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// The actual state of whatever Quick Track session is running -- in particular the real
+        /// RA/Dec rate last computed and sent, not just whether the toggle was on when the
+        /// session started. Backs a live status readout in the Track tab, and is the
+        /// unambiguous way to confirm the mount actually received a comet-specific rate rather
+        /// than reading tea leaves out of an INDI/ASCOM control panel's own property layout.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/status")]
+        public Task GetStatus() {
+            var s = QuickTrackStatus.Current;
+            var response = new QuickTrackStatusResponse {
+                Active = s.Active,
+                ObjectType = s.ObjectType,
+                TargetName = s.TargetName,
+                Guiding = s.Guiding,
+                AutoReapplyMinutes = s.AutoReapplyMinutes,
+                StartedUtc = s.StartedUtc,
+                LastAppliedUtc = s.LastAppliedUtc,
+                LastRaArcsecPerSec = s.LastRaArcsecPerSec,
+                LastDecArcsecPerSec = s.LastDecArcsecPerSec,
+                LastApplySucceeded = s.LastApplySucceeded,
+                LastError = s.LastError,
+            };
+            return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
         }
     }
 }

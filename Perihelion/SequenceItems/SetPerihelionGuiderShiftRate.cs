@@ -68,6 +68,9 @@ namespace Perihelion.SequenceItems {
             }
         }
 
+        /// <summary>Same purpose as SetPerihelionTrackingRate.LastAppliedRate -- see its own doc comment.</summary>
+        public OrbitalRate? LastAppliedRate { get; private set; }
+
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
             // A shift rate with nothing actively guiding is a no-op at best (PHD2 has no lock
             // position yet to shift) -- calling StartGuiding here rather than just checking some
@@ -94,6 +97,7 @@ namespace Perihelion.SequenceItems {
             if (!await guiderMediator.SetShiftRate(shiftRate, token)) {
                 throw new SequenceEntityFailedException($"Setting guider shift rate to {shiftRate} failed");
             }
+            LastAppliedRate = rate.Value;
         }
 
         public bool Validate() {
