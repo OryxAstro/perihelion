@@ -217,7 +217,13 @@ namespace Perihelion.Astrometry {
         /// current MPC feed bright enough to be worth showing, each with today's real
         /// magnitude/RA/Dec -- backs the Touch-N-Stars panel's Browse tab.
         /// </summary>
-        public static async Task<IReadOnlyList<BrowseObject>> ListBrowseObjectsAsync(HttpClient httpClient, DateTime atDateUtc, CancellationToken ct = default) {
+        /// <param name="forceRefreshCobs">Bypasses CometActivity's own 2h TTL for every comet in
+        /// the list -- the explicit "Refresh COBS" action, separate from the passive default
+        /// where a cold/disk-loaded cache is good enough. Deliberately not tied to the comet
+        /// elements sync (Sync Now): a full COBS refresh across every listed comet costs the same
+        /// several-seconds-to-tens-of-seconds round-trip that disk-persisting the cache exists to
+        /// keep off the normal load path, so it stays a separate, deliberate action.</param>
+        public static async Task<IReadOnlyList<BrowseObject>> ListBrowseObjectsAsync(HttpClient httpClient, DateTime atDateUtc, CancellationToken ct = default, bool forceRefreshCobs = false) {
             var t = new AstroTime(atDateUtc);
             var earth = OrbitalMechanics.EarthHeliocentricEcliptic(t);
             var results = new List<BrowseObject>();
@@ -281,7 +287,7 @@ namespace Perihelion.Astrometry {
                 var cometsWithActivity = await Task.WhenAll(trimmedComets.Select(async comet => {
                     await cobsThrottle.WaitAsync(ct).ConfigureAwait(false);
                     try {
-                        var activity = await CometActivity.FetchAsync(httpClient, comet.Name, ct).ConfigureAwait(false);
+                        var activity = await CometActivity.FetchAsync(httpClient, comet.Name, ct, forceRefresh: forceRefreshCobs).ConfigureAwait(false);
                         return new BrowseObject {
                             Id = comet.Id,
                             Name = comet.Name,
@@ -297,6 +303,7 @@ namespace Perihelion.Astrometry {
                     }
                 })).ConfigureAwait(false);
                 results.AddRange(cometsWithActivity);
+                if (forceRefreshCobs) await CometActivity.MarkFullRefreshCompleteAsync(ct).ConfigureAwait(false);
             } catch (Exception ex) {
                 NINA.Core.Utility.Logger.Warning($"Perihelion: comet list unavailable, showing asteroids only: {ex.Message}");
             }

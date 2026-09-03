@@ -92,6 +92,9 @@ namespace Perihelion.Api {
     internal class SyncStatusResponse {
         [JsonProperty]
         public DateTime? CometsLastSyncedUtc { get; set; }
+
+        [JsonProperty]
+        public DateTime? CobsLastRefreshedUtc { get; set; }
     }
 
     internal class SyncResponse {
@@ -179,21 +182,46 @@ namespace Perihelion.Api {
         public async Task ListObjects() {
             try {
                 var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, HttpContext.CancellationToken);
-                var response = new List<BrowseObjectResponse>(objects.Count);
-                foreach (var o in objects) {
-                    response.Add(new BrowseObjectResponse {
-                        Id = o.Id,
-                        Name = o.Name,
-                        ObjectType = o.ObjectType,
-                        Magnitude = o.Magnitude,
-                        ObservedMagnitude = o.ObservedMagnitude,
-                        ObservedAverageMagnitude = o.ObservedAverageMagnitude,
-                        RaHours = o.RaHours,
-                        DecDeg = o.DecDeg,
-                    });
-                }
-                var json = JsonConvert.SerializeObject(response);
-                await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(BuildBrowseObjectResponses(objects)), "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
+
+        private static List<BrowseObjectResponse> BuildBrowseObjectResponses(IReadOnlyList<BrowseObject> objects) {
+            var response = new List<BrowseObjectResponse>(objects.Count);
+            foreach (var o in objects) {
+                response.Add(new BrowseObjectResponse {
+                    Id = o.Id,
+                    Name = o.Name,
+                    ObjectType = o.ObjectType,
+                    Magnitude = o.Magnitude,
+                    ObservedMagnitude = o.ObservedMagnitude,
+                    ObservedAverageMagnitude = o.ObservedAverageMagnitude,
+                    RaHours = o.RaHours,
+                    DecDeg = o.DecDeg,
+                });
+            }
+            return response;
+        }
+
+        /// <summary>
+        /// Explicit "Refresh COBS" action -- bypasses CometActivity's own 2h TTL for every comet
+        /// currently in the list, so a user who wants today's real observed-brightness numbers
+        /// right now can get them without waiting for each comet's own cache to lapse naturally.
+        /// Deliberately separate from /sync/comets (comet orbital elements): that's a single,
+        /// fast MPC file fetch, while this is a full COBS round-trip per comet -- the same
+        /// several-seconds-to-tens-of-seconds cost that disk-persisting CometActivity's cache
+        /// exists to keep off the normal /objects load path, so it stays an explicit, separate
+        /// action rather than riding along with Sync Now. Returns the same shape as GET /objects
+        /// so the panel can just replace its list from this response directly.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/objects/refresh-cobs")]
+        public async Task RefreshCobs() {
+            try {
+                var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, HttpContext.CancellationToken, forceRefreshCobs: true);
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(BuildBrowseObjectResponses(objects)), "application/json", Encoding.UTF8);
             } catch (Exception ex) {
                 HttpContext.Response.StatusCode = 500;
                 await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = ex.Message }), "application/json", Encoding.UTF8);
@@ -207,7 +235,10 @@ namespace Perihelion.Api {
         /// </summary>
         [Route(HttpVerbs.Get, "/sync/status")]
         public async Task SyncStatus() {
-            var json = JsonConvert.SerializeObject(new SyncStatusResponse { CometsLastSyncedUtc = CometOrbits.LastSyncedUtc });
+            var json = JsonConvert.SerializeObject(new SyncStatusResponse {
+                CometsLastSyncedUtc = CometOrbits.LastSyncedUtc,
+                CobsLastRefreshedUtc = CometActivity.LastFullRefreshUtc,
+            });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
 
