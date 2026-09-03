@@ -220,7 +220,7 @@ namespace Perihelion.Api {
         [Route(HttpVerbs.Post, "/objects/refresh-cobs")]
         public async Task RefreshCobs() {
             try {
-                var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, HttpContext.CancellationToken, forceRefreshCobs: true);
+                var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, HttpContext.CancellationToken, includeCobs: true, forceRefreshCobs: true);
                 await HttpContext.SendStringAsync(JsonConvert.SerializeObject(BuildBrowseObjectResponses(objects)), "application/json", Encoding.UTF8);
             } catch (Exception ex) {
                 HttpContext.Response.StatusCode = 500;

@@ -224,13 +224,16 @@ namespace Perihelion.Astrometry {
         /// elements sync (Sync Now): a full COBS refresh across every listed comet costs the same
         /// several-seconds-to-tens-of-seconds round-trip that disk-persisting the cache exists to
         /// keep off the normal load path, so it stays a separate, deliberate action.</param>
-        public static async Task<IReadOnlyList<BrowseObject>> ListBrowseObjectsAsync(HttpClient httpClient, DateTime atDateUtc, CancellationToken ct = default, bool forceRefreshCobs = false) {
-            // Temporary timing instrumentation (2026-09-03) -- real hardware report of a still-
-            // long Browse-tab open even after disk-persisting the COBS cache. Logged at Info
-            // (not Debug) specifically so it shows up in PINS' default log level without the
-            // user needing to change any settings -- same reasoning as the Quick Track reapply
-            // timer's own Debug->Info bump earlier in this project. Remove once the real
-            // bottleneck is identified and fixed.
+        /// <param name="includeCobs">Real hardware feedback (2026-09-03): even with a warm cache,
+        /// waiting on COBS at all before the list can render was still felt as "the page is slow"
+        /// -- a cold cache (first run, or a comet's own 2h TTL lapsing) made it much worse (14-16s
+        /// measured on real hardware). Default false: /objects returns comets/asteroids with only
+        /// their predicted magnitude, instantly, and the panel fills in real observed-brightness
+        /// badges afterward via a background per-comet GET /objects/activity sweep (see
+        /// fetchBrowseObjects.js's own comment) -- COBS never blocks the initial render again.
+        /// True only for the explicit "Refresh COBS" action (POST /objects/refresh-cobs), where
+        /// blocking IS the point -- an explicit refresh should report success/failure for real.</param>
+        public static async Task<IReadOnlyList<BrowseObject>> ListBrowseObjectsAsync(HttpClient httpClient, DateTime atDateUtc, CancellationToken ct = default, bool includeCobs = false, bool forceRefreshCobs = false) {
             var overallStopwatch = Stopwatch.StartNew();
             var t = new AstroTime(atDateUtc);
             var earth = OrbitalMechanics.EarthHeliocentricEcliptic(t);
@@ -284,39 +287,44 @@ namespace Perihelion.Astrometry {
                 cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
                 var trimmedComets = cometResults.GetRange(0, Math.Min(MaxComets, cometResults.Count));
 
-                // Real observed brightness for each comet, fetched in parallel (capped
-                // concurrency, to stay a reasonable citizen of a third-party public API) rather
-                // than sequentially -- the list is already capped at MaxComets, and
-                // CometActivity's own 2h cache absorbs repeat loads, so this keeps a cold
-                // Browse-tab load from taking MaxComets times one COBS round-trip in sequence.
-                // Shown alongside the predicted Magnitude above specifically because that
-                // prediction can be badly wrong during a real outburst (10P/Tempel and
-                // 220P/McNaught are verified real cases several magnitudes off) -- invisible
-                // unless the real observed value sits right next to it, not one tap away.
-                using var cobsThrottle = new SemaphoreSlim(6);
-                var cobsStopwatch = Stopwatch.StartNew();
-                var cometsWithActivity = await Task.WhenAll(trimmedComets.Select(async comet => {
-                    await cobsThrottle.WaitAsync(ct).ConfigureAwait(false);
-                    try {
-                        var activity = await CometActivity.FetchAsync(httpClient, comet.Name, ct, forceRefresh: forceRefreshCobs).ConfigureAwait(false);
-                        return new BrowseObject {
-                            Id = comet.Id,
-                            Name = comet.Name,
-                            ObjectType = comet.ObjectType,
-                            Magnitude = comet.Magnitude,
-                            ObservedMagnitude = activity?.MostRecent.Magnitude,
-                            ObservedAverageMagnitude = activity?.RecentAverageMagnitude,
-                            RaHours = comet.RaHours,
-                            DecDeg = comet.DecDeg,
-                        };
-                    } finally {
-                        cobsThrottle.Release();
-                    }
-                })).ConfigureAwait(false);
-                cobsStopwatch.Stop();
-                results.AddRange(cometsWithActivity);
-                if (forceRefreshCobs) await CometActivity.MarkFullRefreshCompleteAsync(ct).ConfigureAwait(false);
-                NINA.Core.Utility.Logger.Info($"Perihelion: ListBrowseObjectsAsync timing -- comet elements: {elementsStopwatch.ElapsedMilliseconds}ms, COBS ({trimmedComets.Count} comets, forceRefresh={forceRefreshCobs}): {cobsStopwatch.ElapsedMilliseconds}ms, total: {overallStopwatch.ElapsedMilliseconds}ms");
+                if (!includeCobs) {
+                    // trimmedComets already have ObservedMagnitude/ObservedAverageMagnitude null
+                    // (never set above) -- exactly the "predicted only, COBS fills in later"
+                    // shape the fast path needs, no separate object construction required.
+                    results.AddRange(trimmedComets);
+                    NINA.Core.Utility.Logger.Info($"Perihelion: ListBrowseObjectsAsync timing (COBS excluded) -- comet elements: {elementsStopwatch.ElapsedMilliseconds}ms, total: {overallStopwatch.ElapsedMilliseconds}ms");
+                } else {
+                    // Real observed brightness for each comet, fetched in parallel (capped
+                    // concurrency, to stay a reasonable citizen of a third-party public API)
+                    // rather than sequentially. Only reached for the explicit "Refresh COBS"
+                    // action now (includeCobs defaults false) -- see this method's own
+                    // includeCobs doc comment for why the normal /objects path no longer takes
+                    // this branch at all.
+                    using var cobsThrottle = new SemaphoreSlim(6);
+                    var cobsStopwatch = Stopwatch.StartNew();
+                    var cometsWithActivity = await Task.WhenAll(trimmedComets.Select(async comet => {
+                        await cobsThrottle.WaitAsync(ct).ConfigureAwait(false);
+                        try {
+                            var activity = await CometActivity.FetchAsync(httpClient, comet.Name, ct, forceRefresh: forceRefreshCobs).ConfigureAwait(false);
+                            return new BrowseObject {
+                                Id = comet.Id,
+                                Name = comet.Name,
+                                ObjectType = comet.ObjectType,
+                                Magnitude = comet.Magnitude,
+                                ObservedMagnitude = activity?.MostRecent.Magnitude,
+                                ObservedAverageMagnitude = activity?.RecentAverageMagnitude,
+                                RaHours = comet.RaHours,
+                                DecDeg = comet.DecDeg,
+                            };
+                        } finally {
+                            cobsThrottle.Release();
+                        }
+                    })).ConfigureAwait(false);
+                    cobsStopwatch.Stop();
+                    results.AddRange(cometsWithActivity);
+                    if (forceRefreshCobs) await CometActivity.MarkFullRefreshCompleteAsync(ct).ConfigureAwait(false);
+                    NINA.Core.Utility.Logger.Info($"Perihelion: ListBrowseObjectsAsync timing -- comet elements: {elementsStopwatch.ElapsedMilliseconds}ms, COBS ({trimmedComets.Count} comets, forceRefresh={forceRefreshCobs}): {cobsStopwatch.ElapsedMilliseconds}ms, total: {overallStopwatch.ElapsedMilliseconds}ms");
+                }
             } catch (Exception ex) {
                 NINA.Core.Utility.Logger.Warning($"Perihelion: comet list unavailable, showing asteroids only: {ex.Message}");
             }
