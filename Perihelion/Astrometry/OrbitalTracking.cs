@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -224,6 +225,13 @@ namespace Perihelion.Astrometry {
         /// several-seconds-to-tens-of-seconds round-trip that disk-persisting the cache exists to
         /// keep off the normal load path, so it stays a separate, deliberate action.</param>
         public static async Task<IReadOnlyList<BrowseObject>> ListBrowseObjectsAsync(HttpClient httpClient, DateTime atDateUtc, CancellationToken ct = default, bool forceRefreshCobs = false) {
+            // Temporary timing instrumentation (2026-09-03) -- real hardware report of a still-
+            // long Browse-tab open even after disk-persisting the COBS cache. Logged at Info
+            // (not Debug) specifically so it shows up in PINS' default log level without the
+            // user needing to change any settings -- same reasoning as the Quick Track reapply
+            // timer's own Debug->Info bump earlier in this project. Remove once the real
+            // bottleneck is identified and fixed.
+            var overallStopwatch = Stopwatch.StartNew();
             var t = new AstroTime(atDateUtc);
             var earth = OrbitalMechanics.EarthHeliocentricEcliptic(t);
             var results = new List<BrowseObject>();
@@ -246,7 +254,9 @@ namespace Perihelion.Astrometry {
             // failed); that shouldn't take the already-built, fully offline asteroid list down
             // with it. A comet-less Browse tab beats an empty one.
             try {
+                var elementsStopwatch = Stopwatch.StartNew();
                 var comets = await CometOrbits.FetchCometElementsAsync(httpClient, ct).ConfigureAwait(false);
+                elementsStopwatch.Stop();
                 var cometResults = new List<BrowseObject>();
                 // Some real MPC feed entries share the same display Name (e.g. distinct fragments
                 // of a split comet) -- FindByNameAsync/tracking match by Name via FirstOrDefault, so
@@ -284,6 +294,7 @@ namespace Perihelion.Astrometry {
                 // 220P/McNaught are verified real cases several magnitudes off) -- invisible
                 // unless the real observed value sits right next to it, not one tap away.
                 using var cobsThrottle = new SemaphoreSlim(6);
+                var cobsStopwatch = Stopwatch.StartNew();
                 var cometsWithActivity = await Task.WhenAll(trimmedComets.Select(async comet => {
                     await cobsThrottle.WaitAsync(ct).ConfigureAwait(false);
                     try {
@@ -302,8 +313,10 @@ namespace Perihelion.Astrometry {
                         cobsThrottle.Release();
                     }
                 })).ConfigureAwait(false);
+                cobsStopwatch.Stop();
                 results.AddRange(cometsWithActivity);
                 if (forceRefreshCobs) await CometActivity.MarkFullRefreshCompleteAsync(ct).ConfigureAwait(false);
+                NINA.Core.Utility.Logger.Info($"Perihelion: ListBrowseObjectsAsync timing -- comet elements: {elementsStopwatch.ElapsedMilliseconds}ms, COBS ({trimmedComets.Count} comets, forceRefresh={forceRefreshCobs}): {cobsStopwatch.ElapsedMilliseconds}ms, total: {overallStopwatch.ElapsedMilliseconds}ms");
             } catch (Exception ex) {
                 NINA.Core.Utility.Logger.Warning($"Perihelion: comet list unavailable, showing asteroids only: {ex.Message}");
             }
