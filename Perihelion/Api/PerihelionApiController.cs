@@ -159,6 +159,12 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public double SolarElongationDeg { get; set; }
+
+        [JsonProperty]
+        public string ConstellationName { get; set; } = string.Empty;
+
+        [JsonProperty]
+        public DateTime? PerihelionDateUtc { get; set; }
     }
 
     /// <summary>
@@ -213,6 +219,8 @@ namespace Perihelion.Api {
                     SunDistanceAu = o.SunDistanceAu,
                     EarthDistanceAu = o.EarthDistanceAu,
                     SolarElongationDeg = o.SolarElongationDeg,
+                    ConstellationName = o.ConstellationName,
+                    PerihelionDateUtc = o.PerihelionDateUtc,
                 });
             }
             return response;

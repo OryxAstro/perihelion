@@ -73,6 +73,19 @@ namespace Perihelion.Astrometry {
         /// the Sun's glare the object currently sits, which real observed-brightness readouts
         /// like TheSkyLive show alongside distance for exactly this reason.</summary>
         public required double SolarElongationDeg { get; init; }
+
+        /// <summary>IAU constellation the object's current position falls in, e.g. "Orion" --
+        /// via AstronomyEngine's own Astronomy.Constellation(raHours, decDeg), already bundled
+        /// with the NuGet package Perihelion already depends on, so this needed no new data or
+        /// dependency.</summary>
+        public required string ConstellationName { get; init; }
+
+        /// <summary>Comet-only -- when this comet last (or will next) reach perihelion, straight
+        /// from the MPC feed's own T (time of perihelion passage), already parsed into
+        /// CometElements.PerihelionDate but previously unused past feeding the orbit solver
+        /// itself. Null for an asteroid (parameterized by Mean Anomaly at Epoch instead, no
+        /// direct equivalent field).</summary>
+        public DateTime? PerihelionDateUtc { get; init; }
     }
 
     /// <summary>
@@ -267,16 +280,19 @@ namespace Perihelion.Astrometry {
             foreach (var asteroid in AsteroidOrbits.BrightAsteroids) {
                 var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
                 var geo = helio - earth;
+                var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
+                var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
                 results.Add(new BrowseObject {
                     Id = asteroid.Id,
                     Name = asteroid.Name,
                     ObjectType = OrbitalObjectType.Asteroid,
                     Magnitude = AsteroidOrbits.ApparentMagnitude(asteroid, helio, earth),
-                    RaHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t),
-                    DecDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t),
+                    RaHours = raHours,
+                    DecDeg = decDeg,
                     SunDistanceAu = helio.Length(),
                     EarthDistanceAu = geo.Length(),
                     SolarElongationDeg = SolarElongationDeg(earth, geo),
+                    ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
                 });
             }
 
@@ -303,16 +319,20 @@ namespace Perihelion.Astrometry {
 
                     var helio = CometOrbits.HeliocentricEcliptic(comet, atDateUtc);
                     var geo = helio - earth;
+                    var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
+                    var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
                     cometResults.Add(new BrowseObject {
                         Id = comet.Designation,
                         Name = comet.Name,
                         ObjectType = OrbitalObjectType.Comet,
                         Magnitude = mag,
-                        RaHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t),
-                        DecDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t),
+                        RaHours = raHours,
+                        DecDeg = decDeg,
                         SunDistanceAu = helio.Length(),
                         EarthDistanceAu = geo.Length(),
                         SolarElongationDeg = SolarElongationDeg(earth, geo),
+                        ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
+                        PerihelionDateUtc = comet.PerihelionDate,
                     });
                 }
                 cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
@@ -349,6 +369,8 @@ namespace Perihelion.Astrometry {
                                 SunDistanceAu = comet.SunDistanceAu,
                                 EarthDistanceAu = comet.EarthDistanceAu,
                                 SolarElongationDeg = comet.SolarElongationDeg,
+                                ConstellationName = comet.ConstellationName,
+                                PerihelionDateUtc = comet.PerihelionDateUtc,
                             };
                         } finally {
                             cobsThrottle.Release();
