@@ -150,6 +150,15 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public double DecDeg { get; set; }
+
+        [JsonProperty]
+        public double SunDistanceAu { get; set; }
+
+        [JsonProperty]
+        public double EarthDistanceAu { get; set; }
+
+        [JsonProperty]
+        public double SolarElongationDeg { get; set; }
     }
 
     /// <summary>
@@ -201,6 +210,9 @@ namespace Perihelion.Api {
                     ObservedAverageMagnitude = o.ObservedAverageMagnitude,
                     RaHours = o.RaHours,
                     DecDeg = o.DecDeg,
+                    SunDistanceAu = o.SunDistanceAu,
+                    EarthDistanceAu = o.EarthDistanceAu,
+                    SolarElongationDeg = o.SolarElongationDeg,
                 });
             }
             return response;

@@ -60,6 +60,19 @@ namespace Perihelion.Astrometry {
 
         public required double RaHours { get; init; }
         public required double DecDeg { get; init; }
+
+        /// <summary>Heliocentric distance (AU) -- the object's own already-computed heliocentric
+        /// vector's magnitude, so this is free alongside RA/Dec/Magnitude above.</summary>
+        public required double SunDistanceAu { get; init; }
+
+        /// <summary>Geocentric distance (AU) -- same free-from-the-existing-vector reasoning as
+        /// SunDistanceAu.</summary>
+        public required double EarthDistanceAu { get; init; }
+
+        /// <summary>Angular separation from the Sun as seen from Earth (degrees) -- how close to
+        /// the Sun's glare the object currently sits, which real observed-brightness readouts
+        /// like TheSkyLive show alongside distance for exactly this reason.</summary>
+        public required double SolarElongationDeg { get; init; }
     }
 
     /// <summary>
@@ -74,6 +87,18 @@ namespace Perihelion.Astrometry {
         // Keeps ListBrowseObjectsAsync's response bounded -- the live MPC feed has thousands of
         // rows; nobody's picking a tracking target from more than this many candidates anyway.
         private const int MaxComets = 30;
+        /// <summary>Angular separation from the Sun as seen from Earth -- the angle at Earth
+        /// between the Sun-Earth line and the Earth-object line. Sun-Earth = -earth (Earth's own
+        /// heliocentric vector, negated); Earth-object = geo (already the geocentric vector every
+        /// caller here has on hand).</summary>
+        private static double SolarElongationDeg(EclipticVector earth, EclipticVector geo) {
+            var cosElongation = -earth.Dot(geo) / (earth.Length() * geo.Length());
+            // Clamp against floating-point overshoot past +/-1 (would otherwise make Acos return
+            // NaN for a genuinely-0-or-180-degree elongation).
+            cosElongation = Math.Max(-1.0, Math.Min(1.0, cosElongation));
+            return Math.Acos(cosElongation) * OrbitalMechanics.Rad2Deg;
+        }
+
         private static (double raHours, double decDeg) GeocentricPosition(Func<DateTime, EclipticVector> heliocentricAt, DateTime date) {
             var t = new AstroTime(date);
             var helio = heliocentricAt(date);
@@ -249,6 +274,9 @@ namespace Perihelion.Astrometry {
                     Magnitude = AsteroidOrbits.ApparentMagnitude(asteroid, helio, earth),
                     RaHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t),
                     DecDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t),
+                    SunDistanceAu = helio.Length(),
+                    EarthDistanceAu = geo.Length(),
+                    SolarElongationDeg = SolarElongationDeg(earth, geo),
                 });
             }
 
@@ -282,6 +310,9 @@ namespace Perihelion.Astrometry {
                         Magnitude = mag,
                         RaHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t),
                         DecDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t),
+                        SunDistanceAu = helio.Length(),
+                        EarthDistanceAu = geo.Length(),
+                        SolarElongationDeg = SolarElongationDeg(earth, geo),
                     });
                 }
                 cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
@@ -315,6 +346,9 @@ namespace Perihelion.Astrometry {
                                 ObservedAverageMagnitude = activity?.RecentAverageMagnitude,
                                 RaHours = comet.RaHours,
                                 DecDeg = comet.DecDeg,
+                                SunDistanceAu = comet.SunDistanceAu,
+                                EarthDistanceAu = comet.EarthDistanceAu,
+                                SolarElongationDeg = comet.SolarElongationDeg,
                             };
                         } finally {
                             cobsThrottle.Release();

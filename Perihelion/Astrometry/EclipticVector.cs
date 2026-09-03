@@ -17,6 +17,8 @@ namespace Perihelion.Astrometry {
 
         public double Length() => System.Math.Sqrt(X * X + Y * Y + Z * Z);
 
+        public double Dot(EclipticVector other) => X * other.X + Y * other.Y + Z * other.Z;
+
         public static EclipticVector operator -(EclipticVector a, EclipticVector b) =>
             new EclipticVector(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
     }
