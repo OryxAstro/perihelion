@@ -1,6 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <!-- net8.0-windows, not net10.0-windows — confirmed directly against a real, currently
+         running v3.2.0.9001 install (NINA.runtimeconfig.json: tfm "net8.0",
+         Microsoft.NETCore.App/Microsoft.WindowsDesktop.App 8.0.21). github.com/isbeorn/nina's
+         own master branch already targets net10.0-windows, which is AHEAD of what the actual
+         shipped stable release runs on — building against master's target instead of the
+         real installed runtime is exactly what caused the first real-hardware test to fail
+         ("Could not load file or assembly 'System.Runtime, Version=10.0.0.0...'"). This also
+         matches NINA.Plugin's own primary NuGet target (net8.0-windows7.0) rather than relying
+         on its forward-compatibility listing for net10.0-windows. -->
+    <TargetFramework>net8.0-windows7.0</TargetFramework>
     <OutputType>Library</OutputType>
     <AssemblyName>Perihelion</AssemblyName>
     <RootNamespace>Perihelion</RootNamespace>
