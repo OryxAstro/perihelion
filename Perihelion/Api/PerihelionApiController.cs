@@ -88,6 +88,13 @@ namespace Perihelion.Api {
         /// application, rather than making the whole attempt read as failed.</summary>
         [JsonProperty]
         public string? GuidingError { get; set; }
+
+        /// <summary>True when the mount's own driver doesn't support a custom tracking rate at
+        /// all, and the guider's own shift rate is the entire tracking mechanism for this
+        /// session instead of a companion to a base-rate change -- the mount itself is still on
+        /// plain sidereal. See QuickTrackStatus.SetGuidingOnlyFallback's own doc comment.</summary>
+        [JsonProperty]
+        public bool GuidingOnlyFallback { get; set; }
     }
 
     internal class PathPointResponse {
@@ -373,24 +380,40 @@ namespace Perihelion.Api {
                 } else {
                     QuickTrackStatus.Started(request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes is > 0 ? request.AutoReapplyMinutes : null);
 
-                    var trackingItem = new SetPerihelionTrackingRate(TelescopeMediator, ProfileService!) {
-                        ObjectType = request.ObjectType,
-                        TargetName = request.TargetName,
-                    };
-                    await trackingItem.Execute(new Progress<ApplicationStatus>(), HttpContext.CancellationToken);
-                    if (trackingItem.LastAppliedRate is OrbitalRate appliedRate) {
-                        QuickTrackStatus.Applied(appliedRate);
-                        Logger.Info($"Perihelion: Quick Track applied for {request.TargetName} -- RA {appliedRate.RaArcsecPerSec:F4} arcsec/s, Dec {appliedRate.DecArcsecPerSec:F4} arcsec/s");
+                    // Some real mount drivers don't support a custom base tracking rate at all --
+                    // confirmed real case: an ASCOM OnStep driver build reporting
+                    // CanSetRightAscensionRate/CanSetDeclinationRate both false (NINA's own
+                    // TelescopeVM.SetCustomTrackingRate has no fallback for this itself, it just
+                    // throws NotSupportedException straight up). Checking the capability first,
+                    // rather than catching that exception, means a driver that genuinely can't do
+                    // this reads as a deliberate, expected branch here instead of a raw unhandled
+                    // error every time.
+                    var telescopeInfo = TelescopeMediator.GetInfo();
+                    bool canSetBaseRate = telescopeInfo.CanSetRightAscensionRate && telescopeInfo.CanSetDeclinationRate;
+
+                    if (canSetBaseRate) {
+                        var trackingItem = new SetPerihelionTrackingRate(TelescopeMediator, ProfileService!) {
+                            ObjectType = request.ObjectType,
+                            TargetName = request.TargetName,
+                        };
+                        await trackingItem.Execute(new Progress<ApplicationStatus>(), HttpContext.CancellationToken);
+                        if (trackingItem.LastAppliedRate is OrbitalRate appliedRate) {
+                            QuickTrackStatus.Applied(appliedRate);
+                            Logger.Info($"Perihelion: Quick Track applied for {request.TargetName} -- RA {appliedRate.RaArcsecPerSec:F4} arcsec/s, Dec {appliedRate.DecArcsecPerSec:F4} arcsec/s");
+                        }
+                    } else {
+                        Logger.Info($"Perihelion: {telescopeInfo.Name} does not support a custom base tracking rate (CanSetRightAscensionRate/CanSetDeclinationRate both false) for {request.TargetName} -- will rely on guiding-only fallback if guiding is enabled");
                     }
 
                     // Deliberately its own try/catch, separate from the tracking-rate application
-                    // above: the mount is already correctly tracking at this point regardless of
-                    // what happens here, so a guiding hiccup (no PHD2, no lock star within its
-                    // own retry budget -- see SetPerihelionGuiderShiftRate's own doc comment)
-                    // shouldn't make an otherwise-successful Quick Track attempt read as an
-                    // outright failure. Reported via QuickTrackStatus.GuidingFailed, tracked
-                    // independently of LastApplySucceeded/LastError.
+                    // above: when canSetBaseRate is true, the mount is already correctly tracking
+                    // at this point regardless of what happens here, so a guiding hiccup (no PHD2,
+                    // no lock star within its own retry budget -- see SetPerihelionGuiderShiftRate's
+                    // own doc comment) shouldn't make an otherwise-successful Quick Track attempt
+                    // read as an outright failure. Reported via QuickTrackStatus.GuidingFailed,
+                    // tracked independently of LastApplySucceeded/LastError.
                     string? guidingError = null;
+                    bool guidingOnlyFallback = false;
                     if (request.Guiding && GuiderMediator != null) {
                         try {
                             var guiderItem = new SetPerihelionGuiderShiftRate(GuiderMediator, ProfileService!) {
@@ -399,12 +422,40 @@ namespace Perihelion.Api {
                             };
                             await guiderItem.Execute(new Progress<ApplicationStatus>(), HttpContext.CancellationToken);
                             QuickTrackStatus.GuidingSucceeded();
+                            // If the base rate couldn't be set at all, the guider shift IS the
+                            // whole tracking mechanism for this session -- PHD2's own native
+                            // "Comet Tracking" feature is this exact same mechanism, so this isn't
+                            // a novel approach, just driving it programmatically instead of
+                            // through PHD2's own dialog. The mount itself stays on plain sidereal;
+                            // PHD2's active guide-correction loop, driven by a continuously
+                            // shifting lock position, does the real tracking. Report its own rate
+                            // as the applied one so the UI has a real number to show, and flag the
+                            // mode explicitly rather than silently implying base-rate tracking.
+                            if (!canSetBaseRate) {
+                                guidingOnlyFallback = true;
+                                if (guiderItem.LastAppliedRate is OrbitalRate guiderRate) {
+                                    QuickTrackStatus.Applied(guiderRate);
+                                    Logger.Info($"Perihelion: Quick Track applied via guiding-only fallback for {request.TargetName} -- RA {guiderRate.RaArcsecPerSec:F4} arcsec/s, Dec {guiderRate.DecArcsecPerSec:F4} arcsec/s");
+                                }
+                            }
                         } catch (Exception ex) {
                             guidingError = ex.Message;
                             QuickTrackStatus.GuidingFailed(ex.Message);
                             Logger.Warning($"Perihelion: Quick Track guider shift failed for {request.TargetName}: {ex.Message}");
                         }
                     }
+
+                    if (!canSetBaseRate && !guidingOnlyFallback) {
+                        // Neither the mount's own base rate nor a guiding-only fallback worked --
+                        // nothing is actually tracking this target, so this is the one combination
+                        // that should fail the whole attempt outright.
+                        var reason = request.Guiding
+                            ? $"{telescopeInfo.Name} does not support a custom tracking rate, and the guiding-only fallback failed: {guidingError}"
+                            : $"{telescopeInfo.Name} does not support a custom tracking rate. Enable \"Include guider shift rate\" with an actively guiding, shift-rate-capable guider (e.g. PHD2) to track via guiding only instead.";
+                        throw new SequenceEntityFailedException(reason);
+                    }
+
+                    QuickTrackStatus.SetGuidingOnlyFallback(guidingOnlyFallback);
 
                     // Unconditional now, not just when AutoReapplyMinutes is set -- QuickTrackReapply
                     // always runs its own meridian safety cutoff regardless of that setting (Quick
@@ -415,11 +466,13 @@ namespace Perihelion.Api {
                     QuickTrackReapply.Start(TelescopeMediator, GuiderMediator, ProfileService!, request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes is > 0 ? request.AutoReapplyMinutes : null);
 
                     response.Success = true;
-                    response.Message = guidingError != null
-                        ? $"Quick Track started, but guiding could not be started: {guidingError}"
-                        : request.AutoReapplyMinutes is > 0
-                            ? $"Quick Track started, re-applying every {request.AutoReapplyMinutes} min"
-                            : "Quick Track started";
+                    response.Message = guidingOnlyFallback
+                        ? "Quick Track started via guiding only (mount does not support a custom tracking rate)"
+                        : guidingError != null
+                            ? $"Quick Track started, but guiding could not be started: {guidingError}"
+                            : request.AutoReapplyMinutes is > 0
+                                ? $"Quick Track started, re-applying every {request.AutoReapplyMinutes} min"
+                                : "Quick Track started";
                 }
             } catch (SequenceEntityFailedException ex) {
                 response.Message = ex.Message;
@@ -481,6 +534,7 @@ namespace Perihelion.Api {
                 LastError = s.LastError,
                 StopReason = s.StopReason,
                 GuidingError = s.GuidingError,
+                GuidingOnlyFallback = s.GuidingOnlyFallback,
             };
             return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
         }

@@ -27,9 +27,10 @@ namespace Perihelion.Api {
             bool LastApplySucceeded,
             string? LastError,
             string? StopReason,
-            string? GuidingError);
+            string? GuidingError,
+            bool GuidingOnlyFallback);
 
-        private static Snapshot current = new(false, null, null, false, null, null, null, null, null, false, null, null, null);
+        private static Snapshot current = new(false, null, null, false, null, null, null, null, null, false, null, null, null, false);
 
         public static Snapshot Current => current;
 
@@ -47,6 +48,7 @@ namespace Perihelion.Api {
                 // session's guiding error.
                 StopReason = null,
                 GuidingError = null,
+                GuidingOnlyFallback = false,
             };
         }
 
@@ -91,13 +93,26 @@ namespace Perihelion.Api {
             current = current with { GuidingError = null };
         }
 
+        /// <summary>Set once per Track() attempt (not toggled independently like GuidingFailed/
+        /// GuidingSucceeded above) -- true means the mount itself never received a custom
+        /// tracking rate at all (its driver doesn't support one; confirmed real case: at least
+        /// one ASCOM OnStep driver build reports CanSetRightAscensionRate/CanSetDeclinationRate
+        /// both false) and the guider's own shift rate is the *entire* tracking mechanism for
+        /// this session, not a companion to a base-rate change. The panel needs this to avoid
+        /// implying the mount is tracking off-sidereal when it's actually still on plain
+        /// sidereal the whole time, with PHD2's own active guide-correction loop (driven by a
+        /// continuously-shifting lock position) doing the real work instead.</summary>
+        public static void SetGuidingOnlyFallback(bool guidingOnlyFallback) {
+            current = current with { GuidingOnlyFallback = guidingOnlyFallback };
+        }
+
         /// <param name="reason">Null for a plain manual stop (the user already knows why --
         /// they just pressed Stop). Set for an automatic stop the user didn't initiate -- in
         /// particular the meridian safety cutoff (see QuickTrackReapply's own CheckMeridian) --
         /// so the panel can show a real, unmissable explanation rather than the session just
         /// silently ending.</param>
         public static void Stopped(string? reason = null) {
-            current = new Snapshot(false, null, null, false, null, null, null, null, null, false, null, reason, null);
+            current = new Snapshot(false, null, null, false, null, null, null, null, null, false, null, reason, null, false);
         }
     }
 }
