@@ -25,9 +25,10 @@ namespace Perihelion.Api {
             double? LastRaArcsecPerSec,
             double? LastDecArcsecPerSec,
             bool LastApplySucceeded,
-            string? LastError);
+            string? LastError,
+            string? StopReason);
 
-        private static Snapshot current = new(false, null, null, false, null, null, null, null, null, false, null);
+        private static Snapshot current = new(false, null, null, false, null, null, null, null, null, false, null, null);
 
         public static Snapshot Current => current;
 
@@ -39,6 +40,10 @@ namespace Perihelion.Api {
                 Guiding = guiding,
                 AutoReapplyMinutes = autoReapplyMinutes,
                 StartedUtc = DateTime.UtcNow,
+                // A previous session's automatic-stop reason (e.g. the meridian safety cutoff)
+                // means nothing for this new one -- without clearing it here, `with` semantics
+                // elsewhere would otherwise carry it forward indefinitely.
+                StopReason = null,
             };
         }
 
@@ -60,8 +65,13 @@ namespace Perihelion.Api {
             };
         }
 
-        public static void Stopped() {
-            current = new Snapshot(false, null, null, false, null, null, null, null, null, false, null);
+        /// <param name="reason">Null for a plain manual stop (the user already knows why --
+        /// they just pressed Stop). Set for an automatic stop the user didn't initiate -- in
+        /// particular the meridian safety cutoff (see QuickTrackReapply's own CheckMeridian) --
+        /// so the panel can show a real, unmissable explanation rather than the session just
+        /// silently ending.</param>
+        public static void Stopped(string? reason = null) {
+            current = new Snapshot(false, null, null, false, null, null, null, null, null, false, null, reason);
         }
     }
 }

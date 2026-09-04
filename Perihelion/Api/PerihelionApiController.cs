@@ -76,6 +76,11 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public string? LastError { get; set; }
+
+        /// <summary>Null for a plain manual stop -- set when Quick Track stopped itself, in
+        /// particular the meridian safety cutoff (see QuickTrackReapply's own CheckMeridian).</summary>
+        [JsonProperty]
+        public string? StopReason { get; set; }
     }
 
     internal class PathPointResponse {
@@ -379,11 +384,11 @@ namespace Perihelion.Api {
                         await guiderItem.Execute(new Progress<ApplicationStatus>(), HttpContext.CancellationToken);
                     }
 
-                    if (request.AutoReapplyMinutes is > 0) {
-                        QuickTrackReapply.Start(TelescopeMediator, GuiderMediator, ProfileService!, request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes.Value);
-                    } else {
-                        QuickTrackReapply.Stop();
-                    }
+                    // Unconditional now, not just when AutoReapplyMinutes is set -- QuickTrackReapply
+                    // always runs its own meridian safety cutoff regardless of that setting (Quick
+                    // Track has no sequence/trigger infrastructure either way), and only starts the
+                    // optional reapply sub-timer when a positive interval is actually given.
+                    QuickTrackReapply.Start(TelescopeMediator, GuiderMediator, ProfileService!, request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes is > 0 ? request.AutoReapplyMinutes : null);
 
                     response.Success = true;
                     response.Message = request.AutoReapplyMinutes is > 0
@@ -448,6 +453,7 @@ namespace Perihelion.Api {
                 LastDecArcsecPerSec = s.LastDecArcsecPerSec,
                 LastApplySucceeded = s.LastApplySucceeded,
                 LastError = s.LastError,
+                StopReason = s.StopReason,
             };
             return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
         }
