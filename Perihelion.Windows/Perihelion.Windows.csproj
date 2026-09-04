@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>Perihelion</AssemblyName>
+    <RootNamespace>Perihelion</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <!-- Lets this build from the Linux/WSL dev machine too (the Windows targeting pack is
+         fetched from NuGet rather than requiring an actual Windows SDK install) — standard,
+         documented cross-targeting property, not a hack. Real execution/testing still needs an
+         actual Windows NINA install; this only covers building the DLL. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+  </PropertyGroup>
+
+  <!--
+    Same plugin, same shared source as ../Perihelion/Perihelion.csproj (the PINS build) — this
+    project deliberately has zero .cs files of its own. Listed explicitly by folder rather than
+    a bare **\*.cs glob so adding a new PINS-side file doesn't silently start compiling into the
+    Windows build until someone actually looks at whether it should apply to both — in practice
+    every file so far genuinely does apply to both (the mediator/sequencer APIs this plugin
+    depends on are confirmed byte-for-byte identical between real NINA and PINS; see this
+    project's own commit history for how that was verified, not assumed).
+  -->
+  <ItemGroup>
+    <Compile Include="..\Perihelion\Api\**\*.cs" />
+    <Compile Include="..\Perihelion\Astrometry\**\*.cs" />
+    <Compile Include="..\Perihelion\SequenceItems\**\*.cs" />
+    <Compile Include="..\Perihelion\Utility\**\*.cs" />
+    <Compile Include="..\Perihelion\PerihelionPlugin.cs" />
+    <!-- Shared deliberately, not just the source — same GUID, name, description, license
+         metadata as the PINS build, so this presents as the same plugin regardless of which
+         host loads it, not two differently-branded products that happen to share code. -->
+    <Compile Include="..\Perihelion\Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+
+  <!--
+    Real NINA's own official plugin SDK, referenced as a NuGet package rather than a
+    source-tree clone — confirmed against github.com/isbeorn/nina.plugin.template (the real
+    official plugin template): its modern SDK-style project references only this one package,
+    not NINA's whole source tree the way PINS' own build requires. Deliberately NOT combined
+    with ../Perihelion's own ProjectReference to PINS in the same multi-targeted project (tried
+    first, reverted): NuGet's restore silently substituted PINS' own local NINA.Astrometry.dll
+    for this package's transitive dependency of the same name, for BOTH target frameworks at
+    once — confirmed by inspecting the actual project.assets.json library type
+    ("project" pointing at PINS' own .csproj, not "package"). Full project separation is what
+    actually avoids that identity collision; there is no known way to fix it within one project.
+  -->
+  <ItemGroup>
+    <!-- Confirmed current on nuget.org at the time this was written: latest is 3.2.0.9001. The
+         package itself targets net8.0-windows7.0 but nuget.org lists it as explicitly
+         compatible with net9.0-windows/net10.0-windows too. -->
+    <PackageReference Include="NINA.Plugin" Version="3.2.0.9001" />
+    <!-- NINA.Plugin 3.2.0.9001's own transitive dependency graph is internally inconsistent
+         (NINA.Astrometry wants System.Data.SqlClient >= 4.9.1, NINA.Plugin itself only pulls
+         4.9.0; NINA.Equipment wants NJsonSchema >= 11.6.1, something else in the same graph
+         only pulls 11.3.2) — a real packaging issue in that NuGet release, not anything about
+         this plugin. Pinned to the versions NuGet's own NU1605 error named as the actual
+         requirement, per its own "reference the package directly to select a different
+         version" guidance. -->
+    <PackageReference Include="System.Data.SqlClient" Version="4.9.1" />
+    <PackageReference Include="NJsonSchema" Version="11.6.1" />
+  </ItemGroup>
+
+  <!-- Same portable dependencies as the PINS build — plain, cross-platform netstandard2.0
+       packages, nothing PINS-specific about any of them. GeneratePathProperty="true" for the
+       same reason as the PINS build: gives MSBuild a $(Pkg<Name>) property for the copy step
+       below, since PostBuildWindows needs to place these DLLs next to Perihelion.dll manually
+       the same way PostBuildLinux already does. -->
+  <ItemGroup>
+    <PackageReference Include="CosineKitty.AstronomyEngine" Version="2.1.19" GeneratePathProperty="true" />
+    <PackageReference Include="EmbedIO" Version="3.5.2" GeneratePathProperty="true" />
+    <PackageReference Include="Unosquare.Swan.Lite" Version="3.1.0" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <!-- Mirrors PINS' own PostBuildLinux target, using the %localappdata%\NINA\Plugins\3.0.0\
+       <AssemblyName> convention confirmed directly from github.com/isbeorn/nina.plugin.template's
+       own ProjectTemplate.csproj PostBuild target. Only ever fires when actually building ON
+       Windows (this dev machine is Linux/WSL, so this step is inert here) — not yet verified
+       end-to-end on a real Windows NINA install. -->
+  <Target Name="PostBuildWindows" AfterTargets="PostBuildEvent" Condition="$([System.Runtime.InteropServices.RuntimeInformation]::IsOSPlatform($([System.Runtime.InteropServices.OSPlatform]::Windows)))">
+    <MakeDir Directories="$(LocalAppData)\NINA\Plugins\3.0.0\Perihelion" Condition="!Exists('$(LocalAppData)\NINA\Plugins\3.0.0\Perihelion')" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(LocalAppData)\NINA\Plugins\3.0.0\Perihelion\" />
+    <Copy SourceFiles="$(PkgCosineKitty_AstronomyEngine)\lib\netstandard2.0\astronomy.dll" DestinationFolder="$(LocalAppData)\NINA\Plugins\3.0.0\Perihelion\" />
+    <Copy SourceFiles="$(PkgEmbedIO)\lib\netstandard2.0\EmbedIO.dll" DestinationFolder="$(LocalAppData)\NINA\Plugins\3.0.0\Perihelion\" />
+    <Copy SourceFiles="$(PkgUnosquare_Swan_Lite)\lib\netstandard2.0\Swan.Lite.dll" DestinationFolder="$(LocalAppData)\NINA\Plugins\3.0.0\Perihelion\" />
+  </Target>
+</Project>
