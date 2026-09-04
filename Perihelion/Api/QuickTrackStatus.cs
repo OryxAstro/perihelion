@@ -26,9 +26,10 @@ namespace Perihelion.Api {
             double? LastDecArcsecPerSec,
             bool LastApplySucceeded,
             string? LastError,
-            string? StopReason);
+            string? StopReason,
+            string? GuidingError);
 
-        private static Snapshot current = new(false, null, null, false, null, null, null, null, null, false, null, null);
+        private static Snapshot current = new(false, null, null, false, null, null, null, null, null, false, null, null, null);
 
         public static Snapshot Current => current;
 
@@ -42,11 +43,23 @@ namespace Perihelion.Api {
                 StartedUtc = DateTime.UtcNow,
                 // A previous session's automatic-stop reason (e.g. the meridian safety cutoff)
                 // means nothing for this new one -- without clearing it here, `with` semantics
-                // elsewhere would otherwise carry it forward indefinitely.
+                // elsewhere would otherwise carry it forward indefinitely. Same for a previous
+                // session's guiding error.
                 StopReason = null,
+                GuidingError = null,
             };
         }
 
+        /// <summary>
+        /// The mount's own tracking-rate application succeeded -- deliberately independent of
+        /// whatever the guider half of the same attempt does (see GuidingFailed/GuidingSucceeded
+        /// below). LastApplySucceeded/LastError describe ONLY this: whether the mount actually
+        /// received a correct custom tracking rate. Conflating a guiding hiccup into this value
+        /// (as an earlier version did) meant a Quick Track attempt where the mount was already
+        /// correctly tracking could still read as an outright failure just because PHD2 couldn't
+        /// find a star -- misleading, since the thing Quick Track exists to do had already
+        /// succeeded.
+        /// </summary>
         public static void Applied(OrbitalRate rate) {
             current = current with {
                 LastAppliedUtc = DateTime.UtcNow,
@@ -65,13 +78,26 @@ namespace Perihelion.Api {
             };
         }
 
+        /// <summary>The guider-shift half of a Quick Track attempt failed -- tracked separately
+        /// from LastApplySucceeded/LastError (which describe only the mount's own tracking rate)
+        /// so a guiding hiccup doesn't make an otherwise-successful tracking rate application
+        /// read as an outright failure. See Track()/Reapply()'s own call sites for why this is
+        /// caught and reported independently rather than propagated as a generic Failed().</summary>
+        public static void GuidingFailed(string error) {
+            current = current with { GuidingError = error };
+        }
+
+        public static void GuidingSucceeded() {
+            current = current with { GuidingError = null };
+        }
+
         /// <param name="reason">Null for a plain manual stop (the user already knows why --
         /// they just pressed Stop). Set for an automatic stop the user didn't initiate -- in
         /// particular the meridian safety cutoff (see QuickTrackReapply's own CheckMeridian) --
         /// so the panel can show a real, unmissable explanation rather than the session just
         /// silently ending.</param>
         public static void Stopped(string? reason = null) {
-            current = new Snapshot(false, null, null, false, null, null, null, null, null, false, null, reason);
+            current = new Snapshot(false, null, null, false, null, null, null, null, null, false, null, reason, null);
         }
     }
 }

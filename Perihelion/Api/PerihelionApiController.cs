@@ -81,6 +81,13 @@ namespace Perihelion.Api {
         /// particular the meridian safety cutoff (see QuickTrackReapply's own CheckMeridian).</summary>
         [JsonProperty]
         public string? StopReason { get; set; }
+
+        /// <summary>Null when guiding is off, or its last attempt succeeded. Independent of
+        /// LastApplySucceeded/LastError -- see QuickTrackStatus.GuidingFailed's own doc comment
+        /// for why a guiding hiccup is tracked separately from the mount's own tracking-rate
+        /// application, rather than making the whole attempt read as failed.</summary>
+        [JsonProperty]
+        public string? GuidingError { get; set; }
     }
 
     internal class PathPointResponse {
@@ -376,24 +383,43 @@ namespace Perihelion.Api {
                         Logger.Info($"Perihelion: Quick Track applied for {request.TargetName} -- RA {appliedRate.RaArcsecPerSec:F4} arcsec/s, Dec {appliedRate.DecArcsecPerSec:F4} arcsec/s");
                     }
 
+                    // Deliberately its own try/catch, separate from the tracking-rate application
+                    // above: the mount is already correctly tracking at this point regardless of
+                    // what happens here, so a guiding hiccup (no PHD2, no lock star within its
+                    // own retry budget -- see SetPerihelionGuiderShiftRate's own doc comment)
+                    // shouldn't make an otherwise-successful Quick Track attempt read as an
+                    // outright failure. Reported via QuickTrackStatus.GuidingFailed, tracked
+                    // independently of LastApplySucceeded/LastError.
+                    string? guidingError = null;
                     if (request.Guiding && GuiderMediator != null) {
-                        var guiderItem = new SetPerihelionGuiderShiftRate(GuiderMediator, ProfileService!) {
-                            ObjectType = request.ObjectType,
-                            TargetName = request.TargetName,
-                        };
-                        await guiderItem.Execute(new Progress<ApplicationStatus>(), HttpContext.CancellationToken);
+                        try {
+                            var guiderItem = new SetPerihelionGuiderShiftRate(GuiderMediator, ProfileService!) {
+                                ObjectType = request.ObjectType,
+                                TargetName = request.TargetName,
+                            };
+                            await guiderItem.Execute(new Progress<ApplicationStatus>(), HttpContext.CancellationToken);
+                            QuickTrackStatus.GuidingSucceeded();
+                        } catch (Exception ex) {
+                            guidingError = ex.Message;
+                            QuickTrackStatus.GuidingFailed(ex.Message);
+                            Logger.Warning($"Perihelion: Quick Track guider shift failed for {request.TargetName}: {ex.Message}");
+                        }
                     }
 
                     // Unconditional now, not just when AutoReapplyMinutes is set -- QuickTrackReapply
                     // always runs its own meridian safety cutoff regardless of that setting (Quick
                     // Track has no sequence/trigger infrastructure either way), and only starts the
-                    // optional reapply sub-timer when a positive interval is actually given.
+                    // optional reapply sub-timer when a positive interval is actually given. Passes
+                    // request.Guiding through unchanged even if the attempt above just failed -- a
+                    // guide star that wasn't available yet may well be by the next reapply tick.
                     QuickTrackReapply.Start(TelescopeMediator, GuiderMediator, ProfileService!, request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes is > 0 ? request.AutoReapplyMinutes : null);
 
                     response.Success = true;
-                    response.Message = request.AutoReapplyMinutes is > 0
-                        ? $"Quick Track started, re-applying every {request.AutoReapplyMinutes} min"
-                        : "Quick Track started";
+                    response.Message = guidingError != null
+                        ? $"Quick Track started, but guiding could not be started: {guidingError}"
+                        : request.AutoReapplyMinutes is > 0
+                            ? $"Quick Track started, re-applying every {request.AutoReapplyMinutes} min"
+                            : "Quick Track started";
                 }
             } catch (SequenceEntityFailedException ex) {
                 response.Message = ex.Message;
@@ -454,6 +480,7 @@ namespace Perihelion.Api {
                 LastApplySucceeded = s.LastApplySucceeded,
                 LastError = s.LastError,
                 StopReason = s.StopReason,
+                GuidingError = s.GuidingError,
             };
             return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
         }

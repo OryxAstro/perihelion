@@ -130,19 +130,21 @@ namespace Perihelion.Api {
                 var trackingItem = new SetPerihelionTrackingRate(telescopeMediator, profileService) { ObjectType = objectType, TargetName = targetName };
                 await trackingItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
 
-                if (guiding && guiderMediator != null) {
-                    var guiderItem = new SetPerihelionGuiderShiftRate(guiderMediator, profileService) { ObjectType = objectType, TargetName = targetName };
-                    await guiderItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
-                }
-
                 if (trackingItem.LastAppliedRate is OrbitalRate rate) {
+                    // Reported immediately, before attempting guiding below -- a guiding hiccup
+                    // this tick shouldn't leave the UI showing a stale rate/timestamp from
+                    // several minutes ago when the mount's own rate genuinely was just
+                    // refreshed successfully (an earlier version only reported this after BOTH
+                    // steps succeeded, so a guiding failure silently suppressed a real, correct
+                    // tracking-rate update from ever reaching the panel).
                     QuickTrackStatus.Applied(rate);
+                    // Info, not Debug -- this was originally Debug and, on a default PINS log
+                    // level, never showed up at all, making a real 15-minute re-apply session
+                    // look indistinguishable from a silently-dead timer purely because of
+                    // log-level filtering. This is the one line that proves the timer is
+                    // actually still firing.
+                    Logger.Info($"Perihelion: auto re-applied tracking rate for {targetName} -- RA {rate.RaArcsecPerSec:F4} arcsec/s, Dec {rate.DecArcsecPerSec:F4} arcsec/s");
                 }
-                // Info, not Debug -- this was originally Debug and, on a default PINS log level,
-                // never showed up at all, making a real 15-minute re-apply session look
-                // indistinguishable from a silently-dead timer purely because of log-level
-                // filtering. This is the one line that proves the timer is actually still firing.
-                Logger.Info($"Perihelion: auto re-applied tracking rate for {targetName} -- RA {trackingItem.LastAppliedRate?.RaArcsecPerSec:F4} arcsec/s, Dec {trackingItem.LastAppliedRate?.DecArcsecPerSec:F4} arcsec/s");
             } catch (Exception ex) {
                 // Swallowed -- this runs unattended on a background timer with no HTTP caller to
                 // report to, and the next scheduled tick retries regardless. Logged so a genuine
@@ -150,6 +152,21 @@ namespace Perihelion.Api {
                 // visible in the NINA log rather than silently going nowhere.
                 QuickTrackStatus.Failed(ex.Message);
                 Logger.Error($"Perihelion: auto re-apply failed for {targetName}: {ex.Message}");
+                return;
+            }
+
+            // Deliberately its own try/catch, separate from the tracking-rate application above
+            // -- see Track()'s own identical split for why a guiding hiccup shouldn't be
+            // conflated with the mount's own (already-succeeded) tracking-rate refresh.
+            if (guiding && guiderMediator != null) {
+                try {
+                    var guiderItem = new SetPerihelionGuiderShiftRate(guiderMediator, profileService) { ObjectType = objectType, TargetName = targetName };
+                    await guiderItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
+                    QuickTrackStatus.GuidingSucceeded();
+                } catch (Exception ex) {
+                    QuickTrackStatus.GuidingFailed(ex.Message);
+                    Logger.Warning($"Perihelion: auto re-apply's guider shift failed for {targetName}: {ex.Message}");
+                }
             }
         }
     }
