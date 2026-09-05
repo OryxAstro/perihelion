@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Perihelion.ViewModels"
         Title="Perihelion Framing Composer"
-        Width="700" SizeToContent="Height"
+        Width="860" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="{DynamicResource BackgroundBrush}">
@@ -49,59 +49,58 @@
                 <ComboBox Grid.Column="2" ItemsSource="{Binding ImageSources}" SelectedItem="{Binding SelectedImageSource}" />
             </Grid>
             <!-- Fixed size matching PerihelionFramingComposerVM.SkyMapDisplaySize exactly — both
-                 need to agree since the VM computes FovRectLeft/Top/Width/Height in that same
-                 fixed coordinate space.
-                 Two independent drag interactions, real user request (2026-09-05): dragging the
-                 image itself (SkyMapImage_*, code-behind) pans the background purely
-                 cosmetically — ImagePanX/Y/ImageZoom never affect any real astronomical value,
-                 they're just for looking around the wider context image. Dragging the FOV
-                 rectangle (FovRect_*, code-behind, MoveFovRectBy on the VM) is a real
-                 interaction: it directly sets OffsetRaArcsec/DecArcsec, the same fields "Capture
-                 Offset from Mount" sets, just derived visually instead of from the mount's real
-                 position. Fill="Transparent" (not left unset) is required on the Rectangle for
-                 its own interior to be hit-testable at all — an unset Fill only hit-tests the
-                 stroke outline in WPF, not the area inside it. -->
-            <Border Width="320" Height="320" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
-                    Background="Black" VerticalAlignment="Top" MouseWheel="SkyMap_MouseWheel">
-                <Grid ClipToBounds="True">
-                    <Image Name="SkyMapImage" Source="{Binding SkyImage}" Stretch="UniformToFill" RenderTransformOrigin="0.5,0.5"
-                           MouseLeftButtonDown="SkyMapImage_MouseLeftButtonDown" MouseMove="SkyMapImage_MouseMove" MouseLeftButtonUp="SkyMapImage_MouseLeftButtonUp">
-                        <Image.RenderTransform>
+                 need to agree since the VM's own pixelsPerArcmin/FovRectWidth/Height are computed
+                 in that same fixed coordinate space.
+                 ONE drag interaction (2026-09-05, corrected after reading Touch-N-Stars' own
+                 FramingOffsetView.vue directly, not guessed a second time): dragging anywhere on
+                 the sky map pans the whole view (SkyMap_*, code-behind, sets ImagePanX/Y) —
+                 real, not cosmetic: ImagePanX/Y's own setters on the VM derive and set the real
+                 offset from the pan distance. The target marker lives INSIDE the same transformed
+                 Grid as the Image (not a fixed overlay), so it moves together with the sky map
+                 when panned, the same way a pin stays attached to a map's own terrain rather than
+                 the viewport — exactly TNS's own behavior. The FOV rectangle is the opposite: it
+                 stays fixed at the viewport's own center always (HorizontalAlignment/
+                 VerticalAlignment=Center, no Canvas position at all), same as TNS's own FOV
+                 overlay — there is no independently-draggable FOV box. -->
+            <Border Width="480" Height="480" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                    Background="Black" VerticalAlignment="Top" ClipToBounds="True"
+                    MouseWheel="SkyMap_MouseWheel" MouseLeftButtonDown="SkyMap_MouseLeftButtonDown"
+                    MouseMove="SkyMap_MouseMove" MouseLeftButtonUp="SkyMap_MouseLeftButtonUp">
+                <Grid>
+                    <!-- Image + marker share this one Grid's RenderTransform, so they pan/zoom
+                         as a single unit. -->
+                    <Grid RenderTransformOrigin="0.5,0.5">
+                        <Grid.RenderTransform>
                             <TransformGroup>
                                 <ScaleTransform ScaleX="{Binding ImageZoom}" ScaleY="{Binding ImageZoom}" />
                                 <TranslateTransform X="{Binding ImagePanX}" Y="{Binding ImagePanY}" />
                             </TransformGroup>
-                        </Image.RenderTransform>
-                    </Image>
-                    <Canvas>
-                        <!-- Dashed, matching this project's own existing path-chart convention
-                             (PerihelionDockableView.xaml's 10-Night Path) rather than a plain
-                             solid line. -->
-                        <Rectangle Name="FovRect" Canvas.Left="{Binding FovRectLeft}" Canvas.Top="{Binding FovRectTop}"
-                                   Width="{Binding FovRectWidth}" Height="{Binding FovRectHeight}" RenderTransformOrigin="0.5,0.5"
-                                   Fill="Transparent" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" StrokeDashArray="4,3"
-                                   Cursor="SizeAll"
-                                   MouseLeftButtonDown="FovRect_MouseLeftButtonDown" MouseMove="FovRect_MouseMove" MouseLeftButtonUp="FovRect_MouseLeftButtonUp">
-                            <Rectangle.RenderTransform>
-                                <RotateTransform Angle="{Binding DisplayRotationAngle}" />
-                            </Rectangle.RenderTransform>
-                        </Rectangle>
-                        <!-- Target crosshair, fixed at the canvas center (160,160 for a 320x320
-                             area) — the target itself is always centered in the requested sky map
-                             image by construction (LoadSkyMapAsync requests it centered on
-                             trueCoordinates), so this never needs to be computed or bound. Not
-                             affected by the image's own pan/zoom transform (a sibling in the
-                             same Grid, not inside the Image itself) — it marks where the real
-                             target is on screen regardless of how far the backdrop has been
-                             panned for a look around. -->
-                        <Line X1="150" Y1="160" X2="170" Y2="160" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
-                        <Line X1="160" Y1="150" X2="160" Y2="170" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
-                    </Canvas>
+                        </Grid.RenderTransform>
+                        <Image Source="{Binding SkyImage}" Stretch="UniformToFill" />
+                        <!-- Target marker — a real dot/circle, fixed at the exact center of the
+                             untransformed image (240,240 for a 480x480 area). The target itself
+                             is always centered in the requested sky map image by construction
+                             (LoadSkyMapAsync requests it centered on trueCoordinates), so this
+                             never needs to be computed or bound — only the shared transform
+                             above ever moves it. -->
+                        <Ellipse Width="14" Height="14" Fill="{DynamicResource ButtonBackgroundSelectedBrush}"
+                                 Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <!-- FOV rectangle — always screen-centered, never part of the pan/zoom
+                         transform above, matching TNS's own fixed FOV overlay. -->
+                    <Rectangle Width="{Binding FovRectWidth}" Height="{Binding FovRectHeight}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"
+                               IsHitTestVisible="False"
+                               Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" StrokeDashArray="4,3">
+                        <Rectangle.RenderTransform>
+                            <RotateTransform Angle="{Binding DisplayRotationAngle}" />
+                        </Rectangle.RenderTransform>
+                    </Rectangle>
                     <TextBlock Text="{Binding SkyMapStatusText}" HorizontalAlignment="Center" VerticalAlignment="Center"
-                               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="280" Opacity="0.85" IsHitTestVisible="False" />
+                               TextWrapping="Wrap" TextAlignment="Center" MaxWidth="400" Opacity="0.85" IsHitTestVisible="False" />
                 </Grid>
             </Border>
-            <TextBlock Text="Scroll to zoom, drag the background to look around, drag the FOV box to frame off-center." TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,6,0,0" />
+            <TextBlock Text="Scroll to zoom, drag to pan and reframe -- the marker is the real target position, the dashed box is your camera's FOV." TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,6,0,0" />
         </StackPanel>
 
         <!-- Controls -->

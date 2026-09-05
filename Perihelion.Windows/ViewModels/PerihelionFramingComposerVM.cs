@@ -48,8 +48,9 @@ namespace Perihelion.ViewModels {
         // this SAME fixed coordinate space using the image's own real FoVWidth (always set by
         // every ISkySurvey implementation, regardless of pixel resolution), so it lines up
         // correctly with the displayed image regardless of its native size -- WPF's own Image
-        // control stretches the source bitmap to fill this fixed area either way.
-        public const double SkyMapDisplaySize = 320;
+        // control stretches the source bitmap to fill this fixed area either way. 480, not the
+        // original 320 -- real user feedback (2026-09-05): the whole window read as too small.
+        public const double SkyMapDisplaySize = 480;
 
         // Requests a field of view wider than the camera's own actual FOV, so the displayed sky
         // map shows real surrounding context (other stars/objects) around the FOV rectangle, not
@@ -158,13 +159,28 @@ namespace Perihelion.ViewModels {
         /// flag if the box appears to rotate the wrong way once actually seen live.</summary>
         public double DisplayRotationAngle => UseRotation ? -RotationAngle : 0;
 
-        // --- Background pan/zoom (purely cosmetic -- exploring the wider sky map image for
-        // context, never changes any real astronomical value). Bound to a ScaleTransform +
-        // TranslateTransform on the Image element itself; PerihelionFramingComposerWindow's own
-        // code-behind drives these from mouse wheel/drag, since WPF has no built-in pan/zoom
-        // gesture support without a third-party behaviors library this project doesn't
-        // reference. Clamped in the code-behind, not here, since the natural place to enforce
-        // "don't zoom out past 1x" is right where the delta is computed.
+        // --- Background pan/zoom ---
+        //
+        // Rebuilt (2026-09-05) to match how Touch-N-Stars' own Perihelion framing view
+        // (FramingOffsetView.vue) actually works -- read directly rather than guessed a second
+        // time: it has exactly ONE drag interaction (pan the whole sky view), not two. The target
+        // marker is pinned to a real point ON the sky image, so panning carries it along, same as
+        // a pin on a map; the FOV rectangle stays fixed at the viewport's own center the whole
+        // time (there is no independently-draggable FOV box on the TNS side at all). Offset is
+        // then just "how far the marker has moved from center" -- exactly what
+        // FramingOffsetView.vue's own captureFraming() reads off its view's pan state.
+        //
+        // ImageZoom is still purely cosmetic (never changes any real value, just for looking
+        // around at more/less context) -- TranslateTransform is applied AFTER ScaleTransform in
+        // the Window's own TransformGroup, so a pan distance in on-screen pixels stays constant
+        // regardless of zoom level (translation happens in the already-scaled coordinate frame),
+        // which is why ImagePanX/Y can convert straight to arcsec via pixelsPerArcmin below with
+        // no zoom-dependent correction needed.
+        //
+        // PerihelionFramingComposerWindow's own code-behind drives Zoom/Pan from mouse wheel/
+        // drag, since WPF has no built-in pan/zoom gesture support without a third-party
+        // behaviors library this project doesn't reference. Zoom clamping happens there too, the
+        // natural place to enforce "don't zoom out past 1x".
 
         private double imageZoom = 1.0;
         public double ImageZoom {
@@ -173,15 +189,31 @@ namespace Perihelion.ViewModels {
         }
 
         private double imagePanX;
+        /// <summary>The one real interaction -- dragging the sky map sets this (and ImagePanY),
+        /// which directly derives and sets OffsetRaArcsec (the same field "Capture Offset from
+        /// Mount" sets, just derived visually here instead of from the mount's real position).
+        /// RA increasing = screen right: best understanding as of writing this, not yet confirmed
+        /// against a real sky map visually -- flag if it turns out backwards once actually seen
+        /// live.</summary>
         public double ImagePanX {
             get => imagePanX;
-            set { imagePanX = value; RaisePropertyChanged(); }
+            set {
+                imagePanX = value;
+                RaisePropertyChanged();
+                if (pixelsPerArcmin > 0) OffsetRaArcsec = Math.Round((imagePanX / pixelsPerArcmin) * 60.0, 1);
+            }
         }
 
         private double imagePanY;
+        /// <summary>Dec increasing = screen up (hence the negation -- screen Y grows downward):
+        /// same "not yet visually confirmed" caveat as ImagePanX.</summary>
         public double ImagePanY {
             get => imagePanY;
-            set { imagePanY = value; RaisePropertyChanged(); }
+            set {
+                imagePanY = value;
+                RaisePropertyChanged();
+                if (pixelsPerArcmin > 0) OffsetDecArcsec = Math.Round((-imagePanY / pixelsPerArcmin) * 60.0, 1);
+            }
         }
 
         private bool isBusy;
@@ -233,50 +265,18 @@ namespace Perihelion.ViewModels {
             private set { skyMapStatusText = value; RaisePropertyChanged(); }
         }
 
-        // FOV rectangle, in the same fixed SkyMapDisplaySize coordinate space the Image control
-        // itself renders into (see SkyMapDisplaySize's own doc comment for why pixel-exact source
-        // resolution doesn't matter here).
-        private double fovRectWidth, fovRectHeight, fovRectLeft, fovRectTop;
+        // FOV rectangle -- fixed at the viewport's own center always (HorizontalAlignment=Center
+        // in the XAML, no Left/Top here at all), matching FramingOffsetView.vue's own behavior
+        // (no independently-draggable FOV box there). Only its size is real state, computed from
+        // the user's own gear.
+        private double fovRectWidth, fovRectHeight;
         public double FovRectWidth { get => fovRectWidth; private set { fovRectWidth = value; RaisePropertyChanged(); } }
         public double FovRectHeight { get => fovRectHeight; private set { fovRectHeight = value; RaisePropertyChanged(); } }
-        public double FovRectLeft { get => fovRectLeft; private set { fovRectLeft = value; RaisePropertyChanged(); } }
-        public double FovRectTop { get => fovRectTop; private set { fovRectTop = value; RaisePropertyChanged(); } }
 
-        // Set once per LoadSkyMapAsync call, reused by MoveFovRectBy (dragging the FOV box) and
-        // SetFovRectFromOffset (after a mount-based Capture Offset) so both interactions stay in
-        // sync with each other and with the sky map's own real angular scale. baseFovRect* is the
-        // "zero offset" position (dead center on the target) computed fresh each time the sky map
-        // itself reloads (e.g. a different image source).
+        // Set once per LoadSkyMapAsync call -- how many on-screen pixels correspond to one arcmin
+        // on the sky, used by ImagePanX/Y's own setters to convert a drag distance to a real
+        // angular offset, and by CaptureOffsetAction to convert the other way.
         private double pixelsPerArcmin = 1;
-        private double baseFovRectLeft, baseFovRectTop;
-
-        /// <summary>Repositions the FOV rectangle from the current OffsetRaArcsec/OffsetDecArcsec
-        /// -- called after CaptureOffsetAction (a physical mount nudge) so the on-screen box
-        /// visually reflects it, matching what MoveFovRectBy already keeps in sync for a direct
-        /// drag. RA increasing = screen right, Dec increasing = screen up: best understanding as
-        /// of writing this (not yet confirmed against a real rotator/sky map visually) -- matches
-        /// this file's own DisplayRotationAngle caveat, flag if either turns out backwards once
-        /// actually seen live.</summary>
-        private void SetFovRectFromOffset() {
-            if (!(pixelsPerArcmin > 0)) return;
-            FovRectLeft = baseFovRectLeft + (offsetRaArcsec / 60.0) * pixelsPerArcmin;
-            FovRectTop = baseFovRectTop - (offsetDecArcsec / 60.0) * pixelsPerArcmin;
-        }
-
-        /// <summary>Drags the FOV rectangle itself (as opposed to panning the background image,
-        /// which is purely cosmetic -- see ImagePanX/Y's own comment) -- this directly sets the
-        /// real offset Add to Sequence/Quick Track will use, the same OffsetRaArcsec/
-        /// OffsetDecArcsec "Capture Offset from Mount" sets, just derived visually instead of
-        /// from the mount's real position. Same sign convention as SetFovRectFromOffset, inverted
-        /// to solve for the offset instead.</summary>
-        public void MoveFovRectBy(double deltaXPixels, double deltaYPixels) {
-            if (!(pixelsPerArcmin > 0)) return;
-            FovRectLeft += deltaXPixels;
-            FovRectTop += deltaYPixels;
-            OffsetRaArcsec = Math.Round(((FovRectLeft - baseFovRectLeft) / pixelsPerArcmin) * 60.0, 1);
-            OffsetDecArcsec = Math.Round((-(FovRectTop - baseFovRectTop) / pixelsPerArcmin) * 60.0, 1);
-            StatusText = "Offset set from the FOV box's position -- drag it back to center, or Slew and Center, to clear it.";
-        }
 
         /// <summary>Fetches a real sky-survey image centered on the target, sized to show
         /// genuine surrounding context (SkyMapZoomOutFactor wider than the camera's own actual
@@ -328,9 +328,6 @@ namespace Perihelion.ViewModels {
                 pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
                 FovRectWidth = Math.Min(SkyMapDisplaySize, cameraFovWidthArcmin * pixelsPerArcmin);
                 FovRectHeight = Math.Min(SkyMapDisplaySize, cameraFovHeightArcmin * pixelsPerArcmin);
-                baseFovRectLeft = (SkyMapDisplaySize - FovRectWidth) / 2;
-                baseFovRectTop = (SkyMapDisplaySize - FovRectHeight) / 2;
-                SetFovRectFromOffset();
 
                 SkyMapStatusText = cameraFovWidthArcmin > 0
                     ? string.Empty
@@ -392,12 +389,21 @@ namespace Perihelion.ViewModels {
         /// aren't worth a shared-state dependency between the two.</summary>
         private void CaptureOffsetAction() {
             var current = telescopeMediator.GetCurrentPosition();
-            OffsetRaArcsec = Math.Round((current.RA - trueCoordinates.RA) * 15 * 3600, 1);
-            OffsetDecArcsec = Math.Round((current.Dec - trueCoordinates.Dec) * 3600, 1);
-            // Keeps the on-screen FOV box in sync with this physical capture -- otherwise it
-            // would stay frozen at center while OffsetRa/DecArcsec (the value Add to Sequence/
-            // Quick Track actually reads) silently changed underneath it.
-            SetFovRectFromOffset();
+            var raArcsec = Math.Round((current.RA - trueCoordinates.RA) * 15 * 3600, 1);
+            var decArcsec = Math.Round((current.Dec - trueCoordinates.Dec) * 3600, 1);
+            if (pixelsPerArcmin > 0) {
+                // Setting the pan (not OffsetRa/DecArcsec directly) -- ImagePanX/Y's own setters
+                // derive and set the offset, so this keeps the on-screen marker's position and
+                // the real offset value as one source of truth instead of two that could drift,
+                // and moves the marker to visually reflect this physical capture too.
+                ImagePanX = (raArcsec / 60.0) * pixelsPerArcmin;
+                ImagePanY = -(decArcsec / 60.0) * pixelsPerArcmin;
+            } else {
+                // No real gear configured to derive a pixel scale from -- fall back to setting
+                // the offset directly; the marker just won't visually move to match.
+                OffsetRaArcsec = raArcsec;
+                OffsetDecArcsec = decArcsec;
+            }
             StatusText = "Offset captured from the mount's current position.";
         }
     }

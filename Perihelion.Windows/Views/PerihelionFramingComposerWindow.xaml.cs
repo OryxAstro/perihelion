@@ -1,19 +1,21 @@
 using Perihelion.ViewModels;
 using System.Windows;
 using System.Windows.Input;
-using System.Windows.Shapes;
 
 namespace Perihelion.Views {
 
     /// <summary>
     /// Code-behind exists here for two real reasons, both things a plain MVVM command has no way
     /// to do on its own: (1) a real popup Window needs somewhere to actually close the dialog
-    /// (Confirm/Cancel below), and (2) WPF has no built-in pan/zoom/drag gesture support without
-    /// a third-party behaviors library this project doesn't reference, so the sky map's own
-    /// mouse wheel/drag handling lives here too, calling straight into the VM's own state
-    /// (ImagePanX/Y/ImageZoom for the purely-cosmetic background pan/zoom, MoveFovRectBy for the
-    /// FOV box drag, which is a real interaction -- see PerihelionFramingComposerWindow.xaml's
-    /// own comment on the distinction between the two).
+    /// (Confirm/Cancel below), and (2) WPF has no built-in pan/zoom gesture support without a
+    /// third-party behaviors library this project doesn't reference, so the sky map's own mouse
+    /// wheel/drag handling lives here too, calling straight into the VM's own ImagePanX/Y/
+    /// ImageZoom -- ImagePanX/Y's own setters derive and set the real offset, so there's nothing
+    /// else this code-behind needs to compute itself.
+    ///
+    /// One drag interaction only (2026-09-05, corrected after reading Touch-N-Stars' own
+    /// FramingOffsetView.vue directly): panning the whole sky map, same as that component's own
+    /// real behavior -- there is no second, independently-draggable FOV rectangle.
     /// </summary>
     public partial class PerihelionFramingComposerWindow : Window {
         private const double MinZoom = 1.0;
@@ -21,8 +23,7 @@ namespace Perihelion.Views {
 
         private PerihelionFramingComposerVM ViewModel => (PerihelionFramingComposerVM)DataContext;
 
-        private bool draggingImage;
-        private bool draggingFovRect;
+        private bool dragging;
         private Point lastMousePosition;
 
         public PerihelionFramingComposerWindow(PerihelionFramingComposerVM vm) {
@@ -42,8 +43,6 @@ namespace Perihelion.Views {
             Close();
         }
 
-        // --- Background pan/zoom (purely cosmetic) ---
-
         private void SkyMap_MouseWheel(object sender, MouseWheelEventArgs e) {
             var vm = ViewModel;
             var factor = e.Delta > 0 ? 1.1 : 1.0 / 1.1;
@@ -51,15 +50,15 @@ namespace Perihelion.Views {
             e.Handled = true;
         }
 
-        private void SkyMapImage_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
-            draggingImage = true;
+        private void SkyMap_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
+            dragging = true;
             lastMousePosition = e.GetPosition(this);
             ((UIElement)sender).CaptureMouse();
             e.Handled = true;
         }
 
-        private void SkyMapImage_MouseMove(object sender, MouseEventArgs e) {
-            if (!draggingImage) return;
+        private void SkyMap_MouseMove(object sender, MouseEventArgs e) {
+            if (!dragging) return;
             var position = e.GetPosition(this);
             var vm = ViewModel;
             vm.ImagePanX += position.X - lastMousePosition.X;
@@ -67,36 +66,9 @@ namespace Perihelion.Views {
             lastMousePosition = position;
         }
 
-        private void SkyMapImage_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) {
-            draggingImage = false;
+        private void SkyMap_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) {
+            dragging = false;
             ((UIElement)sender).ReleaseMouseCapture();
-        }
-
-        // --- FOV rectangle drag (a real interaction -- sets the real offset) ---
-
-        private void FovRect_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) {
-            draggingFovRect = true;
-            lastMousePosition = e.GetPosition(this);
-            ((Rectangle)sender).CaptureMouse();
-            // Stops this reaching the Image underneath, which would otherwise also start a
-            // background pan for the same mouse-down (WPF hit-testing gives the topmost element
-            // -- this Rectangle -- the event first, but a routed event still bubbles/tunnels past
-            // it unless explicitly marked handled).
-            e.Handled = true;
-        }
-
-        private void FovRect_MouseMove(object sender, MouseEventArgs e) {
-            if (!draggingFovRect) return;
-            var position = e.GetPosition(this);
-            ViewModel.MoveFovRectBy(position.X - lastMousePosition.X, position.Y - lastMousePosition.Y);
-            lastMousePosition = position;
-            e.Handled = true;
-        }
-
-        private void FovRect_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) {
-            draggingFovRect = false;
-            ((Rectangle)sender).ReleaseMouseCapture();
-            e.Handled = true;
         }
     }
 }
