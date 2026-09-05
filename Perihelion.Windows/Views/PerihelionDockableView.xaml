@@ -49,7 +49,16 @@
                 <!-- Page title — same idea as Orbitals' own large heading at the top of its
                      panel, deliberately different wording ("Orbital Elements" is specifically
                      Orbitals' own panel name, not a generic label to reuse). -->
-                <TextBlock Text="Comet &amp; Asteroid Tracking" FontSize="18" Margin="0,0,0,8" />
+                <TextBlock Text="Comet &amp; Asteroid Tracking" FontSize="18" Margin="0,0,0,4" />
+                <!-- Real user feedback (2026-09-05): kept the two-column Add to Sequence/Quick
+                     Track layout and decided against a mode-select toggle, but still wanted to
+                     make sure a first-time user isn't confused about how the whole panel fits
+                     together. This one line gives that orientation immediately, without reading
+                     anything else; the "How This Works" Expander at the very bottom of the panel
+                     (collapsed by default, so it costs no permanent space) gives the fuller
+                     step-by-step version for anyone who wants it. -->
+                <TextBlock Text="Browse and load a comet or asteroid below, then either add it to a sequence for an unattended run, or Quick Track it right now."
+                           TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,8" />
                 <Separator Margin="0,0,0,10" />
 
                 <!-- Browse (left) / Update Sources (right) -->
@@ -510,6 +519,33 @@
                         <TextBlock Text="{Binding QuickTrackStatusText}" TextWrapping="Wrap" Opacity="0.85" />
                     </StackPanel>
                 </Grid>
+
+                <Separator Margin="0,14,0,10" />
+
+                <!-- Collapsed by default — costs no permanent space, but gives a first-time user
+                     the full step-by-step picture on demand (the one-liner under the page title
+                     above is the quick version). NINA's own Expander style (NINA.WPF.Base/
+                     Resources/Styles/Expander.xaml) is used as-is, no overrides needed — its
+                     Header, when a plain string, becomes a real TextBlock in the visual tree same
+                     as everywhere else in this panel, so it already picks up the correct theme
+                     color via NINA's own global implicit TextBlock style (see this file's own
+                     Button-foreground comment above for the full explanation of that mechanism). -->
+                <Expander Header="How This Works" IsExpanded="False">
+                    <StackPanel Margin="0,10,0,4">
+                        <TextBlock TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,10">
+                            <Run FontWeight="Bold" Text="1. Browse" /><Run Text=" — search or scroll the list (sorted by predicted brightness), then click Load on a comet or asteroid." />
+                        </TextBlock>
+                        <TextBlock TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,10">
+                            <Run FontWeight="Bold" Text="2. Loading" /><Run Text=" pulls its live position, tracking rate, and orbital elements, plus tonight's altitude and a 10-night path." />
+                        </TextBlock>
+                        <TextBlock TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,10">
+                            <Run FontWeight="Bold" Text="3. Frame / Set Offset" /><Run Text=" (optional) — Frame previews the target in NINA's own Framing Assistant; Set Offset captures a manual centering offset from wherever the mount is actually pointed right now." />
+                        </TextBlock>
+                        <TextBlock TextWrapping="Wrap" Opacity="0.85">
+                            <Run FontWeight="Bold" Text="4. Add to Sequence or Quick Track" /><Run Text=" — Add to Sequence builds a step for the Advanced Sequencer, for a full unattended run. Quick Track starts tracking immediately instead, independent of any sequence, for manual framing or visual use." />
+                        </TextBlock>
+                    </StackPanel>
+                </Expander>
 
             </StackPanel>
         </ScrollViewer>
