@@ -56,7 +56,7 @@
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="20" />
+                        <ColumnDefinition Width="36" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
@@ -67,17 +67,24 @@
                              Search off to the right edge of the panel instead of sitting right
                              next to their own combo box / search box, and left the Update Sources
                              column on the right too narrow for its own "Last Updated" text to fit
-                             on one line. Fixed width (400px, matching the ListView's own
-                             GridViewColumn widths below: 180+90+130) instead of a stretchy "*"
-                             column solves both at once — this section now takes only the room it
-                             actually needs, and the freed width goes to Update Sources
-                             automatically via the outer Grid's own "*" column.
+                             on one line. Fixed width instead of a stretchy "*" column solves both
+                             at once — this section now takes only the room it actually needs, and
+                             the freed width goes to Update Sources automatically via the outer
+                             Grid's own "*" column (36px gap, up from 20px, per the same feedback's
+                             "move Update Sources right a bit").
                              One Grid with two rows (not two separate Grids) for the Refresh and
                              Search rows guarantees their buttons — both fixed Width="90" per the
                              same feedback ("all buttons the same width ... aligned horizontally
                              and vertically") — land at the exact same column, so they visually
-                             line up when stacked. -->
-                        <Grid Width="400" HorizontalAlignment="Left" Margin="0,0,0,4">
+                             line up when stacked.
+                             440px, wider than the ListView's own GridViewColumn sum (180+90+130 =
+                             400) on purpose — a follow-up real screenshot showed a horizontal
+                             scrollbar on the ListView at exactly 400px: its vertical scrollbar
+                             (needed since MaxHeight clips a full 27-comet list) eats into the
+                             content area, so column widths summing to the full outer width left
+                             no slack and tipped it into horizontal overflow. The extra ~40px here
+                             is that slack, not a rendered column. -->
+                        <Grid Width="440" HorizontalAlignment="Left" Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="*" />
@@ -112,10 +119,12 @@
                              whose GridView.ColumnCollection feeds those columns. A real GridView
                              here (not a custom ItemTemplate) is what NINA's own theme actually
                              expects, and its column cells use the app's normal default TextBlock
-                             style automatically, same as any other page text. Width="400" matches
+                             style automatically, same as any other page text. Width="440" matches
                              the Refresh/Search Grid above it — same reasoning as that Grid's own
-                             comment. -->
-                        <ListView Width="400" HorizontalAlignment="Left" ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
+                             comment (the GridViewColumns below still only sum to 400 — the extra
+                             40px is the scrollbar/border slack that fixes the horizontal
+                             scrollbar). -->
+                        <ListView Width="440" HorizontalAlignment="Left" ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="Name" Width="180" DisplayMemberBinding="{Binding Name}" />
@@ -157,44 +166,56 @@
                          actions with their own real "when" (CometOrbits.LastSyncedUtc /
                          CometActivity.LastFullRefreshUtc, both disk-persisted — see
                          RefreshLastUpdatedText's own doc comment for how that was verified).
-                         This column is now "*" instead of a narrow fixed share, so it picks up
-                         all the width freed by the Browse column's own fixed 400px above — real
-                         user feedback (2026-09-05) was that "Last Updated: ..." was wrapping onto
-                         a second line for lack of room. Both Update buttons share the Browse
-                         section's own Width="90" for the same "all buttons the same width" reason. -->
-                    <StackPanel Grid.Column="2">
-                        <TextBlock Text="Update Sources" FontWeight="Bold" Margin="0,0,0,4" />
-                        <Grid Margin="0,0,0,6">
+                         This column is "*", so it picks up all the width freed by the Browse
+                         column's own fixed width above.
+                         One Grid with two rows (not two separate Grids), same technique as the
+                         Refresh/Search Grid above — real user feedback (2026-09-05): the two
+                         Update buttons didn't line up, because the "Comets (960)" label is wider
+                         than "COBS" and each row was its own Grid with an Auto-width label column
+                         sized independently. A single shared Grid with a fixed 130px label column
+                         (Grid.Column="0") guarantees both Update buttons land in the exact same
+                         column — 130px comfortably fits "Comets (9999)" too, so the label growing
+                         to 4 digits won't ever shift the button over. Both Update buttons also
+                         share the Browse section's own Width="90" for the same "all buttons the
+                         same width" reason. -->
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="Update Sources" FontWeight="Bold" Margin="0,0,0,4" />
+                        <Grid Grid.Row="1" Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{Binding CometsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" Width="90" Command="{Binding UpdateCometsCommand}" Margin="0,0,8,0"
+                            <Button Grid.Column="1" Command="{Binding UpdateCometsCommand}"
                                     ToolTip="Re-fetches the comet-elements feed from MPC now, bypassing its normal 6h cache.">
                                 <TextBlock Text="Update" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap">
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" TextWrapping="Wrap">
                                 <Run Text="Last Updated: " /><Run Text="{Binding CometsLastUpdatedText, Mode=OneWay}" />
                             </TextBlock>
                         </Grid>
-                        <Grid>
+                        <Grid Grid.Row="2">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="COBS" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" Width="90" Command="{Binding UpdateCobsCommand}" Margin="0,0,8,0"
+                            <Button Grid.Column="1" Command="{Binding UpdateCobsCommand}"
                                     ToolTip="Refreshes real observed brightness from COBS for every comet in the browse list. Takes several seconds to tens of seconds -- a deliberate, explicit action, not something that runs automatically.">
                                 <TextBlock Text="Update" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap">
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" TextWrapping="Wrap">
                                 <Run Text="Last Updated: " /><Run Text="{Binding CobsLastUpdatedText, Mode=OneWay}" />
                             </TextBlock>
                         </Grid>
-                    </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <Separator Margin="0,0,0,10" />
