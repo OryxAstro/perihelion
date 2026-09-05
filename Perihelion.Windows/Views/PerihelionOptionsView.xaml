@@ -15,11 +15,26 @@
       hand-edit already did.
     -->
     <DataTemplate x:Key="Perihelion_Options" DataType="{x:Type local:PerihelionPlugin}">
+        <DataTemplate.Resources>
+            <BooleanToVisibilityConverter x:Key="BoolToVis" />
+        </DataTemplate.Resources>
         <StackPanel Margin="10" HorizontalAlignment="Stretch">
             <TextBlock Text="Perihelion" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
             <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,12">
                 Perihelion hosts its own small HTTP server for the Touch-N-Stars panel
                 (Quick Track, Add to Sequence), independent of Advanced API.
+            </TextBlock>
+
+            <!-- Real user request (2026-09-05), after comparing against Advanced API's own
+                 Options page: someone using only the native Windows dockable panel has no need
+                 for Touch-N-Stars/Quick Track's remote API, or the open port that comes with it. -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="API Enabled" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <CheckBox IsChecked="{Binding ApiEnabled}" />
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,0,0,12">
+                Turn off if you only use the native panel and don't need Touch-N-Stars or Quick
+                Track's remote API at all. Takes effect on the next restart.
             </TextBlock>
 
             <Grid Margin="0,0,0,4">
@@ -30,11 +45,45 @@
                 <TextBlock Grid.Column="0" Text="Port" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBox Grid.Column="1" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}" />
             </Grid>
-            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,0">
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
                 Takes effect on the next restart -- the server is already running on its current
                 port for this session. If the configured port is unavailable at startup,
                 Perihelion automatically uses the nearest free one instead of failing to start.
             </TextBlock>
+
+            <!-- Same idea as Advanced API's own "Network adresses" section — shows ActualPort
+                 (the port really bound this session), not the Port setting above (which may be
+                 a pending change for next restart, or may not match if a conflict pushed the
+                 real bind to the next free port instead). Hidden entirely when the server isn't
+                 running at all, so it never shows an address that isn't actually listening. -->
+            <StackPanel Visibility="{Binding ApiEnabled, Converter={StaticResource BoolToVis}}">
+                <Separator Margin="0,0,0,10" />
+                <TextBlock Text="Network Addresses" FontWeight="Bold" Margin="0,0,0,6" />
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Localhost" Opacity="0.8" />
+                    <TextBlock Grid.Column="1" Text="{Binding LocalAddress}" />
+                </Grid>
+                <Grid Margin="0,0,0,2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="IP Address" Opacity="0.8" />
+                    <TextBlock Grid.Column="1" Text="{Binding IpAddress}" />
+                </Grid>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="This Host" Opacity="0.8" />
+                    <TextBlock Grid.Column="1" Text="{Binding HostAddress}" />
+                </Grid>
+            </StackPanel>
         </StackPanel>
     </DataTemplate>
 </ResourceDictionary>

@@ -10,6 +10,7 @@ using Perihelion.Utility;
 using System;
 using System.ComponentModel;
 using System.ComponentModel.Composition;
+using System.Net;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
@@ -66,6 +67,7 @@ namespace Perihelion {
             if (port != configuredPort) {
                 Logger.Info($"Perihelion: port {configuredPort} unavailable, using {port} instead");
             }
+            ActualPort = port;
             apiServer = new PerihelionApiServer(telescopeMediator, guiderMediator, profileService, port);
 
             RegisterWindowsResources();
@@ -84,6 +86,32 @@ namespace Perihelion {
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Port)));
             }
         }
+
+        /// <summary>Whether the standalone HTTP server should start at all -- real user request
+        /// (2026-09-05): someone using only the native Windows panel has no need for Touch-N-
+        /// Stars/Quick Track's remote API and the open port that comes with it. Defaults true so
+        /// existing installs keep working unchanged. Same "takes effect on next restart"
+        /// convention as Port -- doesn't attempt to stop/start the already-running server live.</summary>
+        public bool ApiEnabled {
+            get => pluginSettings.GetValueBoolean("ApiEnabled", true);
+            set {
+                pluginSettings.SetValueBoolean("ApiEnabled", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ApiEnabled)));
+            }
+        }
+
+        /// <summary>The port actually bound this session -- distinct from the Port setting above,
+        /// which is only what's configured for the *next* restart and may not match if
+        /// GetNearestAvailablePort had to shift away from a conflict. The three address
+        /// properties below are for PerihelionOptionsView.xaml's own "Network Addresses" section,
+        /// same idea as nitr57/ninaAPI's own Options page, so a user pointing Touch-N-Stars at
+        /// this server knows the real, currently-listening address rather than guessing from the
+        /// configured port alone.</summary>
+        public int ActualPort { get; }
+
+        public string LocalAddress => $"http://localhost:{ActualPort}/perihelion/api";
+        public string IpAddress => $"http://{CoreUtility.GetLocalIPv4Address()}:{ActualPort}/perihelion/api";
+        public string HostAddress => $"http://{Dns.GetHostName()}:{ActualPort}/perihelion/api";
 
         /// <summary>Three Windows-only WPF resources this plugin registers itself, since PINS
         /// renders no WPF UI shell at all and never looks any of them up (PINS' own
@@ -128,7 +156,11 @@ namespace Perihelion {
         // exception ever reached the log because of the bug PerihelionApiServer.Start() fixes).
         public override Task Initialize() {
             try {
-                apiServer.Start();
+                if (ApiEnabled) {
+                    apiServer.Start();
+                } else {
+                    Logger.Info("Perihelion: API server disabled via plugin options -- not starting");
+                }
             } catch (Exception ex) {
                 Logger.Error($"Perihelion: Initialize() failed unexpectedly: {ex}");
             }

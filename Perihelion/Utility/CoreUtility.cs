@@ -1,4 +1,7 @@
+using System;
+using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 
 namespace Perihelion.Utility {
 
@@ -24,6 +27,23 @@ namespace Perihelion.Utility {
             var port = startPort;
             while (!IsPortAvailable(port)) port++;
             return port;
+        }
+
+        /// <summary>The machine's own outbound LAN IPv4 address -- same technique nitr57/
+        /// ninaAPI's own Utility/CoreUtility.cs uses for its Options page's "IP Address" row
+        /// (GetIPv4Address there): opening a UDP socket and "connecting" it to a public address
+        /// never actually sends a packet, it just asks the OS to pick the real local interface/
+        /// address it would route through, which is exactly the LAN-reachable address another
+        /// device (a phone running Touch-N-Stars) would need. Falls back to loopback if that
+        /// fails for any reason (no network, etc.) rather than throwing.</summary>
+        public static string GetLocalIPv4Address() {
+            try {
+                using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0);
+                socket.Connect("8.8.8.8", 65530);
+                return (socket.LocalEndPoint as IPEndPoint)?.Address.ToString() ?? "127.0.0.1";
+            } catch (Exception) {
+                return "127.0.0.1";
+            }
         }
     }
 }
