@@ -323,51 +323,18 @@ namespace Perihelion.ViewModels {
 
         public RelayCommand AddToSequenceCommand { get; }
 
+        // Temporarily disabled: neither PerihelionDockableVM's own [ImportingConstructor] nor
+        // PerihelionPlugin's (both tried, both confirmed by a real composition failure) can
+        // import ISequencerFactory/ISequenceMediator. The first attempt silently broke just this
+        // VM's own composition (the panel vanished from the Imaging tab, no error anywhere). The
+        // second broke PerihelionPlugin's own composition entirely -- a real MEF
+        // CompositionException, "No exports were found that match the constraint ...
+        // IPluginManifest", i.e. the whole plugin failed to load. Both reverted. The actual
+        // sequence-building logic (PerihelionSequenceBuilder) is untouched and still correct --
+        // this needs a different way to reach NINA's sequencer from a third-party plugin before
+        // it can be wired back up, not yet found.
         private void AddToSequenceAction() {
-            var target = Loaded;
-            if (target == null) return;
-
-            var sequencerFactory = PerihelionPlugin.SequencerFactory;
-            var sequenceMediator = PerihelionPlugin.SequenceMediator;
-            if (sequencerFactory == null || sequenceMediator == null) {
-                Notification.ShowError("Perihelion: sequencer access isn't available yet -- try restarting NINA.");
-                return;
-            }
-            if (!sequenceMediator.Initialized) {
-                Notification.ShowError("The Advanced Sequencer isn't ready yet -- open the Sequence tab once, then try again.");
-                return;
-            }
-
-            try {
-                var trueCoordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
-                var filter = SelectedFilterName == NoFilterChangeOption
-                    ? null
-                    : profileService.ActiveProfile.FilterWheelSettings.FilterWheelFilters.FirstOrDefault(f => f.Name == SelectedFilterName);
-                var exposure = new PerihelionSequenceBuilder.ExposureSettings(filter, ExposureSeconds, FrameCount);
-
-                var dso = PerihelionSequenceBuilder.BuildTargetContainer(
-                    sequencerFactory, target.ObjectType, target.Name,
-                    trueCoordinates, LoadedCoordinatesWithOffset(),
-                    Guiding, AutofocusEnabled ? AutofocusMinutes : null, exposure);
-
-                sequenceMediator.AddAdvancedTarget(dso);
-
-                if (MeridianFlip) {
-                    // MeridianFlipTrigger belongs on the sequence's own global triggers (applies
-                    // mount-wide, not per-target) -- AddAdvancedTarget only adds the one target
-                    // container, so this needs its own path via the already-loaded root.
-                    var root = dso.GetRootContainer(dso);
-                    if (root != null && !root.Triggers.Any(t => t is NINA.Sequencer.Trigger.MeridianFlip.MeridianFlipTrigger)) {
-                        root.Add(sequencerFactory.GetTrigger<NINA.Sequencer.Trigger.MeridianFlip.MeridianFlipTrigger>());
-                    }
-                }
-
-                sequenceMediator.SwitchToAdvancedView();
-                Notification.ShowSuccess($"Added {target.Name} to the sequence");
-            } catch (Exception ex) {
-                Notification.ShowError($"Perihelion: failed to add to sequence: {ex.Message}");
-                Logger.Error("Perihelion: failed to add to sequence", ex);
-            }
+            Notification.ShowError("Add to Sequence isn't available yet in this build -- use Quick Track, or add the target manually in the Advanced Sequencer.");
         }
 
         public AsyncRelayCommand LoadCommand { get; }

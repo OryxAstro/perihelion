@@ -4,8 +4,6 @@ using NINA.Plugin;
 using NINA.Plugin.Interfaces;
 using NINA.Profile;
 using NINA.Profile.Interfaces;
-using NINA.Sequencer;
-using NINA.Sequencer.Interfaces.Mediator;
 using Perihelion.Api;
 using Perihelion.Utility;
 using System;
@@ -23,36 +21,23 @@ namespace Perihelion {
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        /// <summary>Bridges ISequencerFactory/ISequenceMediator to PerihelionDockableVM
-        /// (Windows-only, Perihelion.Windows/ViewModels/PerihelionDockableVM.cs), which cannot
-        /// import them itself -- confirmed the hard way: adding them directly to that VM's own
-        /// [ImportingConstructor] silently broke its MEF composition entirely (the panel
-        /// vanished from the Imaging tab, no error anywhere, no obvious log signal at all). Root
-        /// cause, confirmed against NINA's own source: ISequenceMediator is registered in NINA's
-        /// separate Microsoft.Extensions.DependencyInjection container
-        /// (services.AddSingleton&lt;ISequenceMediator, SequenceMediator&gt;() in
-        /// NINA/Utility/IoCBindings.cs), not exported to MEF directly -- nitr57/ninaAPI's own
-        /// AdvancedAPI (a real, working [Export(typeof(IPluginManifest))] plugin class) proves
-        /// the DI/MEF bridge DOES reach a plugin's own main manifest class, but Orbitals' own
-        /// real, working dockable VM (OrbitalsVM) tellingly never imports either type despite
-        /// clearly needing sequence-building capability elsewhere -- strong evidence the bridge
-        /// does not extend to whatever narrower composition scope
-        /// pluginProvider.DockableVMs itself composes third-party IDockableVM exports through.
-        /// Importing here instead (proven to work, same reasoning as ninaAPI's own AdvancedAPI)
-        /// and exposing statically is the same bridge pattern already used for
-        /// PerihelionApiController's own TelescopeMediator/GuiderMediator/ProfileService fields.</summary>
-        internal static ISequencerFactory? SequencerFactory { get; private set; }
-        internal static ISequenceMediator? SequenceMediator { get; private set; }
+        /// <summary>NOT importable here either -- confirmed the hard way. Adding
+        /// ISequencerFactory/ISequenceMediator to this constructor was meant to bridge them to
+        /// PerihelionDockableVM (which also can't import them directly, see that file's own
+        /// comment), on the theory that nitr57/ninaAPI's own AdvancedAPI plugin class proves the
+        /// DI/MEF bridge reaches a plugin's main manifest class. Real error from a real
+        /// composition attempt says otherwise: "No exports were found that match the constraint
+        /// ... IPluginManifest" -- MEF couldn't compose PerihelionPlugin itself at all with these
+        /// two added, taking the whole plugin down, not just the dockable panel. Whatever lets
+        /// AdvancedAPI's own constructor list ISequenceMediator, it isn't available to this
+        /// plugin the same way -- reverted; SequencerFactory/SequenceMediator are gone from here
+        /// entirely. Add to Sequence needs a different access path, not yet found.</summary>
 
         [ImportingConstructor]
         public PerihelionPlugin(
             ITelescopeMediator telescopeMediator,
             IGuiderMediator guiderMediator,
-            IProfileService profileService,
-            ISequencerFactory sequencerFactory,
-            ISequenceMediator sequenceMediator) {
-            SequencerFactory = sequencerFactory;
-            SequenceMediator = sequenceMediator;
+            IProfileService profileService) {
 
             // Same PluginOptionsAccessor mechanism nitr57/ninaAPI and the Touch-N-Stars PINS
             // plugin both use for their own configurable port. On PINS there's still no settings
