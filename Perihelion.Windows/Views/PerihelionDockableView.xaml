@@ -398,71 +398,95 @@
 
                 <Separator Margin="0,10,0,10" />
 
-                <!-- Add to Sequence -->
-                <TextBlock Text="Add to Sequence" FontWeight="Bold" Margin="0,0,0,4" />
-                <Grid Margin="0,0,0,4">
+                <!-- Add to Sequence (left) / Quick Track (right), with a real vertical rule
+                     between them — real user feedback (2026-09-05): these two sections needed
+                     more room and more even spacing between their own rows, and side by side
+                     (rather than stacked, as before) is a reasonable fit specifically because
+                     NINA is desktop-only software (unlike the Touch-N-Stars mobile panel), and
+                     this same file already uses a two-column layout twice above (Position/
+                     Orbital Elements, Tonight's Altitude/10-Night Path) without issue. Each
+                     column below stacks its own fields label-above-input (matching the existing
+                     Meridian flip/Autofocus convention already used here) rather than the old
+                     wide horizontal row of fixed pixel widths, which assumed close to the full
+                     panel width and would have overflowed a half-width column on a narrower dock.
+                     A Border (not a Separator control — NINA's own Separator style always draws
+                     a horizontal line regardless of the element's own orientation) gives the real
+                     vertical rule, sized to the row's own height via VerticalAlignment="Stretch"
+                     and its own Margin providing the gap either side. -->
+                <Grid>
                     <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="140" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="70" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="60" />
+                        <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Filter" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableFilterNames}" SelectedItem="{Binding SelectedFilterName}" Margin="0,0,10,0" />
-                    <TextBlock Grid.Column="2" Text="Exposure (s)" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <TextBox Grid.Column="3" Text="{Binding ExposureSeconds, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,10,0" />
-                    <TextBlock Grid.Column="4" Text="Frames" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <TextBox Grid.Column="5" Text="{Binding FrameCount, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-                <!-- NINA's own global CheckBox style is a fixed ON/OFF toggle with no
-                     ContentPresenter at all — Content is silently ignored (confirmed from
-                     NINA.WPF.Base's own CheckBox.xaml), which is exactly why a real-hardware
-                     test showed these with no visible label at all. A separate TextBlock above
-                     each toggle is the only way to actually label one. -->
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <StackPanel Margin="0,0,24,0">
-                        <TextBlock Text="Meridian flip" Margin="0,0,0,3" />
-                        <CheckBox IsChecked="{Binding MeridianFlip}" HorizontalAlignment="Left" />
-                    </StackPanel>
-                    <StackPanel>
-                        <TextBlock Text="Autofocus every" Margin="0,0,0,3" />
-                        <StackPanel Orientation="Horizontal">
-                            <CheckBox IsChecked="{Binding AutofocusEnabled}" Margin="0,0,10,0" />
-                            <TextBox Text="{Binding AutofocusMinutes, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center" Margin="0,0,6,0" />
-                            <TextBlock Text="min" VerticalAlignment="Center" Opacity="0.7" />
+
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Add to Sequence" FontWeight="Bold" Margin="0,0,0,8" />
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Filter" Margin="0,0,0,3" />
+                            <ComboBox ItemsSource="{Binding AvailableFilterNames}" SelectedItem="{Binding SelectedFilterName}" />
                         </StackPanel>
+                        <Grid Margin="0,0,0,12">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="12" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Exposure (s)" Margin="0,0,0,3" />
+                                <TextBox Text="{Binding ExposureSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Frames" Margin="0,0,0,3" />
+                                <TextBox Text="{Binding FrameCount, UpdateSourceTrigger=PropertyChanged}" />
+                            </StackPanel>
+                        </Grid>
+                        <!-- NINA's own global CheckBox style is a fixed ON/OFF toggle with no
+                             ContentPresenter at all — Content is silently ignored (confirmed from
+                             NINA.WPF.Base's own CheckBox.xaml), which is exactly why a real-
+                             hardware test showed these with no visible label at all. A separate
+                             TextBlock above each toggle is the only way to actually label one. -->
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Meridian flip" Margin="0,0,0,3" />
+                            <CheckBox IsChecked="{Binding MeridianFlip}" HorizontalAlignment="Left" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Autofocus every" Margin="0,0,0,3" />
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox IsChecked="{Binding AutofocusEnabled}" Margin="0,0,10,0" />
+                                <TextBox Text="{Binding AutofocusMinutes, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock Text="min" VerticalAlignment="Center" Opacity="0.7" />
+                            </StackPanel>
+                        </StackPanel>
+                        <Button Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left"
+                                ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer.">
+                            <TextBlock Text="Add to Sequence" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                        </Button>
                     </StackPanel>
-                </StackPanel>
-                <Button Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left"
-                        ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer.">
-                    <TextBlock Text="Add to Sequence" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
-                </Button>
 
-                <Separator Margin="0,10,0,10" />
+                    <Border Grid.Column="1" Width="1" Margin="12,0" Background="{DynamicResource BorderBrush}" VerticalAlignment="Stretch" />
 
-                <!-- Quick Track -->
-                <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                    <StackPanel Margin="0,0,24,0">
-                        <TextBlock Text="Include guiding" Margin="0,0,0,3" />
-                        <CheckBox IsChecked="{Binding Guiding}" HorizontalAlignment="Left" />
+                    <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                        <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,8" />
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Include guiding" Margin="0,0,0,3" />
+                            <CheckBox IsChecked="{Binding Guiding}" HorizontalAlignment="Left" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Auto re-apply every 15 min" Margin="0,0,0,3" />
+                            <CheckBox IsChecked="{Binding AutoReapply}" HorizontalAlignment="Left" />
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <Button Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0">
+                                <TextBlock Text="Start Quick Track" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                            </Button>
+                            <Button Command="{Binding StopQuickTrackCommand}">
+                                <TextBlock Text="Stop" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Text="{Binding QuickTrackStatusText}" TextWrapping="Wrap" Opacity="0.85" />
                     </StackPanel>
-                    <StackPanel>
-                        <TextBlock Text="Auto re-apply every 15 min" Margin="0,0,0,3" />
-                        <CheckBox IsChecked="{Binding AutoReapply}" HorizontalAlignment="Left" />
-                    </StackPanel>
-                </StackPanel>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                    <Button Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0">
-                        <TextBlock Text="Start Quick Track" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
-                    </Button>
-                    <Button Command="{Binding StopQuickTrackCommand}">
-                        <TextBlock Text="Stop" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
-                    </Button>
-                </StackPanel>
-                <TextBlock Text="{Binding QuickTrackStatusText}" TextWrapping="Wrap" Opacity="0.85" />
+                </Grid>
 
             </StackPanel>
         </ScrollViewer>
