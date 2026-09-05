@@ -247,6 +247,17 @@ namespace Perihelion.ViewModels {
         public AsyncRelayCommand UpdateCometsCommand { get; }
         public AsyncRelayCommand UpdateCobsCommand { get; }
 
+        /// <summary>Status for the Update Sources actions specifically (Update Comets/Update
+        /// COBS) -- kept separate from StatusText, which is Browse/Load-only, per real user
+        /// feedback (2026-09-05): "Updating comet elements from MPC..." was showing next to the
+        /// Browse combo box, where it looked like a Browse-list status rather than what it
+        /// actually was. Displayed under the Update Sources block in the view instead.</summary>
+        private string updateSourcesStatusText = string.Empty;
+        public string UpdateSourcesStatusText {
+            get => updateSourcesStatusText;
+            set { updateSourcesStatusText = value; RaisePropertyChanged(); }
+        }
+
         private void RefreshLastUpdatedText() {
             cometsLastUpdatedText = CometOrbits.LastSyncedUtc is DateTime c ? c.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never";
             cobsLastUpdatedText = CometActivity.LastFullRefreshUtc is DateTime o ? o.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never";
@@ -257,12 +268,12 @@ namespace Perihelion.ViewModels {
 
         private async Task UpdateCometsAction() {
             IsBusy = true;
-            StatusText = "Updating comet elements from MPC...";
+            UpdateSourcesStatusText = "Updating comet elements from MPC...";
             try {
                 var ok = await CometOrbits.SyncNowAsync(HttpClient, CancellationToken.None);
-                StatusText = ok ? "Comet elements updated." : "Comet elements update failed -- see log.";
+                UpdateSourcesStatusText = ok ? "Comet elements updated." : "Comet elements update failed -- see log.";
             } catch (Exception ex) {
-                StatusText = $"Comet elements update failed: {ex.Message}";
+                UpdateSourcesStatusText = $"Comet elements update failed: {ex.Message}";
                 Notification.ShowError($"Perihelion: comet elements update failed: {ex.Message}");
             } finally {
                 RefreshLastUpdatedText();
@@ -272,16 +283,16 @@ namespace Perihelion.ViewModels {
 
         private async Task UpdateCobsAction() {
             IsBusy = true;
-            StatusText = "Refreshing COBS observed magnitudes (can take a while)...";
+            UpdateSourcesStatusText = "Refreshing COBS observed magnitudes (can take a while)...";
             try {
                 var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, CancellationToken.None, includeCobs: true, forceRefreshCobs: true);
                 BrowseObjects.Clear();
                 foreach (var o in objects) {
                     BrowseObjects.Add(o);
                 }
-                StatusText = $"COBS refreshed -- {VisibleBrowseObjectCount} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded.";
+                UpdateSourcesStatusText = $"COBS refreshed -- {VisibleBrowseObjectCount} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded.";
             } catch (Exception ex) {
-                StatusText = $"COBS refresh failed: {ex.Message}";
+                UpdateSourcesStatusText = $"COBS refresh failed: {ex.Message}";
                 Notification.ShowError($"Perihelion: COBS refresh failed: {ex.Message}");
             } finally {
                 RefreshLastUpdatedText();

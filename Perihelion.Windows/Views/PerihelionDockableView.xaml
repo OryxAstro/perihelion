@@ -133,7 +133,21 @@
                              comment (the GridViewColumns below still only sum to 400 — the extra
                              40px is the scrollbar/border slack that fixes the horizontal
                              scrollbar). -->
+                        <!-- GridViewColumnHeader defaults to centered content (confirmed from
+                             NINA's own GridViewColumnHeader source — its ContentPresenter binds
+                             HorizontalAlignment to HorizontalContentAlignment via a real
+                             TemplateBinding, unlike Button's Content/Padding, so this override
+                             actually reaches it) while cell content below is left-aligned by
+                             default — real user feedback (2026-09-05): headers didn't line up
+                             with their own column's values. BasedOn preserves NINA's own header
+                             background/border theming, same reasoning as this file's shared
+                             Button style at the top. -->
                         <ListView Width="440" HorizontalAlignment="Left" ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
+                            <ListView.Resources>
+                                <Style TargetType="GridViewColumnHeader" BasedOn="{StaticResource {x:Type GridViewColumnHeader}}">
+                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                </Style>
+                            </ListView.Resources>
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="Name" Width="180" DisplayMemberBinding="{Binding Name}" />
@@ -192,6 +206,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Text="Update Sources" FontWeight="Bold" Margin="0,0,0,4" />
                         <Grid Grid.Row="1" Margin="0,0,0,6">
@@ -224,6 +239,12 @@
                                 <Run Text="Last Updated: " /><Run Text="{Binding CobsLastUpdatedText, Mode=OneWay}" />
                             </TextBlock>
                         </Grid>
+                        <!-- Real user feedback (2026-09-05): "Updating comet elements from MPC..."
+                             was appearing next to the Browse combo box (StatusText), where it
+                             looked like a Browse-list status rather than what it actually was —
+                             moved to its own property (UpdateSourcesStatusText) and displayed
+                             here instead, directly under the actions it actually reports on. -->
+                        <TextBlock Grid.Row="3" Text="{Binding UpdateSourcesStatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,0" />
                     </Grid>
                 </Grid>
 
@@ -476,18 +497,18 @@
                              ContentPresenter at all — Content is silently ignored (confirmed from
                              NINA.WPF.Base's own CheckBox.xaml), which is exactly why a real-
                              hardware test showed these with no visible label at all. A separate
-                             TextBlock above each toggle is the only way to actually label one. -->
-                        <StackPanel Margin="0,0,0,16">
-                            <TextBlock Text="Meridian flip" Margin="0,0,0,3" />
-                            <CheckBox IsChecked="{Binding MeridianFlip}" HorizontalAlignment="Left" />
+                             TextBlock is the only way to actually label one — placed to its left
+                             in the same row (not stacked above it) per real user feedback
+                             (2026-09-05), to save vertical space. -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <TextBlock Text="Meridian flip" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <CheckBox IsChecked="{Binding MeridianFlip}" />
                         </StackPanel>
-                        <StackPanel Margin="0,0,0,16">
-                            <TextBlock Text="Autofocus every" Margin="0,0,0,3" />
-                            <StackPanel Orientation="Horizontal">
-                                <CheckBox IsChecked="{Binding AutofocusEnabled}" Margin="0,0,10,0" />
-                                <TextBox Text="{Binding AutofocusMinutes, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <TextBlock Text="min" VerticalAlignment="Center" Opacity="0.7" />
-                            </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <TextBlock Text="Autofocus every" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <CheckBox IsChecked="{Binding AutofocusEnabled}" Margin="0,0,10,0" />
+                            <TextBox Text="{Binding AutofocusMinutes, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="min" VerticalAlignment="Center" Opacity="0.7" />
                         </StackPanel>
                         <Button Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left"
                                 ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer.">
@@ -500,13 +521,13 @@
                     <StackPanel Grid.Column="2" Margin="8,0,0,0">
                         <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
                         <TextBlock Text="Starts tracking this target right now, independent of any sequence -- for manual framing, visual use, or a target you've already centered." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,14" />
-                        <StackPanel Margin="0,0,0,16">
-                            <TextBlock Text="Include guiding" Margin="0,0,0,3" />
-                            <CheckBox IsChecked="{Binding Guiding}" HorizontalAlignment="Left" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <TextBlock Text="Include guiding" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <CheckBox IsChecked="{Binding Guiding}" />
                         </StackPanel>
-                        <StackPanel Margin="0,0,0,16">
-                            <TextBlock Text="Auto re-apply every 15 min" Margin="0,0,0,3" />
-                            <CheckBox IsChecked="{Binding AutoReapply}" HorizontalAlignment="Left" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <TextBlock Text="Auto re-apply every 15 min" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <CheckBox IsChecked="{Binding AutoReapply}" />
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <Button Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0">
