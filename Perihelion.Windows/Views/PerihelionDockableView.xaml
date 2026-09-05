@@ -160,6 +160,35 @@
 
                 <Separator Margin="0,10,0,10" />
 
+                <!-- Add to Sequence -->
+                <TextBlock Text="Add to Sequence" FontWeight="Bold" Margin="0,0,0,4" />
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="140" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="70" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="60" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Filter" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding AvailableFilterNames}" SelectedItem="{Binding SelectedFilterName}" Margin="0,0,10,0" />
+                    <TextBlock Grid.Column="2" Text="Exposure (s)" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBox Grid.Column="3" Text="{Binding ExposureSeconds, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,10,0" />
+                    <TextBlock Grid.Column="4" Text="Frames" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBox Grid.Column="5" Text="{Binding FrameCount, UpdateSourceTrigger=PropertyChanged}" />
+                </Grid>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <CheckBox Content="Meridian flip" IsChecked="{Binding MeridianFlip}" Margin="0,0,16,0" VerticalAlignment="Center" />
+                    <CheckBox Content="Autofocus every" IsChecked="{Binding AutofocusEnabled}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBox Text="{Binding AutofocusMinutes, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,6,0" />
+                    <TextBlock Text="min" VerticalAlignment="Center" Opacity="0.7" />
+                </StackPanel>
+                <Button Content="Add to Sequence" Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left" Padding="10,3"
+                        ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer." />
+
+                <Separator Margin="0,10,0,10" />
+
                 <!-- Quick Track -->
                 <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">

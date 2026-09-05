@@ -8,12 +8,15 @@ using NINA.Equipment.Equipment.MyGuider;
 using NINA.Equipment.Equipment.MyTelescope;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Profile.Interfaces;
+using NINA.Sequencer;
+using NINA.Sequencer.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.WPF.Base.ViewModel;
 using Perihelion.Api;
 using Perihelion.Astrometry;
 using Perihelion.SequenceItems;
+using Perihelion.Sequencing;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -53,6 +56,8 @@ namespace Perihelion.ViewModels {
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IFramingAssistantVM framingAssistantVM;
         private readonly IApplicationMediator applicationMediator;
+        private readonly ISequencerFactory sequencerFactory;
+        private readonly ISequenceMediator sequenceMediator;
         private readonly DispatcherTimer statusTimer;
         private CancellationTokenSource? loadCts;
 
@@ -62,12 +67,16 @@ namespace Perihelion.ViewModels {
             IGuiderMediator guiderMediator,
             ITelescopeMediator telescopeMediator,
             IFramingAssistantVM framingAssistantVM,
-            IApplicationMediator applicationMediator) : base(profileService) {
+            IApplicationMediator applicationMediator,
+            ISequencerFactory sequencerFactory,
+            ISequenceMediator sequenceMediator) : base(profileService) {
             this.profileService = profileService;
             this.guiderMediator = guiderMediator;
             this.telescopeMediator = telescopeMediator;
             this.framingAssistantVM = framingAssistantVM;
             this.applicationMediator = applicationMediator;
+            this.sequencerFactory = sequencerFactory;
+            this.sequenceMediator = sequenceMediator;
 
             Title = "Perihelion";
             // MEF composition order between this VM and PerihelionPlugin's own resource-merging
@@ -86,6 +95,17 @@ namespace Perihelion.ViewModels {
             PathPoints = new PointCollection();
             AutoReapplyMinutes = 15;
             StatusText = "Click Refresh to browse live comets and asteroids.";
+
+            // "(Don't switch)" first, then every filter actually configured on this profile --
+            // matches SwitchFilter's own convention (an empty/null ComboBoxText means leave the
+            // wheel alone, not a real filter position).
+            AvailableFilterNames = new[] { NoFilterChangeOption }
+                .Concat(profileService.ActiveProfile.FilterWheelSettings.FilterWheelFilters.Select(f => f.Name))
+                .ToArray();
+            SelectedFilterName = NoFilterChangeOption;
+            ExposureSeconds = 60;
+            FrameCount = 10;
+            AutofocusMinutes = 60;
 
             RefreshBrowseListCommand = new AsyncRelayCommand(RefreshBrowseListAction);
             LoadCommand = new AsyncRelayCommand(LoadAction, () => SelectedBrowseObject != null && !IsBusy);
@@ -108,6 +128,9 @@ namespace Perihelion.ViewModels {
             SetGuiderShiftRateCommand.RegisterPropertyChangeNotification(guiderMediator.GetInfo(), nameof(GuiderInfo.Connected), nameof(GuiderInfo.CanSetShiftRate));
 
             ResetOffsetCommand = new RelayCommand(() => { OffsetRaArcsec = 0; OffsetDecArcsec = 0; }, () => OffsetRaArcsec != 0 || OffsetDecArcsec != 0);
+
+            AddToSequenceCommand = new RelayCommand(AddToSequenceAction, () => Loaded != null);
+            AddToSequenceCommand.RegisterPropertyChangeNotification(this, nameof(Loaded));
 
             StartQuickTrackCommand = new AsyncRelayCommand(StartQuickTrackAction, () => Loaded != null && !QuickTrackActive);
             StartQuickTrackCommand.RegisterPropertyChangeNotification(this, nameof(Loaded), nameof(QuickTrackActive));
@@ -255,6 +278,89 @@ namespace Perihelion.ViewModels {
         private string pathStartLabel = string.Empty, pathEndLabel = string.Empty;
         public string PathStartLabel => pathStartLabel;
         public string PathEndLabel => pathEndLabel;
+
+        // --- Add to Sequence ---
+
+        private const string NoFilterChangeOption = "(Don't switch)";
+        public IReadOnlyList<string> AvailableFilterNames { get; }
+
+        private string selectedFilterName = NoFilterChangeOption;
+        public string SelectedFilterName {
+            get => selectedFilterName;
+            set { selectedFilterName = value; RaisePropertyChanged(); }
+        }
+
+        private double exposureSeconds;
+        public double ExposureSeconds {
+            get => exposureSeconds;
+            set { exposureSeconds = value; RaisePropertyChanged(); }
+        }
+
+        private int frameCount;
+        public int FrameCount {
+            get => frameCount;
+            set { frameCount = value; RaisePropertyChanged(); }
+        }
+
+        private bool meridianFlip;
+        public bool MeridianFlip {
+            get => meridianFlip;
+            set { meridianFlip = value; RaisePropertyChanged(); }
+        }
+
+        private bool autofocusEnabled;
+        public bool AutofocusEnabled {
+            get => autofocusEnabled;
+            set { autofocusEnabled = value; RaisePropertyChanged(); }
+        }
+
+        private double autofocusMinutes;
+        public double AutofocusMinutes {
+            get => autofocusMinutes;
+            set { autofocusMinutes = value; RaisePropertyChanged(); }
+        }
+
+        public RelayCommand AddToSequenceCommand { get; }
+
+        private void AddToSequenceAction() {
+            var target = Loaded;
+            if (target == null) return;
+            if (!sequenceMediator.Initialized) {
+                Notification.ShowError("The Advanced Sequencer isn't ready yet -- open the Sequence tab once, then try again.");
+                return;
+            }
+
+            try {
+                var trueCoordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
+                var filter = SelectedFilterName == NoFilterChangeOption
+                    ? null
+                    : profileService.ActiveProfile.FilterWheelSettings.FilterWheelFilters.FirstOrDefault(f => f.Name == SelectedFilterName);
+                var exposure = new PerihelionSequenceBuilder.ExposureSettings(filter, ExposureSeconds, FrameCount);
+
+                var dso = PerihelionSequenceBuilder.BuildTargetContainer(
+                    sequencerFactory, target.ObjectType, target.Name,
+                    trueCoordinates, LoadedCoordinatesWithOffset(),
+                    Guiding, AutofocusEnabled ? AutofocusMinutes : null, exposure);
+
+                sequenceMediator.AddAdvancedTarget(dso);
+
+                if (MeridianFlip) {
+                    // MeridianFlipTrigger belongs on the sequence's own global triggers (applies
+                    // mount-wide, not per-target) -- AddAdvancedTarget only adds the one target
+                    // container, so this needs its own path via the already-loaded root.
+                    var root = dso.GetRootContainer(dso);
+                    if (root != null && !root.Triggers.Any(t => t is NINA.Sequencer.Trigger.MeridianFlip.MeridianFlipTrigger)) {
+                        root.Add(sequencerFactory.GetTrigger<NINA.Sequencer.Trigger.MeridianFlip.MeridianFlipTrigger>());
+                    }
+                }
+
+                sequenceMediator.SwitchToAdvancedView();
+                Notification.ShowSuccess($"Added {target.Name} to the sequence");
+            } catch (Exception ex) {
+                Notification.ShowError($"Perihelion: failed to add to sequence: {ex.Message}");
+                Logger.Error("Perihelion: failed to add to sequence", ex);
+            }
+        }
 
         public AsyncRelayCommand LoadCommand { get; }
         public AsyncRelayCommand FrameCommand { get; }
