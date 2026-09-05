@@ -553,6 +553,22 @@ namespace Perihelion.ViewModels {
             set { meridianFlip = value; RaisePropertyChanged(); }
         }
 
+        // Default false -- real user feedback (2026-09-05): with no rotator connected,
+        // CenterAndRotate fails validation and blocks the whole sequence, so this needs to be an
+        // explicit opt-in rather than assumed. Checked, it lets a user with a real rotator set an
+        // actual framing angle instead of being stuck on plain Center.
+        private bool useRotator;
+        public bool UseRotator {
+            get => useRotator;
+            set { useRotator = value; RaisePropertyChanged(); }
+        }
+
+        private double rotationAngle;
+        public double RotationAngle {
+            get => rotationAngle;
+            set { rotationAngle = value; RaisePropertyChanged(); }
+        }
+
         private bool autofocusEnabled;
         public bool AutofocusEnabled {
             get => autofocusEnabled;
@@ -606,11 +622,26 @@ namespace Perihelion.ViewModels {
                     new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours),
                     LoadedCoordinatesWithOffset(),
                     Guiding,
-                    MeridianFlip,
+                    UseRotator ? RotationAngle : (double?)null,
                     AutofocusEnabled ? AutofocusMinutes : (double?)null,
                     new PerihelionSequenceBuilder.ExposureSettings(filter, ExposureSeconds, FrameCount));
 
                 sequenceMediator.AddAdvancedTarget(container);
+
+                // Global Triggers, not this target's own local ones -- see
+                // EnsureGlobalMeridianFlipTrigger's own doc comment for why (real user feedback,
+                // 2026-09-05). Best-effort: if the root can't be reached for some reason, the
+                // target itself was still added successfully above, so this only logs rather
+                // than rolling back or erroring the whole action.
+                if (MeridianFlip) {
+                    var root = PerihelionSequenceBuilder.ResolveSequenceRoot(sequenceMediator);
+                    if (root != null) {
+                        PerihelionSequenceBuilder.EnsureGlobalMeridianFlipTrigger(factory, root);
+                    } else {
+                        Logger.Warning("Perihelion: added target to sequence, but could not reach the sequence root to add a global Meridian Flip trigger");
+                    }
+                }
+
                 StatusText = $"Added {Loaded.Name} to the Advanced Sequencer.";
             } catch (Exception ex) {
                 Notification.ShowError($"Perihelion: failed to add to sequence: {ex.Message}");

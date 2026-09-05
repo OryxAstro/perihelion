@@ -513,7 +513,20 @@
                              hardware test showed these with no visible label at all. A separate
                              TextBlock is the only way to actually label one — placed to its left
                              in the same row (not stacked above it) per real user feedback
-                             (2026-09-05), to save vertical space. -->
+                             (2026-09-05), to save vertical space.
+                             Default OFF — real user feedback (2026-09-05): the sequence builder
+                             used to always send "Slew, center and rotate", which fails validation
+                             ("rotator not connected") for anyone without one. Now an explicit
+                             choice: unchecked sends plain "Slew and center" (no rotator involved
+                             at all); checked sends "Slew, center and rotate" to the angle below,
+                             for users who do have a rotator and want real framing control. -->
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                            <TextBlock Text="Use rotator" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <CheckBox IsChecked="{Binding UseRotator}" Margin="0,0,10,0" />
+                            <TextBox Text="{Binding RotationAngle, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center" Margin="0,0,6,0"
+                                     IsEnabled="{Binding UseRotator}" />
+                            <TextBlock Text="°" VerticalAlignment="Center" Opacity="0.7" />
+                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <TextBlock Text="Meridian flip" VerticalAlignment="Center" Margin="0,0,10,0" />
                             <CheckBox IsChecked="{Binding MeridianFlip}" />
