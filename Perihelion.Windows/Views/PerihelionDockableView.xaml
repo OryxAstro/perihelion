@@ -40,8 +40,8 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{Binding Name}" />
-                                <TextBlock Grid.Column="1" Text="{Binding Magnitude, StringFormat='mag {0:F1}'}" Opacity="0.7" Margin="8,0,0,0" />
+                                <TextBlock Grid.Column="0" Text="{Binding Name}" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Magnitude, StringFormat='mag {0:F1}'}" Foreground="{DynamicResource ButtonForegroundBrush}" Opacity="0.7" Margin="8,0,0,0" />
                             </Grid>
                         </DataTemplate>
                     </ListView.ItemTemplate>
