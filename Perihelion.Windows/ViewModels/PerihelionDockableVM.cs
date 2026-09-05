@@ -237,7 +237,19 @@ namespace Perihelion.ViewModels {
             set { offsetDecArcsec = value; RaisePropertyChanged(); ResetOffsetCommand.NotifyCanExecuteChanged(); }
         }
 
+        /// <summary>One marker per night on the path, positioned in the same coordinate space
+        /// as PathPoints (Left/Top already centered, not top-left-anchored) -- IsTonight flags
+        /// day 0 (the same "now" instant Load's own position/rate came from) so the chart can
+        /// highlight it distinctly from the other nine nights.</summary>
+        public sealed class PathMarker {
+            public required double Left { get; init; }
+            public required double Top { get; init; }
+            public required double Size { get; init; }
+            public required bool IsTonight { get; init; }
+        }
+
         public PointCollection PathPoints { get; private set; }
+        public ObservableCollection<PathMarker> PathMarkers { get; } = new();
         public double PathViewBoxWidth => PathViewWidth;
         public double PathViewBoxHeight => PathViewHeight;
         private string pathStartLabel = string.Empty, pathEndLabel = string.Empty;
@@ -258,7 +270,7 @@ namespace Perihelion.ViewModels {
                 nameof(PerihelionDistanceText), nameof(SemiMajorAxisText), nameof(MeanAnomalyAtEpochText),
                 nameof(MeanAnomalyNowText), nameof(EccentricAnomalyNowText), nameof(TrueAnomalyNowText),
                 nameof(DistanceNowText), nameof(EpochOrPerihelionLabel), nameof(EpochOrPerihelionText),
-                nameof(PathPoints), nameof(PathStartLabel), nameof(PathEndLabel),
+                nameof(PathPoints), nameof(PathMarkers), nameof(PathStartLabel), nameof(PathEndLabel),
             }) {
                 RaisePropertyChanged(name);
             }
@@ -361,11 +373,19 @@ namespace Perihelion.ViewModels {
             }
         }
 
+        // Keeps every marker's own radius fully inside the canvas -- without this, a point that
+        // lands exactly on an edge (common for the path's own first/last point, since the
+        // min/max used to normalize the axes come from the path itself) would render its dot
+        // half-clipped.
+        private const double PathMarkerInset = 6;
+
         private void BuildPathPolyline(IReadOnlyList<(DateTime date, double raHours, double decDeg)>? path) {
             var points = new PointCollection();
+            var markers = new List<PathMarker>();
             pathStartLabel = pathEndLabel = string.Empty;
             if (path == null || path.Count == 0) {
                 PathPoints = points;
+                PathMarkers.Clear();
                 return;
             }
 
@@ -387,13 +407,25 @@ namespace Perihelion.ViewModels {
             var maxDec = decValues.Max();
             var raSpan = maxRa - minRa;
             var decSpan = maxDec - minDec;
+            var plotWidth = PathViewWidth - 2 * PathMarkerInset;
+            var plotHeight = PathViewHeight - 2 * PathMarkerInset;
 
             for (var i = 0; i < path.Count; i++) {
-                var x = raSpan > 1e-9 ? (raValues[i] - minRa) / raSpan * PathViewWidth : PathViewWidth / 2;
-                var y = decSpan > 1e-9 ? PathViewHeight - (decValues[i] - minDec) / decSpan * PathViewHeight : PathViewHeight / 2;
+                var x = PathMarkerInset + (raSpan > 1e-9 ? (raValues[i] - minRa) / raSpan * plotWidth : plotWidth / 2);
+                var y = PathMarkerInset + (decSpan > 1e-9 ? plotHeight - (decValues[i] - minDec) / decSpan * plotHeight : plotHeight / 2);
                 points.Add(new Point(x, y));
+
+                var isTonight = i == 0;
+                var size = isTonight ? 9.0 : 5.0;
+                markers.Add(new PathMarker { Left = x - size / 2, Top = y - size / 2, Size = size, IsTonight = isTonight });
             }
 
+            PathMarkers.Clear();
+            foreach (var m in markers) PathMarkers.Add(m);
+
+            // Labels sit in their own row below the plot (see the view), not overlaid on the
+            // canvas -- a real-hardware test found the overlaid version colliding with the line
+            // and dots whenever the path's first/last point happened to land near a top corner.
             pathStartLabel = path[0].date.ToString("MMM d");
             pathEndLabel = path[^1].date.ToString("MMM d");
             PathPoints = points;
