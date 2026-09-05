@@ -13,6 +13,7 @@ using NINA.Sequencer.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
 using NINA.WPF.Base.ViewModel;
+using Perihelion;
 using Perihelion.Api;
 using Perihelion.Astrometry;
 using Perihelion.SequenceItems;
@@ -56,10 +57,14 @@ namespace Perihelion.ViewModels {
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IFramingAssistantVM framingAssistantVM;
         private readonly IApplicationMediator applicationMediator;
-        private readonly ISequencerFactory sequencerFactory;
-        private readonly ISequenceMediator sequenceMediator;
         private readonly DispatcherTimer statusTimer;
         private CancellationTokenSource? loadCts;
+
+        // ISequencerFactory/ISequenceMediator are NOT imported here directly -- confirmed the
+        // hard way that doing so silently breaks this VM's own MEF composition entirely (the
+        // whole panel vanishes from the Imaging tab, no error, no log signal). See
+        // PerihelionPlugin's own static SequencerFactory/SequenceMediator fields for the full
+        // explanation and the working alternative used instead.
 
         [ImportingConstructor]
         public PerihelionDockableVM(
@@ -67,16 +72,12 @@ namespace Perihelion.ViewModels {
             IGuiderMediator guiderMediator,
             ITelescopeMediator telescopeMediator,
             IFramingAssistantVM framingAssistantVM,
-            IApplicationMediator applicationMediator,
-            ISequencerFactory sequencerFactory,
-            ISequenceMediator sequenceMediator) : base(profileService) {
+            IApplicationMediator applicationMediator) : base(profileService) {
             this.profileService = profileService;
             this.guiderMediator = guiderMediator;
             this.telescopeMediator = telescopeMediator;
             this.framingAssistantVM = framingAssistantVM;
             this.applicationMediator = applicationMediator;
-            this.sequencerFactory = sequencerFactory;
-            this.sequenceMediator = sequenceMediator;
 
             Title = "Perihelion";
             // MEF composition order between this VM and PerihelionPlugin's own resource-merging
@@ -325,6 +326,13 @@ namespace Perihelion.ViewModels {
         private void AddToSequenceAction() {
             var target = Loaded;
             if (target == null) return;
+
+            var sequencerFactory = PerihelionPlugin.SequencerFactory;
+            var sequenceMediator = PerihelionPlugin.SequenceMediator;
+            if (sequencerFactory == null || sequenceMediator == null) {
+                Notification.ShowError("Perihelion: sequencer access isn't available yet -- try restarting NINA.");
+                return;
+            }
             if (!sequenceMediator.Initialized) {
                 Notification.ShowError("The Advanced Sequencer isn't ready yet -- open the Sequence tab once, then try again.");
                 return;
