@@ -1,5 +1,6 @@
 using CommunityToolkit.Mvvm.Input;
 using NINA.Astrometry;
+using NINA.Core.Enum;
 using NINA.Core.Model;
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
@@ -10,6 +11,7 @@ using NINA.Sequencer;
 using NINA.Sequencer.SequenceItem.Platesolving;
 using NINA.WPF.Base.SkySurvey;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -83,6 +85,11 @@ namespace Perihelion.ViewModels {
 
             PositionText = $"RA {AstroUtil.HoursToHMS(trueCoordinates.RA)}  Dec {AstroUtil.DegreesToDMS(trueCoordinates.Dec)}";
             RotatorConnected = rotatorMediator.GetInfo().Connected;
+            // Backing field directly, not the property setter -- the setter's own side effects
+            // (persisting to the profile, re-triggering LoadSkyMapAsync) are for when the USER
+            // changes the dropdown; LoadSkyMapAsync below already runs once regardless, so
+            // running it a second time here too would just be a redundant fetch on open.
+            selectedImageSource = profileService.ActiveProfile.FramingAssistantSettings.LastSelectedImageSource;
 
             SlewAndCenterCommand = new AsyncRelayCommand(SlewAndCenterAction, () => !IsBusy && telescopeMediator.GetInfo().Connected);
             SlewAndCenterCommand.RegisterPropertyChangeNotification(this, nameof(IsBusy));
@@ -103,16 +110,78 @@ namespace Perihelion.ViewModels {
         public string PositionText { get; }
         public bool RotatorConnected { get; }
 
+        // --- Image source ---
+
+        /// <summary>File/Cache deliberately excluded -- File needs a local file picker (not
+        /// built here) and Cache only has content once something else has already populated it.
+        /// The remaining five are all live, no-setup sky-survey sources plus the offline
+        /// placeholder, matching what a user picking an image source in real NINA would actually
+        /// choose between.</summary>
+        public IReadOnlyList<SkySurveySource> ImageSources { get; } = new[] {
+            SkySurveySource.NASA, SkySurveySource.HIPS2FITS, SkySurveySource.STSCI,
+            SkySurveySource.ESO, SkySurveySource.SKYSERVER, SkySurveySource.SKYATLAS,
+        };
+
+        private SkySurveySource selectedImageSource;
+        public SkySurveySource SelectedImageSource {
+            get => selectedImageSource;
+            set {
+                if (selectedImageSource == value) return;
+                selectedImageSource = value;
+                RaisePropertyChanged();
+                // Persisted back to the profile -- same field NINA's own real Framing Assistant
+                // reads/writes for this exact purpose, so switching sources here also becomes
+                // the new default there (and next time this Composer opens), matching how a
+                // user's own preference is normally expected to stick.
+                profileService.ActiveProfile.FramingAssistantSettings.LastSelectedImageSource = value;
+                _ = LoadSkyMapAsync();
+            }
+        }
+
         private bool useRotation;
         public bool UseRotation {
             get => useRotation;
-            set { useRotation = value; RaisePropertyChanged(); }
+            set { useRotation = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(DisplayRotationAngle)); }
         }
 
         private double rotationAngle;
         public double RotationAngle {
             get => rotationAngle;
-            set { rotationAngle = value; RaisePropertyChanged(); }
+            set { rotationAngle = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(DisplayRotationAngle)); }
+        }
+
+        /// <summary>Drives the FOV rectangle's own on-screen RenderTransform (RotateTransform) --
+        /// negated because screen-space rotation (WPF's RotateTransform.Angle, clockwise in
+        /// pixel space) and the astronomical position-angle convention CenterAndRotate itself
+        /// uses aren't the same direction by default for a standard N-up display. Best
+        /// understanding as of writing this, not yet confirmed against a real rotator visually --
+        /// flag if the box appears to rotate the wrong way once actually seen live.</summary>
+        public double DisplayRotationAngle => UseRotation ? -RotationAngle : 0;
+
+        // --- Background pan/zoom (purely cosmetic -- exploring the wider sky map image for
+        // context, never changes any real astronomical value). Bound to a ScaleTransform +
+        // TranslateTransform on the Image element itself; PerihelionFramingComposerWindow's own
+        // code-behind drives these from mouse wheel/drag, since WPF has no built-in pan/zoom
+        // gesture support without a third-party behaviors library this project doesn't
+        // reference. Clamped in the code-behind, not here, since the natural place to enforce
+        // "don't zoom out past 1x" is right where the delta is computed.
+
+        private double imageZoom = 1.0;
+        public double ImageZoom {
+            get => imageZoom;
+            set { imageZoom = value; RaisePropertyChanged(); }
+        }
+
+        private double imagePanX;
+        public double ImagePanX {
+            get => imagePanX;
+            set { imagePanX = value; RaisePropertyChanged(); }
+        }
+
+        private double imagePanY;
+        public double ImagePanY {
+            get => imagePanY;
+            set { imagePanY = value; RaisePropertyChanged(); }
         }
 
         private bool isBusy;
@@ -173,6 +242,42 @@ namespace Perihelion.ViewModels {
         public double FovRectLeft { get => fovRectLeft; private set { fovRectLeft = value; RaisePropertyChanged(); } }
         public double FovRectTop { get => fovRectTop; private set { fovRectTop = value; RaisePropertyChanged(); } }
 
+        // Set once per LoadSkyMapAsync call, reused by MoveFovRectBy (dragging the FOV box) and
+        // SetFovRectFromOffset (after a mount-based Capture Offset) so both interactions stay in
+        // sync with each other and with the sky map's own real angular scale. baseFovRect* is the
+        // "zero offset" position (dead center on the target) computed fresh each time the sky map
+        // itself reloads (e.g. a different image source).
+        private double pixelsPerArcmin = 1;
+        private double baseFovRectLeft, baseFovRectTop;
+
+        /// <summary>Repositions the FOV rectangle from the current OffsetRaArcsec/OffsetDecArcsec
+        /// -- called after CaptureOffsetAction (a physical mount nudge) so the on-screen box
+        /// visually reflects it, matching what MoveFovRectBy already keeps in sync for a direct
+        /// drag. RA increasing = screen right, Dec increasing = screen up: best understanding as
+        /// of writing this (not yet confirmed against a real rotator/sky map visually) -- matches
+        /// this file's own DisplayRotationAngle caveat, flag if either turns out backwards once
+        /// actually seen live.</summary>
+        private void SetFovRectFromOffset() {
+            if (!(pixelsPerArcmin > 0)) return;
+            FovRectLeft = baseFovRectLeft + (offsetRaArcsec / 60.0) * pixelsPerArcmin;
+            FovRectTop = baseFovRectTop - (offsetDecArcsec / 60.0) * pixelsPerArcmin;
+        }
+
+        /// <summary>Drags the FOV rectangle itself (as opposed to panning the background image,
+        /// which is purely cosmetic -- see ImagePanX/Y's own comment) -- this directly sets the
+        /// real offset Add to Sequence/Quick Track will use, the same OffsetRaArcsec/
+        /// OffsetDecArcsec "Capture Offset from Mount" sets, just derived visually instead of
+        /// from the mount's real position. Same sign convention as SetFovRectFromOffset, inverted
+        /// to solve for the offset instead.</summary>
+        public void MoveFovRectBy(double deltaXPixels, double deltaYPixels) {
+            if (!(pixelsPerArcmin > 0)) return;
+            FovRectLeft += deltaXPixels;
+            FovRectTop += deltaYPixels;
+            OffsetRaArcsec = Math.Round(((FovRectLeft - baseFovRectLeft) / pixelsPerArcmin) * 60.0, 1);
+            OffsetDecArcsec = Math.Round((-(FovRectTop - baseFovRectTop) / pixelsPerArcmin) * 60.0, 1);
+            StatusText = "Offset set from the FOV box's position -- drag it back to center, or Slew and Center, to clear it.";
+        }
+
         /// <summary>Fetches a real sky-survey image centered on the target, sized to show
         /// genuine surrounding context (SkyMapZoomOutFactor wider than the camera's own actual
         /// field of view), then computes the FOV rectangle overlay from the user's own real gear
@@ -208,17 +313,24 @@ namespace Perihelion.ViewModels {
                     cameraFovWidthArcmin = cameraFovHeightArcmin = 0;
                 }
 
-                var survey = new SkySurveyFactory(imageDataFactory).Create(framingSettings.LastSelectedImageSource);
+                var survey = new SkySurveyFactory(imageDataFactory).Create(selectedImageSource);
                 var image = await survey.GetImage(TargetName, trueCoordinates, requestedFovArcmin,
                     (int)SkyMapDisplaySize, (int)SkyMapDisplaySize, CancellationToken.None, new Progress<int>());
 
                 SkyImage = image.Image;
+                // Reset -- a freshly (re)loaded sky map has no pan/zoom applied to it yet, and
+                // switching image source mid-session shouldn't leave a stale offset from the
+                // previous image's own pixel scale.
+                ImagePanX = 0;
+                ImagePanY = 0;
+                ImageZoom = 1.0;
 
-                var pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
+                pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
                 FovRectWidth = Math.Min(SkyMapDisplaySize, cameraFovWidthArcmin * pixelsPerArcmin);
                 FovRectHeight = Math.Min(SkyMapDisplaySize, cameraFovHeightArcmin * pixelsPerArcmin);
-                FovRectLeft = (SkyMapDisplaySize - FovRectWidth) / 2;
-                FovRectTop = (SkyMapDisplaySize - FovRectHeight) / 2;
+                baseFovRectLeft = (SkyMapDisplaySize - FovRectWidth) / 2;
+                baseFovRectTop = (SkyMapDisplaySize - FovRectHeight) / 2;
+                SetFovRectFromOffset();
 
                 SkyMapStatusText = cameraFovWidthArcmin > 0
                     ? string.Empty
@@ -282,6 +394,10 @@ namespace Perihelion.ViewModels {
             var current = telescopeMediator.GetCurrentPosition();
             OffsetRaArcsec = Math.Round((current.RA - trueCoordinates.RA) * 15 * 3600, 1);
             OffsetDecArcsec = Math.Round((current.Dec - trueCoordinates.Dec) * 3600, 1);
+            // Keeps the on-screen FOV box in sync with this physical capture -- otherwise it
+            // would stay frozen at center while OffsetRa/DecArcsec (the value Add to Sequence/
+            // Quick Track actually reads) silently changed underneath it.
+            SetFovRectFromOffset();
             StatusText = "Offset captured from the mount's current position.";
         }
     }
