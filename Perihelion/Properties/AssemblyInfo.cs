@@ -30,12 +30,26 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 [assembly: AssemblyMetadata("LongDescription", @"Sets a mount's custom RA/Dec tracking rate for a comet or asteroid so it stays centered
 in frame without fighting the sidereal rate — computed live, on-device, from real orbital
-elements, with no external service or internet dependency in the field. Falls back to
-guiding-only shift tracking when the mount's own driver can't take a custom rate.
+elements, with no external service or internet dependency in the field.
 
-Also runs a small standalone server that powers the Perihelion panel in Touch-N-Stars:
-browse live comet/asteroid brightness, preview tonight's position and a 10-night path,
-start an ad-hoc Quick Track (with optional auto re-apply as the rate drifts), or add a
-full tracking sequence to the Advanced Sequencer.
+Features
+
+* A native dockable panel (Imaging tab, real Windows NINA only) to browse live comet and
+  asteroid brightness, preview tonight's position, rate, orbital elements and a 10-night
+  path, then Frame, Slew and Track, Set Tracking Rate, Set Guider Shift Rate, or start an
+  ad-hoc Quick Track — all in one place.
+* The same tracking, browsing and Quick Track features from the Perihelion panel in
+  Touch-N-Stars, for PINS and remote/mobile control either way.
+* Quick Track's own optional auto re-apply, recomputing and resending the rate on an
+  interval as a fast-moving object's true rate drifts over a session.
+* Falls back to guiding-only shift tracking (PHD2's own native mechanism) when the mount's
+  own driver can't take a custom base tracking rate at all.
+* An ""Add to Sequence"" step for the Advanced Sequencer, for a full unattended run.
+
+Object Types
+
+* Comets — live elements from the Minor Planet Center's public comet-elements feed.
+* Numbered asteroids — a curated list of bright, well-known asteroids (not the full MPC
+  catalog).
 
 Standalone: no shared code, cache format, or affiliation with NINA.Joko.Plugin.Orbitals.")]

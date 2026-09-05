@@ -67,6 +67,30 @@ namespace Perihelion.Astrometry {
             return e;
         }
 
+        /// <summary>The classical anomalies and heliocentric distance at a given instant --
+        /// display-only data for the Perihelion dockable panel's elements card (mirrors what
+        /// NINA.Joko.Plugin.Orbitals' own panel shows). Deliberately a separate method rather
+        /// than exposing internals of the already physics-audited HeliocentricEcliptic below:
+        /// same formulas, kept independent so nothing here can regress that method.</summary>
+        public readonly record struct OrbitAnomalies(double MeanAnomalyDeg, double EccentricAnomalyDeg, double TrueAnomalyDeg, double DistanceAu);
+
+        public static OrbitAnomalies ComputeAnomalies(AsteroidElements elements, AstroTime t) {
+            var daysSinceEpoch = OrbitalMechanics.JulianDate(t) - elements.EpochJd;
+            var meanMotion = Math.Sqrt(OrbitalMechanics.GaussianKSquared / Math.Pow(elements.A, 3)); // rad/day
+            var meanAnomaly = OrbitalMechanics.NormalizeRad(elements.MeanAnomalyDeg * OrbitalMechanics.Deg2Rad + meanMotion * daysSinceEpoch);
+            var eccentricAnomaly = SolveKeplerEccentricAnomaly(meanAnomaly, elements.Eccentricity);
+
+            var e = elements.Eccentricity;
+            var trueAnomaly = 2 * Math.Atan2(Math.Sqrt(1 + e) * Math.Sin(eccentricAnomaly / 2), Math.Sqrt(1 - e) * Math.Cos(eccentricAnomaly / 2));
+            var radius = elements.A * (1 - e * Math.Cos(eccentricAnomaly));
+
+            return new OrbitAnomalies(
+                MeanAnomalyDeg: meanAnomaly / OrbitalMechanics.Deg2Rad,
+                EccentricAnomalyDeg: OrbitalMechanics.NormalizeRad(eccentricAnomaly) / OrbitalMechanics.Deg2Rad,
+                TrueAnomalyDeg: OrbitalMechanics.NormalizeRad(trueAnomaly) / OrbitalMechanics.Deg2Rad,
+                DistanceAu: radius);
+        }
+
         /// <summary>Heliocentric ecliptic (mean equinox J2000) position, AU.</summary>
         public static EclipticVector HeliocentricEcliptic(AsteroidElements elements, AstroTime t) {
             var daysSinceEpoch = OrbitalMechanics.JulianDate(t) - elements.EpochJd;
