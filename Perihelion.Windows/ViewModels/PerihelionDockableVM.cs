@@ -285,15 +285,26 @@ namespace Perihelion.ViewModels {
         // it in) into a single positive range before the final %360 and re-centering.
         private static double WrapSigned(double degrees) => ((degrees % 360) + 540) % 360 - 180;
 
+        // Arcsec remains the internal storage (what LoadedCoordinatesWithOffset actually adds),
+        // but real user feedback: don't display it as a raw arcsec number -- show it the same
+        // way NINA.Joko.Plugin.Orbitals displays its own RAOffset/DecOffset, HH:MM:SS for RA and
+        // DMS for Dec (both AstroUtil.HoursToHMS/DegreesToDMS correctly handle negative offsets
+        // with a leading "-", confirmed from NINA's own source, unlike a plain position which
+        // never goes negative). Read-only display, not an editable sexagesimal text box -- Set
+        // Offset (capture from the mount) and Clear Offset are the only ways to change this,
+        // matching Orbitals' own apparent interaction model (no manual offset typing there
+        // either), and avoids needing a bespoke bidirectional HH:MM:SS/DMS parser.
         private double offsetRaArcsec, offsetDecArcsec;
         public double OffsetRaArcsec {
             get => offsetRaArcsec;
-            set { offsetRaArcsec = value; RaisePropertyChanged(); ResetOffsetCommand.NotifyCanExecuteChanged(); }
+            set { offsetRaArcsec = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(OffsetRaText)); ResetOffsetCommand.NotifyCanExecuteChanged(); }
         }
         public double OffsetDecArcsec {
             get => offsetDecArcsec;
-            set { offsetDecArcsec = value; RaisePropertyChanged(); ResetOffsetCommand.NotifyCanExecuteChanged(); }
+            set { offsetDecArcsec = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(OffsetDecText)); ResetOffsetCommand.NotifyCanExecuteChanged(); }
         }
+        public string OffsetRaText => AstroUtil.HoursToHMS(offsetRaArcsec / 3600.0 / 15.0);
+        public string OffsetDecText => AstroUtil.DegreesToDMS(offsetDecArcsec / 3600.0);
 
         /// <summary>One marker per night on the path, positioned in the same coordinate space
         /// as PathPoints (Left/Top already centered, not top-left-anchored). IsTonight flags day
