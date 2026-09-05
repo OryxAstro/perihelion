@@ -55,42 +55,49 @@
                 <!-- Browse (left) / Update Sources (right) -->
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="2*" />
-                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="20" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0">
                         <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
-                        <Grid Margin="0,0,0,4">
+                        <!-- Real user feedback (2026-09-05): this whole section was far too wide
+                             (the outer Grid's left column was "2*"), which stretched Refresh and
+                             Search off to the right edge of the panel instead of sitting right
+                             next to their own combo box / search box, and left the Update Sources
+                             column on the right too narrow for its own "Last Updated" text to fit
+                             on one line. Fixed width (400px, matching the ListView's own
+                             GridViewColumn widths below: 180+90+130) instead of a stretchy "*"
+                             column solves both at once — this section now takes only the room it
+                             actually needs, and the freed width goes to Update Sources
+                             automatically via the outer Grid's own "*" column.
+                             One Grid with two rows (not two separate Grids) for the Refresh and
+                             Search rows guarantees their buttons — both fixed Width="90" per the
+                             same feedback ("all buttons the same width ... aligned horizontally
+                             and vertically") — land at the exact same column, so they visually
+                             line up when stacked. -->
+                        <Grid Width="400" HorizontalAlignment="Left" Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="90" />
                             </Grid.ColumnDefinitions>
-                            <ComboBox Grid.Column="0" Width="90" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
-                            <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" />
-                            <Button Grid.Column="2" Command="{Binding RefreshBrowseListCommand}"
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <ComboBox Grid.Row="0" Grid.Column="0" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,6" />
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" Margin="0,0,6,6" />
+                            <Button Grid.Row="0" Grid.Column="2" Command="{Binding RefreshBrowseListCommand}" Margin="0,0,0,6"
                                     ToolTip="Comets and asteroids load automatically when this panel opens (from cache if warm) -- use this to force a fresh pull right now.">
                                 <TextBlock Text="Refresh" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
-                        </Grid>
-                        <!-- Search box: no MinWidth previously, so with HorizontalAlignment="Left"
-                             and no content it collapsed to its bare padding width — confirmed
-                             from a real screenshot. Stretching it into the "*" column (dropping
-                             HorizontalAlignment="Left") and giving it a real Height (matching the
-                             30px buttons, not the default ~18px) fixes both the width and the
-                             cramped vertical look at once. -->
-                        <Grid Margin="0,0,0,4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="Auto" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
-                            <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0" />
-                            <Button Grid.Column="2" Command="{Binding SearchCommand}">
+                            <Button Grid.Row="1" Grid.Column="2" Command="{Binding SearchCommand}">
                                 <TextBlock Text="Search" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
                         </Grid>
@@ -105,8 +112,10 @@
                              whose GridView.ColumnCollection feeds those columns. A real GridView
                              here (not a custom ItemTemplate) is what NINA's own theme actually
                              expects, and its column cells use the app's normal default TextBlock
-                             style automatically, same as any other page text. -->
-                        <ListView ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
+                             style automatically, same as any other page text. Width="400" matches
+                             the Refresh/Search Grid above it — same reasoning as that Grid's own
+                             comment. -->
+                        <ListView Width="400" HorizontalAlignment="Left" ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="Name" Width="180" DisplayMemberBinding="{Binding Name}" />
@@ -122,7 +131,7 @@
                                          shortly after the list first renders — see
                                          EnrichObservedMagnitudesAsync in the VM — not blocking the
                                          initial Browse population. -->
-                                    <GridViewColumn Header="Observed Mag (COBS)" Width="140">
+                                    <GridViewColumn Header="Observed Mag (COBS)" Width="130">
                                         <GridViewColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding ObservedMagnitude, StringFormat='mag {0:F1}', TargetNullValue='--'}"
@@ -134,7 +143,7 @@
                                 </GridView>
                             </ListView.View>
                         </ListView>
-                        <Button Command="{Binding LoadCommand}" HorizontalAlignment="Left">
+                        <Button Command="{Binding LoadCommand}" Width="90" HorizontalAlignment="Left">
                             <TextBlock Text="Load" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                         </Button>
                     </StackPanel>
@@ -147,7 +156,12 @@
                          project's existing PINS-side sync status — explicit, deliberate refresh
                          actions with their own real "when" (CometOrbits.LastSyncedUtc /
                          CometActivity.LastFullRefreshUtc, both disk-persisted — see
-                         RefreshLastUpdatedText's own doc comment for how that was verified). -->
+                         RefreshLastUpdatedText's own doc comment for how that was verified).
+                         This column is now "*" instead of a narrow fixed share, so it picks up
+                         all the width freed by the Browse column's own fixed 400px above — real
+                         user feedback (2026-09-05) was that "Last Updated: ..." was wrapping onto
+                         a second line for lack of room. Both Update buttons share the Browse
+                         section's own Width="90" for the same "all buttons the same width" reason. -->
                     <StackPanel Grid.Column="2">
                         <TextBlock Text="Update Sources" FontWeight="Bold" Margin="0,0,0,4" />
                         <Grid Margin="0,0,0,6">
@@ -157,7 +171,7 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{Binding CometsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" Command="{Binding UpdateCometsCommand}" Margin="0,0,8,0"
+                            <Button Grid.Column="1" Width="90" Command="{Binding UpdateCometsCommand}" Margin="0,0,8,0"
                                     ToolTip="Re-fetches the comet-elements feed from MPC now, bypassing its normal 6h cache.">
                                 <TextBlock Text="Update" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
@@ -172,7 +186,7 @@
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="COBS" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" Command="{Binding UpdateCobsCommand}" Margin="0,0,8,0"
+                            <Button Grid.Column="1" Width="90" Command="{Binding UpdateCobsCommand}" Margin="0,0,8,0"
                                     ToolTip="Refreshes real observed brightness from COBS for every comet in the browse list. Takes several seconds to tens of seconds -- a deliberate, explicit action, not something that runs automatically.">
                                 <TextBlock Text="Update" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
