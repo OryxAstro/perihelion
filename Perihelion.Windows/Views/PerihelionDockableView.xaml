@@ -417,7 +417,7 @@
                     </StackPanel>
                 </Grid>
 
-                <Separator Margin="0,10,0,10" />
+                <Separator Margin="0,14,0,14" />
 
                 <!-- Add to Sequence (left) / Quick Track (right), with a real vertical rule
                      between them — real user feedback (2026-09-05): these two sections needed
@@ -442,12 +442,13 @@
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                        <TextBlock Text="Add to Sequence" FontWeight="Bold" Margin="0,0,0,8" />
-                        <StackPanel Margin="0,0,0,12">
+                        <TextBlock Text="Add to Sequence" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Text="Builds a sequence step to slew, center, track, and image this target with the Advanced Sequencer -- for a full unattended run." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,14" />
+                        <StackPanel Margin="0,0,0,16">
                             <TextBlock Text="Filter" Margin="0,0,0,3" />
                             <ComboBox ItemsSource="{Binding AvailableFilterNames}" SelectedItem="{Binding SelectedFilterName}" />
                         </StackPanel>
-                        <Grid Margin="0,0,0,12">
+                        <Grid Margin="0,0,0,16">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="12" />
@@ -467,11 +468,11 @@
                              NINA.WPF.Base's own CheckBox.xaml), which is exactly why a real-
                              hardware test showed these with no visible label at all. A separate
                              TextBlock above each toggle is the only way to actually label one. -->
-                        <StackPanel Margin="0,0,0,12">
+                        <StackPanel Margin="0,0,0,16">
                             <TextBlock Text="Meridian flip" Margin="0,0,0,3" />
                             <CheckBox IsChecked="{Binding MeridianFlip}" HorizontalAlignment="Left" />
                         </StackPanel>
-                        <StackPanel Margin="0,0,0,12">
+                        <StackPanel Margin="0,0,0,16">
                             <TextBlock Text="Autofocus every" Margin="0,0,0,3" />
                             <StackPanel Orientation="Horizontal">
                                 <CheckBox IsChecked="{Binding AutofocusEnabled}" Margin="0,0,10,0" />
@@ -488,16 +489,17 @@
                     <Border Grid.Column="1" Width="1" Margin="12,0" Background="{DynamicResource BorderBrush}" VerticalAlignment="Stretch" />
 
                     <StackPanel Grid.Column="2" Margin="8,0,0,0">
-                        <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,8" />
-                        <StackPanel Margin="0,0,0,12">
+                        <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Text="Starts tracking this target right now, independent of any sequence -- for manual framing, visual use, or a target you've already centered." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,14" />
+                        <StackPanel Margin="0,0,0,16">
                             <TextBlock Text="Include guiding" Margin="0,0,0,3" />
                             <CheckBox IsChecked="{Binding Guiding}" HorizontalAlignment="Left" />
                         </StackPanel>
-                        <StackPanel Margin="0,0,0,12">
+                        <StackPanel Margin="0,0,0,16">
                             <TextBlock Text="Auto re-apply every 15 min" Margin="0,0,0,3" />
                             <CheckBox IsChecked="{Binding AutoReapply}" HorizontalAlignment="Left" />
                         </StackPanel>
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <Button Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0">
                                 <TextBlock Text="Start Quick Track" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
