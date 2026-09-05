@@ -25,12 +25,9 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("Repository", "https://github.com/OryxAstro/perihelion")]
 [assembly: AssemblyMetadata("ChangelogURL", "https://github.com/OryxAstro/perihelion/blob/main/CHANGELOG.md")]
 [assembly: AssemblyMetadata("Tags", "Comet,Asteroid,Tracking,Orbital")]
-[assembly: AssemblyMetadata("FeaturedImageURL", "")]
+[assembly: AssemblyMetadata("FeaturedImageURL", "https://raw.githubusercontent.com/OryxAstro/perihelion/main/docs/icon.png")]
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 [assembly: AssemblyMetadata("LongDescription", @"Sets a mount's custom RA/Dec tracking rate for a comet or asteroid so it stays centered
-in frame without guiding against the sidereal rate. Computes today's on-sky angular rate
-in-process (no external service, no internet dependency in the field) via the same
-orbital-mechanics approach used by OryxAstro's Sky Events planner.
-
-Not affiliated with, and does not share any code or cache format with, NINA.Joko.Plugin.Orbitals.")]
+in frame without fighting the sidereal rate. Computed live, on-device, from real orbital
+elements — no external service or internet dependency in the field.")]
