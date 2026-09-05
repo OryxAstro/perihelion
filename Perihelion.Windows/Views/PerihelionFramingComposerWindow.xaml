@@ -89,8 +89,11 @@
                              is always centered in the requested sky map image by construction
                              (LoadSkyMapAsync requests it centered on trueCoordinates), so this
                              never needs to be computed or bound — only the shared transform
-                             above ever moves it. -->
-                        <Ellipse Width="14" Height="14" Fill="{DynamicResource ButtonBackgroundSelectedBrush}"
+                             above ever moves it. Sized relative to the FOV rectangle (via
+                             TargetMarkerSize), not a fixed pixel size — see that property's own
+                             doc comment for why. -->
+                        <Ellipse Width="{Binding TargetMarkerSize}" Height="{Binding TargetMarkerSize}"
+                                 Fill="{DynamicResource ButtonBackgroundSelectedBrush}"
                                  Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Grid>
                     <!-- FOV rectangle — always screen-centered (never part of the pan/zoom

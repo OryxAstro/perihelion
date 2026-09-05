@@ -295,8 +295,15 @@ namespace Perihelion.ViewModels {
         // (no independently-draggable FOV box there). Only its size is real state, computed from
         // the user's own gear.
         private double fovRectWidth, fovRectHeight;
-        public double FovRectWidth { get => fovRectWidth; private set { fovRectWidth = value; RaisePropertyChanged(); } }
-        public double FovRectHeight { get => fovRectHeight; private set { fovRectHeight = value; RaisePropertyChanged(); } }
+        public double FovRectWidth { get => fovRectWidth; private set { fovRectWidth = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetMarkerSize)); } }
+        public double FovRectHeight { get => fovRectHeight; private set { fovRectHeight = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetMarkerSize)); } }
+
+        /// <summary>Target marker's on-screen diameter, sized relative to the FOV rectangle
+        /// rather than a fixed pixel size -- a comet/asteroid has no real angular size worth
+        /// drawing to scale, but a fixed-size dot looked disproportionate across very different
+        /// camera FOVs (a speck against a huge FOV rectangle, or nearly filling a tiny one).
+        /// Clamped so it stays visible at a small FOV and doesn't dominate a large one.</summary>
+        public double TargetMarkerSize => Math.Clamp(Math.Min(FovRectWidth, FovRectHeight) * 0.12, 6.0, 24.0);
 
         // Set once per LoadSkyMapAsync call -- how many on-screen pixels correspond to one arcmin
         // on the sky, used by ImagePanX/Y's own setters to convert a drag distance to a real
