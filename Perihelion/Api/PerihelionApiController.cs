@@ -3,6 +3,7 @@ using EmbedIO;
 using EmbedIO.Routing;
 using EmbedIO.WebApi;
 using Newtonsoft.Json;
+using NINA.Astrometry;
 using NINA.Core.Model;
 using NINA.Core.Utility;
 using NINA.Equipment.Interfaces;
@@ -105,6 +106,20 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public double DecDeg { get; set; }
+    }
+
+    internal class RateResponse {
+        [JsonProperty]
+        public double RaArcsecPerSec { get; set; }
+
+        [JsonProperty]
+        public double DecArcsecPerSec { get; set; }
+
+        /// <summary>Null when the active profile's CameraSettings.PixelSize/TelescopeSettings.
+        /// FocalLength aren't fully configured -- same "can't compute a real number, don't fake
+        /// one" convention as the Windows panel's own MaxExposureText.</summary>
+        [JsonProperty]
+        public double? MaxExposureSeconds { get; set; }
     }
 
     internal class SyncStatusResponse {
@@ -332,6 +347,59 @@ namespace Perihelion.Api {
                 foreach (var p in points) {
                     response.Add(new PathPointResponse { Date = p.date.ToString("yyyy-MM-dd"), RaHours = p.raHours, DecDeg = p.decDeg });
                 }
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
+
+        /// <summary>
+        /// Current RA/Dec rate for one target, plus the derived "seconds until a 1px drift
+        /// relative to the background stars" figure using this profile's own real
+        /// CameraSettings.PixelSize/TelescopeSettings.FocalLength -- the exact same numbers and
+        /// formula the native Windows panel's own Position section already shows on Load
+        /// (PerihelionDockableVM.RateText/MaxExposureText), just never previously exposed to the
+        /// Touch-N-Stars panel at all (real gap flagged by the user, 2026-09-05, after noticing
+        /// NINA's own panel has it and Position &amp; Path doesn't -- before this, TNS only ever
+        /// saw a rate AFTER Quick Track was already running, via /status's own LastRaArcsecPerSec).
+        /// Deliberately its own route mirroring /objects/path, not folded into /objects' own
+        /// bright-object list -- computing this for all 30-ish browse objects on every load would
+        /// be wasted work for the ones never actually selected.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/objects/rate")]
+        public async Task GetRate([QueryField] string objectType, [QueryField] string targetName) {
+            try {
+                if (!Enum.TryParse<OrbitalObjectType>(objectType, ignoreCase: true, out var type)) {
+                    HttpContext.Response.StatusCode = 400;
+                    await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = $"Unknown objectType '{objectType}'" }), "application/json", Encoding.UTF8);
+                    return;
+                }
+
+                var profile = ProfileService?.ActiveProfile;
+                Observer? observer = profile == null
+                    ? null
+                    : new Observer(profile.AstrometrySettings.Latitude, profile.AstrometrySettings.Longitude, profile.AstrometrySettings.Elevation);
+
+                var rate = await OrbitalTracking.ComputeOrbitalRateAsync(HttpClient, type, targetName, DateTime.UtcNow, HttpContext.CancellationToken, observer);
+                if (rate == null) {
+                    HttpContext.Response.StatusCode = 404;
+                    await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = $"Could not find {type} '{targetName}'" }), "application/json", Encoding.UTF8);
+                    return;
+                }
+
+                double? maxExposureSeconds = null;
+                if (profile != null) {
+                    var pixelScale = AstroUtil.ArcsecPerPixel(profile.CameraSettings.PixelSize, profile.TelescopeSettings.FocalLength);
+                    var totalRate = Math.Sqrt(rate.Value.RaArcsecPerSec * rate.Value.RaArcsecPerSec + rate.Value.DecArcsecPerSec * rate.Value.DecArcsecPerSec);
+                    maxExposureSeconds = totalRate > 0 ? pixelScale / totalRate : (double?)null;
+                }
+
+                var response = new RateResponse {
+                    RaArcsecPerSec = rate.Value.RaArcsecPerSec,
+                    DecArcsecPerSec = rate.Value.DecArcsecPerSec,
+                    MaxExposureSeconds = maxExposureSeconds,
+                };
                 await HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
             } catch (Exception ex) {
                 HttpContext.Response.StatusCode = 500;
