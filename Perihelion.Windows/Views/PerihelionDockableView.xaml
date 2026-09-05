@@ -93,7 +93,9 @@
                              content area, so column widths summing to the full outer width left
                              no slack and tipped it into horizontal overflow. The extra ~40px here
                              is that slack, not a rendered column. -->
-                        <Grid Width="440" HorizontalAlignment="Left" Margin="0,0,0,4">
+                        <!-- Bottom margin bumped 4 -> 12, real user feedback (2026-09-05): wanted
+                             more breathing room between the Search row and the list below it. -->
+                        <Grid Width="440" HorizontalAlignment="Left" Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="*" />
@@ -141,11 +143,23 @@
                              default — real user feedback (2026-09-05): headers didn't line up
                              with their own column's values. BasedOn preserves NINA's own header
                              background/border theming, same reasoning as this file's shared
-                             Button style at the top. -->
+                             Button style at the top.
+                             Second, smaller misalignment found in a follow-up screenshot after
+                             the fix above: header text still sat 2px left of its own column's
+                             values. Root cause confirmed from NINA's own ListViewItem style
+                             (NINA.WPF.Base/Resources/Styles/ListView.xaml) — every row's
+                             GridViewRowPresenter is wrapped in a Border with Padding="2", which
+                             insets every cell's content by 2px, but the header row (a separate
+                             GridViewHeaderRowPresenter, not a ListViewItem) never gets that same
+                             inset. Matching Padding="2,0,0,0" on the header closes that gap —
+                             confirmed the header's own ContentPresenter is wrapped in a real
+                             Border bound to Control.Padding via TemplateBinding (same source),
+                             so this isn't a repeat of the Button Padding no-op. -->
                         <ListView Width="440" HorizontalAlignment="Left" ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
                             <ListView.Resources>
                                 <Style TargetType="GridViewColumnHeader" BasedOn="{StaticResource {x:Type GridViewColumnHeader}}">
                                     <Setter Property="HorizontalContentAlignment" Value="Left" />
+                                    <Setter Property="Padding" Value="2,0,0,0" />
                                 </Style>
                             </ListView.Resources>
                             <ListView.View>
