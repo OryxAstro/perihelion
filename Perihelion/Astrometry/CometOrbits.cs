@@ -63,6 +63,16 @@ namespace Perihelion.Astrometry {
         /// the data is always current.</summary>
         public static DateTime? LastSyncedUtc => _cache != null ? _cacheFetchedAtUtc : LoadDiskCacheTimestampOnly();
 
+        /// <summary>Number of comets in the currently cached MPC elements feed (0 if never synced
+        /// in this run or on disk). Cheap and synchronous -- loads the disk cache if this is the
+        /// first call this run, same as LastSyncedUtc, but never performs a live fetch.</summary>
+        public static int CachedCount {
+            get {
+                LoadDiskCacheIfNeeded();
+                return _cache?.Count ?? 0;
+            }
+        }
+
         private static DateTime? LoadDiskCacheTimestampOnly() {
             try {
                 if (!File.Exists(CacheFilePath)) return null;

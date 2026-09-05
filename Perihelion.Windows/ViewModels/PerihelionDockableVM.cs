@@ -102,8 +102,9 @@ namespace Perihelion.ViewModels {
             SelectedObjectType = OrbitalObjectType.Comet;
             BrowseObjects = new ObservableCollection<BrowseObject>();
             browseObjectsView = CollectionViewSource.GetDefaultView(BrowseObjects);
-            browseObjectsView.Filter = o => string.IsNullOrWhiteSpace(SearchText)
-                || (o is BrowseObject b && b.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+            browseObjectsView.Filter = o => o is BrowseObject b
+                && b.ObjectType == SelectedObjectType
+                && (string.IsNullOrWhiteSpace(SearchText) || b.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
             SearchCommand = new RelayCommand(() => browseObjectsView.Refresh());
 
             UpdateCometsCommand = new AsyncRelayCommand(UpdateCometsAction);
@@ -112,7 +113,7 @@ namespace Perihelion.ViewModels {
 
             PathPoints = new PointCollection();
             AutoReapplyMinutes = 15;
-            StatusText = "Click Refresh to browse live comets and asteroids.";
+            StatusText = "Loading live comet and asteroid data...";
 
             // "(Don't switch)" first, then every filter actually configured on this profile --
             // matches SwitchFilter's own convention (an empty/null ComboBoxText means leave the
@@ -164,6 +165,12 @@ namespace Perihelion.ViewModels {
             statusTimer.Tick += (_, _) => RefreshQuickTrackStatus();
             statusTimer.Start();
             RefreshQuickTrackStatus();
+
+            // Auto-populate on open instead of waiting for an explicit Refresh click -- real user
+            // feedback (2026-09-05): "why do I have to click refresh for the asteroids/comets to
+            // appear, just populate the list if the data is already cached." Fire-and-forget is
+            // safe here: RefreshBrowseListAction handles its own IsBusy/StatusText/error reporting.
+            _ = RefreshBrowseListAction();
         }
 
         private bool CanSetTrackingRate() {
@@ -183,7 +190,11 @@ namespace Perihelion.ViewModels {
         private OrbitalObjectType selectedObjectType;
         public OrbitalObjectType SelectedObjectType {
             get => selectedObjectType;
-            set { selectedObjectType = value; RaisePropertyChanged(); }
+            // BrowseObjects itself now holds BOTH object types at once (see RefreshBrowseListAction) --
+            // switching this combo box just re-filters the existing, already-fetched list instantly
+            // instead of requiring a fresh fetch. browseObjectsView is null the one time this setter
+            // runs during the constructor's own initial assignment, before the view exists yet.
+            set { selectedObjectType = value; RaisePropertyChanged(); browseObjectsView?.Refresh(); }
         }
 
         public ObservableCollection<BrowseObject> BrowseObjects { get; }
@@ -198,6 +209,11 @@ namespace Perihelion.ViewModels {
             get => searchText;
             set { searchText = value; RaisePropertyChanged(); browseObjectsView.Refresh(); }
         }
+
+        /// <summary>Number of rows the Browse list is actually showing right now (current object
+        /// type + search text applied) -- used for status messages instead of BrowseObjects.Count,
+        /// which now holds both object types combined.</summary>
+        private int VisibleBrowseObjectCount => browseObjectsView.Cast<object>().Count();
 
         public RelayCommand SearchCommand { get; }
 
@@ -223,6 +239,11 @@ namespace Perihelion.ViewModels {
         private string cobsLastUpdatedText = "Never";
         public string CobsLastUpdatedText => cobsLastUpdatedText;
 
+        /// <summary>"Comets (4108)" -- same idea as Orbitals' own per-category count label.
+        /// CometOrbits.CachedCount is a cheap synchronous read of whatever's already in memory/on
+        /// disk, not a live fetch.</summary>
+        public string CometsCountText => $"Comets ({CometOrbits.CachedCount})";
+
         public AsyncRelayCommand UpdateCometsCommand { get; }
         public AsyncRelayCommand UpdateCobsCommand { get; }
 
@@ -231,6 +252,7 @@ namespace Perihelion.ViewModels {
             cobsLastUpdatedText = CometActivity.LastFullRefreshUtc is DateTime o ? o.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never";
             RaisePropertyChanged(nameof(CometsLastUpdatedText));
             RaisePropertyChanged(nameof(CobsLastUpdatedText));
+            RaisePropertyChanged(nameof(CometsCountText));
         }
 
         private async Task UpdateCometsAction() {
@@ -254,10 +276,10 @@ namespace Perihelion.ViewModels {
             try {
                 var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, CancellationToken.None, includeCobs: true, forceRefreshCobs: true);
                 BrowseObjects.Clear();
-                foreach (var o in objects.Where(o => o.ObjectType == SelectedObjectType)) {
+                foreach (var o in objects) {
                     BrowseObjects.Add(o);
                 }
-                StatusText = $"COBS refreshed -- {BrowseObjects.Count} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded.";
+                StatusText = $"COBS refreshed -- {VisibleBrowseObjectCount} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded.";
             } catch (Exception ex) {
                 StatusText = $"COBS refresh failed: {ex.Message}";
                 Notification.ShowError($"Perihelion: COBS refresh failed: {ex.Message}");
@@ -287,21 +309,52 @@ namespace Perihelion.ViewModels {
 
         public AsyncRelayCommand RefreshBrowseListCommand { get; }
 
+        // BrowseObjects holds BOTH object types at once now (see SelectedObjectType's own doc
+        // comment) -- fetched without COBS (includeCobs defaults false) so this stays fast even on
+        // a cold elements cache; EnrichObservedMagnitudesAsync fills in the Observed Mag column
+        // afterward, in the background, without blocking this from returning.
         private async Task RefreshBrowseListAction() {
             IsBusy = true;
             StatusText = "Fetching live comet and asteroid data...";
             try {
                 var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, CancellationToken.None);
                 BrowseObjects.Clear();
-                foreach (var o in objects.Where(o => o.ObjectType == SelectedObjectType)) {
+                foreach (var o in objects) {
                     BrowseObjects.Add(o);
                 }
-                StatusText = $"{BrowseObjects.Count} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded, brightest first.";
+                StatusText = $"{VisibleBrowseObjectCount} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded, brightest first.";
             } catch (Exception ex) {
                 StatusText = $"Failed to fetch: {ex.Message}";
                 Notification.ShowError($"Perihelion: failed to fetch browse list: {ex.Message}");
             } finally {
                 IsBusy = false;
+            }
+            _ = EnrichObservedMagnitudesAsync();
+        }
+
+        /// <summary>Fills in each comet's ObservedMagnitude/ObservedAverageMagnitude in the
+        /// background after the fast, COBS-less list above has already rendered -- same two-phase
+        /// pattern as the Touch-N-Stars web panel's own fetchBrowseObjects.js (comment there has
+        /// the full "why": even a warm COBS cache measurably slowed down the initial render on
+        /// real hardware). Reuses ListBrowseObjectsAsync's own parallel COBS-fetch logic rather
+        /// than re-implementing it, matched back onto the already-rendered BrowseObjects by Name.
+        /// BrowseObject doesn't implement INotifyPropertyChanged, so a plain field mutation won't
+        /// update the ListView on its own -- browseObjectsView.Refresh() forces WPF to regenerate
+        /// every row's containers, which re-reads current property values same as a fresh bind.</summary>
+        private async Task EnrichObservedMagnitudesAsync() {
+            try {
+                var enriched = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, CancellationToken.None, includeCobs: true, forceRefreshCobs: false);
+                var byName = enriched.Where(o => o.ObjectType == OrbitalObjectType.Comet).ToDictionary(o => o.Name);
+                foreach (var comet in BrowseObjects.Where(o => o.ObjectType == OrbitalObjectType.Comet)) {
+                    if (byName.TryGetValue(comet.Name, out var match)) {
+                        comet.ObservedMagnitude = match.ObservedMagnitude;
+                        comet.ObservedAverageMagnitude = match.ObservedAverageMagnitude;
+                    }
+                }
+                browseObjectsView.Refresh();
+            } catch {
+                // Best-effort background enrichment -- the list above already rendered
+                // successfully without this; a COBS hiccup shouldn't surface as a user-facing error.
             }
         }
 

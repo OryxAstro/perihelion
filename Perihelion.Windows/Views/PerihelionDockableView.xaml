@@ -25,7 +25,19 @@
                  real source (NINA.WPF.Base/Resources/Styles/Button.xaml). The only binding that
                  actually reaches the button is Content itself — so every button below sets its
                  own actual Content to a "<TextBlock Text=... Margin="14,0" />" element instead of
-                 a plain string, giving the Margin something real to attach to. -->
+                 a plain string, giving the Margin something real to attach to.
+                 That same nested-TextBlock fix introduced a second real bug: NINA's own global
+                 implicit TextBlock style (NINA.WPF.Base/Resources/Styles/TextBlock.xaml,
+                 "StandardTextBlock") sets Foreground to PrimaryBrush with a plain (non-triggered)
+                 Setter. In WPF's property-value-precedence order, a Style Setter always beats an
+                 inherited value, so that Setter wins over whatever Foreground this Button itself
+                 has, and every nested TextBlock rendered in PrimaryBrush (a dim/secondary color)
+                 no matter what was set here. Confirmed from the same real source file. Fixed by
+                 giving each TextBlock below its own explicit Foreground binding straight to its
+                 ancestor Button's own Foreground (a local value, the one thing nothing outranks) —
+                 not a hardcoded brush key, so it also correctly follows StandardButton's own
+                 IsMouseOver/IsPressed template triggers (which set Foreground directly) and its
+                 IsEnabled dimming (a separate Opacity trigger, unaffected either way). -->
             <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                 <Setter Property="Height" Value="30" />
                 <Setter Property="Foreground" Value="{DynamicResource ButtonForegroundBrush}" />
@@ -40,7 +52,7 @@
                 <TextBlock Text="Comet &amp; Asteroid Tracking" FontSize="18" Margin="0,0,0,8" />
                 <Separator Margin="0,0,0,10" />
 
-                <!-- Browse (left) / Update Databases (right) -->
+                <!-- Browse (left) / Update Sources (right) -->
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="2*" />
@@ -58,10 +70,17 @@
                             </Grid.ColumnDefinitions>
                             <ComboBox Grid.Column="0" Width="90" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
                             <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" />
-                            <Button Grid.Column="2" Command="{Binding RefreshBrowseListCommand}">
-                                <TextBlock Text="Refresh" Margin="14,0" />
+                            <Button Grid.Column="2" Command="{Binding RefreshBrowseListCommand}"
+                                    ToolTip="Comets and asteroids load automatically when this panel opens (from cache if warm) -- use this to force a fresh pull right now.">
+                                <TextBlock Text="Refresh" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
                         </Grid>
+                        <!-- Search box: no MinWidth previously, so with HorizontalAlignment="Left"
+                             and no content it collapsed to its bare padding width — confirmed
+                             from a real screenshot. Stretching it into the "*" column (dropping
+                             HorizontalAlignment="Left") and giving it a real Height (matching the
+                             30px buttons, not the default ~18px) fixes both the width and the
+                             cramped vertical look at once. -->
                         <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
@@ -70,9 +89,9 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
                             <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                     MaxWidth="160" HorizontalAlignment="Left" VerticalContentAlignment="Center" Margin="0,0,6,0" />
+                                     Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0" />
                             <Button Grid.Column="2" Command="{Binding SearchCommand}">
-                                <TextBlock Text="Search" Margin="14,0" />
+                                <TextBlock Text="Search" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
                         </Grid>
                         <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/
@@ -98,43 +117,66 @@
                                             </DataTemplate>
                                         </GridViewColumn.CellTemplate>
                                     </GridViewColumn>
+                                    <!-- Comet-only (null, shown via TargetNullValue below, for an
+                                         asteroid or a comet COBS has no reports for). Filled in
+                                         shortly after the list first renders — see
+                                         EnrichObservedMagnitudesAsync in the VM — not blocking the
+                                         initial Browse population. -->
+                                    <GridViewColumn Header="Observed Mag (COBS)" Width="140">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding ObservedMagnitude, StringFormat='mag {0:F1}', TargetNullValue='--'}"
+                                                           Opacity="0.7"
+                                                           ToolTip="{Binding ObservedAverageMagnitude, StringFormat='5-obs avg {0:F2}'}" />
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
                                 </GridView>
                             </ListView.View>
                         </ListView>
                         <Button Command="{Binding LoadCommand}" HorizontalAlignment="Left">
-                            <TextBlock Text="Load" Margin="14,0" />
+                            <TextBlock Text="Load" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                         </Button>
                     </StackPanel>
 
-                    <!-- Same idea as Orbitals' own per-object-type Update/Last Updated rows, and
-                         this project's existing PINS-side sync status — explicit, deliberate
-                         refresh actions with their own real "when" (CometOrbits.LastSyncedUtc /
+                    <!-- "Update Sources", not "Update Databases" — these are live JSON feeds
+                         (MPC's comet-elements file, COBS's observation API), not a database, and
+                         the previous wording implied otherwise. Same idea as Orbitals' own
+                         per-object-type Update/Last Updated rows (its own real category/count
+                         labels, e.g. "Comets (4108)", are the model followed here), and this
+                         project's existing PINS-side sync status — explicit, deliberate refresh
+                         actions with their own real "when" (CometOrbits.LastSyncedUtc /
                          CometActivity.LastFullRefreshUtc, both disk-persisted — see
                          RefreshLastUpdatedText's own doc comment for how that was verified). -->
                     <StackPanel Grid.Column="2">
-                        <TextBlock Text="Update Databases" FontWeight="Bold" Margin="0,0,0,4" />
+                        <TextBlock Text="Update Sources" FontWeight="Bold" Margin="0,0,0,4" />
                         <Grid Margin="0,0,0,6">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" Command="{Binding UpdateCometsCommand}" Margin="0,0,8,0">
-                                <TextBlock Text="Comets" Margin="14,0" />
+                            <TextBlock Grid.Column="0" Text="{Binding CometsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <Button Grid.Column="1" Command="{Binding UpdateCometsCommand}" Margin="0,0,8,0"
+                                    ToolTip="Re-fetches the comet-elements feed from MPC now, bypassing its normal 6h cache.">
+                                <TextBlock Text="Update" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
-                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap">
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap">
                                 <Run Text="Last Updated: " /><Run Text="{Binding CometsLastUpdatedText, Mode=OneWay}" />
                             </TextBlock>
                         </Grid>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <Button Grid.Column="0" Command="{Binding UpdateCobsCommand}" Margin="0,0,8,0"
+                            <TextBlock Grid.Column="0" Text="COBS" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <Button Grid.Column="1" Command="{Binding UpdateCobsCommand}" Margin="0,0,8,0"
                                     ToolTip="Refreshes real observed brightness from COBS for every comet in the browse list. Takes several seconds to tens of seconds -- a deliberate, explicit action, not something that runs automatically.">
-                                <TextBlock Text="COBS" Margin="14,0" />
+                                <TextBlock Text="Update" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                             </Button>
-                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap">
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap">
                                 <Run Text="Last Updated: " /><Run Text="{Binding CobsLastUpdatedText, Mode=OneWay}" />
                             </TextBlock>
                         </Grid>
@@ -225,23 +267,23 @@
                 <UniformGrid Columns="3" Margin="0,4,0,0">
                     <Button Command="{Binding FrameCommand}" Margin="0,0,4,4"
                             ToolTip="Sends the current (offset-adjusted) position to NINA's own Framing Assistant to plan FOV/rotation. Does not set a tracking rate or slew by itself.">
-                        <TextBlock Text="Frame" Margin="14,0" />
+                        <TextBlock Text="Frame" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                     <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4">
-                        <TextBlock Text="Set Tracking Rate" Margin="14,0" />
+                        <TextBlock Text="Set Tracking Rate" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                     <Button Command="{Binding SetOffsetFromMountCommand}" Margin="4,0,0,4"
                             ToolTip="Captures the mount's current actual position minus this target's true position as the offset above -- manually frame first, then capture.">
-                        <TextBlock Text="Set Offset" Margin="14,0" />
+                        <TextBlock Text="Set Offset" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                     <Button Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0">
-                        <TextBlock Text="Slew and Track" Margin="14,0" />
+                        <TextBlock Text="Slew and Track" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                     <Button Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,4,0">
-                        <TextBlock Text="Set Guider Shift Rate" Margin="14,0" />
+                        <TextBlock Text="Set Guider Shift Rate" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                     <Button Command="{Binding ResetOffsetCommand}" Margin="4,0,0,0">
-                        <TextBlock Text="Clear Offset" Margin="14,0" />
+                        <TextBlock Text="Clear Offset" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                 </UniformGrid>
 
@@ -381,7 +423,7 @@
                 </StackPanel>
                 <Button Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left"
                         ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer.">
-                    <TextBlock Text="Add to Sequence" Margin="14,0" />
+                    <TextBlock Text="Add to Sequence" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                 </Button>
 
                 <Separator Margin="0,10,0,10" />
@@ -400,10 +442,10 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <Button Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0">
-                        <TextBlock Text="Start Quick Track" Margin="14,0" />
+                        <TextBlock Text="Start Quick Track" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                     <Button Command="{Binding StopQuickTrackCommand}">
-                        <TextBlock Text="Stop" Margin="14,0" />
+                        <TextBlock Text="Stop" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                 </StackPanel>
                 <TextBlock Text="{Binding QuickTrackStatusText}" TextWrapping="Wrap" Opacity="0.85" />
