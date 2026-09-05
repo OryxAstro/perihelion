@@ -15,13 +15,18 @@ using NINA.Sequencer;
 using NINA.Sequencer.SequenceItem.Platesolving;
 using NINA.Sequencer.SequenceItem.Telescope;
 using NINA.WPF.Base.SkySurvey;
+using Perihelion.Api;
+using Perihelion.Astrometry;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
+using System.Net.Http;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using RelayCommand = CommunityToolkit.Mvvm.Input.RelayCommand;
 
@@ -73,6 +78,12 @@ namespace Perihelion.ViewModels {
         // it.
         private const double SkyMapZoomOutFactor = 6.0;
 
+        // Same 10 nights PerihelionDockableVM's own Position tab path chart uses (PathDays
+        // there) -- no reason for the Composer's own overlay to show a different span.
+        private const int PathDays = 10;
+
+        private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
+
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IRotatorMediator rotatorMediator;
         private readonly ICameraMediator cameraMediator;
@@ -81,6 +92,7 @@ namespace Perihelion.ViewModels {
         private readonly IProfileService profileService;
         private readonly IImageDataFactory imageDataFactory;
         private readonly ISequencerFactory factory;
+        private readonly OrbitalObjectType objectType;
         private readonly Coordinates trueCoordinates;
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -89,6 +101,7 @@ namespace Perihelion.ViewModels {
 
         public PerihelionFramingComposerVM(
             string targetName,
+            OrbitalObjectType objectType,
             Coordinates trueCoordinates,
             ITelescopeMediator telescopeMediator,
             IRotatorMediator rotatorMediator,
@@ -99,6 +112,7 @@ namespace Perihelion.ViewModels {
             IImageDataFactory imageDataFactory,
             ISequencerFactory factory) {
             TargetName = targetName;
+            this.objectType = objectType;
             this.trueCoordinates = trueCoordinates;
             this.telescopeMediator = telescopeMediator;
             this.rotatorMediator = rotatorMediator;
@@ -341,17 +355,28 @@ namespace Perihelion.ViewModels {
         private double offsetRaArcsec;
         public double OffsetRaArcsec {
             get => offsetRaArcsec;
-            private set { offsetRaArcsec = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(OffsetRaText)); }
+            private set { offsetRaArcsec = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(OffsetRaText)); RaisePropertyChanged(nameof(CurrentCenterText)); }
         }
 
         private double offsetDecArcsec;
         public double OffsetDecArcsec {
             get => offsetDecArcsec;
-            private set { offsetDecArcsec = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(OffsetDecText)); }
+            private set { offsetDecArcsec = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(OffsetDecText)); RaisePropertyChanged(nameof(CurrentCenterText)); }
         }
 
         public string OffsetRaText => AstroUtil.HoursToHMS(offsetRaArcsec / 3600.0 / 15.0);
         public string OffsetDecText => AstroUtil.DegreesToDMS(offsetDecArcsec / 3600.0);
+
+        /// <summary>Wherever this view is CURRENTLY centered (true position + whatever offset has
+        /// been panned/captured so far) -- matches Touch-N-Stars' own FramingOffsetView.vue top-
+        /// right RA/Dec overlay, which tracks its own live pan the same way.</summary>
+        public string CurrentCenterText {
+            get {
+                var centerRa = trueCoordinates.RA + offsetRaArcsec / 3600.0 / 15.0;
+                var centerDec = trueCoordinates.Dec + offsetDecArcsec / 3600.0;
+                return $"RA {AstroUtil.HoursToHMS(centerRa)}  Dec {AstroUtil.DegreesToDMS(centerDec)}";
+            }
+        }
 
         // --- Sky map ---
 
@@ -392,6 +417,91 @@ namespace Perihelion.ViewModels {
         // on the sky, used by ImagePanX/Y's own setters to convert a drag distance to a real
         // angular offset, and by CaptureOffsetAction to convert the other way.
         private double pixelsPerArcmin = 1;
+
+        // --- Path overlay ---
+        //
+        // Real user request (2026-09-06): overlay the object's own 10-night path directly on the
+        // sky map, matching Touch-N-Stars' own FramingOffsetView.vue (a violet path line plus
+        // dots, the "tonight" point distinguished from the rest). That component draws onto a
+        // separate <canvas> using a proper tangent-plane (gnomonic) projection from its own
+        // interactive planetarium library's view state -- not something this Composer can reuse
+        // directly (no such library here, just a fetched static bitmap), but the CONCEPT ports
+        // cleanly: project each point's RA/Dec into the exact same fixed pixel space
+        // ImagePanX/Y/CaptureOffsetAction already use (arcsec-from-trueCoordinates times
+        // pixelsPerArcmin, no cos(dec) compensation) rather than a separate, more rigorous
+        // projection -- deliberately consistent with how every other point in this same view
+        // (the target marker, the captured offset) is already placed, not more "correct" in
+        // isolation. At the small angular scales a camera FOV actually spans, the difference is
+        // negligible; a different convention for just this one overlay would be a real
+        // inconsistency for no visible benefit.
+        //
+        // Absolute canvas-space coordinates (SkyMapDisplaySize/2 already added), not raw offsets,
+        // so the XAML can bind Canvas.Left/Top and Polyline.Points directly with no converter.
+        // Lives inside the SAME transformed Grid as the sky image and target marker, so it pans/
+        // zooms as one unit with them -- these are real positions on the sky, not a viewport-
+        // fixed overlay like the FOV rectangle.
+        //
+        // Day 0 (tonight) is deliberately NOT drawn as its own marker -- LoadSkyMapAsync's own
+        // sky-map fetch and ComputeOrbitalPathAsync's own day-0 point are both anchored to
+        // essentially the same "now" instant (see PerihelionApiController.GetPath's own comment
+        // on why day 0 uses full-precision UtcNow, not midnight), so it would coincide almost
+        // exactly with the existing target Ellipse and just double-draw the same dot. PathMarkers
+        // starts from day 1; the connecting Polyline still includes day 0, so the line visibly
+        // starts at the real target marker.
+        private PointCollection? pathPolylinePoints;
+        public PointCollection? PathPolylinePoints {
+            get => pathPolylinePoints;
+            private set { pathPolylinePoints = value; RaisePropertyChanged(); }
+        }
+
+        private IReadOnlyList<FramingPathPoint>? pathMarkers;
+        public IReadOnlyList<FramingPathPoint>? PathMarkers {
+            get => pathMarkers;
+            private set { pathMarkers = value; RaisePropertyChanged(); }
+        }
+
+        public sealed class FramingPathPoint {
+            public double X { get; set; }
+            public double Y { get; set; }
+            public string Tooltip { get; set; } = string.Empty;
+        }
+
+        /// <summary>Fetches the object's own real 10-night path and projects it into the sky
+        /// map's fixed pixel space -- called from LoadSkyMapAsync AFTER pixelsPerArcmin is set
+        /// (projection needs it), not in parallel with the sky-map fetch itself. Failure here
+        /// (e.g. no internet for a comet's MPC elements) just means no path overlay -- it doesn't
+        /// block the Composer from being usable for Slew and Center/Capture Offset, same
+        /// "secondary data, don't let it block the primary view" pattern as SkyMapStatusText's
+        /// own error handling.</summary>
+        private async Task LoadPathAsync() {
+            try {
+                if (pixelsPerArcmin <= 0) return;
+                var points = await OrbitalTracking.ComputeOrbitalPathAsync(HttpClient, objectType, TargetName, DateTime.UtcNow, PathDays, CancellationToken.None);
+                if (points == null || points.Count == 0) {
+                    PathPolylinePoints = null;
+                    PathMarkers = null;
+                    return;
+                }
+
+                var polyline = new PointCollection();
+                var markers = new List<FramingPathPoint>();
+                for (var i = 0; i < points.Count; i++) {
+                    var p = points[i];
+                    var raArcsec = (p.raHours - trueCoordinates.RA) * 15 * 3600;
+                    var decArcsec = (p.decDeg - trueCoordinates.Dec) * 3600;
+                    var x = SkyMapDisplaySize / 2.0 + (raArcsec / 60.0) * pixelsPerArcmin;
+                    var y = SkyMapDisplaySize / 2.0 - (decArcsec / 60.0) * pixelsPerArcmin;
+                    polyline.Add(new Point(x, y));
+                    if (i > 0) markers.Add(new FramingPathPoint { X = x, Y = y, Tooltip = p.date.ToString("yyyy-MM-dd") });
+                }
+                PathPolylinePoints = polyline;
+                PathMarkers = markers;
+            } catch (Exception ex) {
+                PathPolylinePoints = null;
+                PathMarkers = null;
+                Logger.Warning($"Perihelion: PerihelionFramingComposerVM.LoadPathAsync failed: {ex}");
+            }
+        }
 
         /// <summary>Fetches a real sky-survey image centered on the target, sized to show
         /// genuine surrounding context (SkyMapZoomOutFactor wider than the camera's own actual
@@ -449,6 +559,8 @@ namespace Perihelion.ViewModels {
                 SkyMapStatusText = cameraFovWidthArcmin > 0
                     ? string.Empty
                     : "Camera/telescope profile isn't fully configured -- showing the sky map without a real FOV rectangle.";
+
+                await LoadPathAsync();
             } catch (Exception ex) {
                 SkyMapStatusText = $"Sky map unavailable: {ex.Message}";
                 Logger.Warning($"Perihelion: PerihelionFramingComposerVM.LoadSkyMapAsync failed: {ex}");

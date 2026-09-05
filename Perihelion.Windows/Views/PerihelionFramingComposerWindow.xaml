@@ -83,6 +83,37 @@
                             </TransformGroup>
                         </Grid.RenderTransform>
                         <Image Source="{Binding SkyImage}" Stretch="UniformToFill" />
+                        <!-- 10-night path overlay — real user request (2026-09-06), matching
+                             Touch-N-Stars' own FramingOffsetView.vue (a violet path line plus
+                             dots). Lives in this SAME transformed Grid (not the FOV rectangle's
+                             viewport-fixed one below) since these are real positions on the sky
+                             that should pan/zoom along with the image and target marker — see
+                             PathPolylinePoints/PathMarkers' own doc comment on the projection
+                             math and why day 0 isn't drawn as its own separate dot. -->
+                        <Polyline Points="{Binding PathPolylinePoints}" Stroke="#A78BFA" StrokeThickness="1.6"
+                                  StrokeDashArray="4,3" IsHitTestVisible="False" />
+                        <ItemsControl ItemsSource="{Binding PathMarkers}" IsHitTestVisible="False">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <Canvas />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Ellipse Width="5" Height="5" Fill="#A78BFA" ToolTip="{Binding Tooltip}">
+                                        <Ellipse.RenderTransform>
+                                            <TranslateTransform X="-2.5" Y="-2.5" />
+                                        </Ellipse.RenderTransform>
+                                    </Ellipse>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                            <ItemsControl.ItemContainerStyle>
+                                <Style TargetType="ContentPresenter">
+                                    <Setter Property="Canvas.Left" Value="{Binding X}" />
+                                    <Setter Property="Canvas.Top" Value="{Binding Y}" />
+                                </Style>
+                            </ItemsControl.ItemContainerStyle>
+                        </ItemsControl>
                         <!-- Target marker — a real dot/circle, fixed at the exact center of the
                              untransformed image (dead center of the Border above, whatever its
                              own current size is). The target itself
@@ -119,6 +150,26 @@
                     </Rectangle>
                     <TextBlock Text="{Binding SkyMapStatusText}" HorizontalAlignment="Center" VerticalAlignment="Center"
                                TextWrapping="Wrap" TextAlignment="Center" MaxWidth="400" Opacity="0.85" IsHitTestVisible="False" />
+
+                    <!-- Legend + live center readout — viewport-fixed overlays (siblings of the
+                         FOV rectangle, not inside the panned/zoomed Grid), matching Touch-N-Stars'
+                         own FramingOffsetView.vue top-left/top-right pill overlays exactly. -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top"
+                                Margin="8" IsHitTestVisible="False">
+                        <Border Background="#80000000" CornerRadius="3" Padding="6,3">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Pan to frame" FontSize="10" Foreground="#CCFFFFFF" VerticalAlignment="Center" />
+                                <Ellipse Width="6" Height="6" Fill="#A78BFA" Margin="10,0,4,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Path" FontSize="10" Foreground="#CCFFFFFF" VerticalAlignment="Center" />
+                                <Ellipse Width="6" Height="6" Fill="{DynamicResource ButtonBackgroundSelectedBrush}" Margin="10,0,4,0" VerticalAlignment="Center" />
+                                <TextBlock Text="Tonight" FontSize="10" Foreground="#CCFFFFFF" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <Border Background="#80000000" CornerRadius="3" Padding="6,3"
+                            HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" IsHitTestVisible="False">
+                        <TextBlock Text="{Binding CurrentCenterText}" FontSize="10" Foreground="#CCFFFFFF" />
+                    </Border>
                 </Grid>
             </Border>
             <TextBlock Text="Scroll to zoom, drag to pan and reframe -- the marker is the real target position, the dashed box is your camera's FOV." TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,6,0,0" />

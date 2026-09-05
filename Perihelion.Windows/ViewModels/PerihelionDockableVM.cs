@@ -907,7 +907,7 @@ namespace Perihelion.ViewModels {
             }
 
             var trueCoordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
-            var composerVm = new PerihelionFramingComposerVM(Loaded.Name, trueCoordinates, telescopeMediator, rotatorMediator,
+            var composerVm = new PerihelionFramingComposerVM(Loaded.Name, Loaded.ObjectType, trueCoordinates, telescopeMediator, rotatorMediator,
                 cameraMediator, imagingMediator, filterWheelMediator, profileService, imageDataFactory, factory);
             var window = new Perihelion.Views.PerihelionFramingComposerWindow(composerVm) {
                 Owner = System.Windows.Application.Current?.MainWindow,
