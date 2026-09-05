@@ -26,8 +26,14 @@
                     <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" />
                     <Button Grid.Column="2" Content="Refresh" Command="{Binding RefreshBrowseListCommand}" Padding="8,2" />
                 </Grid>
-                <ListBox ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
-                    <ListBox.ItemTemplate>
+                <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/ListViewItem
+                     globally (confirmed from a real resource dump in this app's own log) — a
+                     bare ListBox falls back to WPF's default white background, which is exactly
+                     what a real-hardware test caught. ListView accepts the same ItemsSource/
+                     SelectedItem/ItemTemplate as ListBox (it derives from it), so this is a
+                     drop-in swap, not a rewrite. -->
+                <ListView ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
+                    <ListView.ItemTemplate>
                         <DataTemplate>
                             <Grid>
                                 <Grid.ColumnDefinitions>
@@ -38,8 +44,8 @@
                                 <TextBlock Grid.Column="1" Text="{Binding Magnitude, StringFormat='mag {0:F1}'}" Opacity="0.7" Margin="8,0,0,0" />
                             </Grid>
                         </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                    </ListView.ItemTemplate>
+                </ListView>
                 <Button Content="Load" Command="{Binding LoadCommand}" HorizontalAlignment="Left" Padding="10,3" Margin="0,0,0,10" />
 
                 <Separator Margin="0,0,0,10" />
