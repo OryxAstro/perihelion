@@ -93,14 +93,24 @@
                         <Ellipse Width="14" Height="14" Fill="{DynamicResource ButtonBackgroundSelectedBrush}"
                                  Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Grid>
-                    <!-- FOV rectangle — always screen-centered, never part of the pan/zoom
-                         transform above, matching TNS's own fixed FOV overlay. -->
+                    <!-- FOV rectangle — always screen-centered (never part of the pan/zoom
+                         TranslateTransform above, matching TNS's own fixed FOV overlay), but it
+                         DOES need its own ScaleTransform tied to ImageZoom: FovRectWidth/Height
+                         are computed once from the image's real FoVWidth at zoom=1, so as the
+                         background is scaled up/down to show more/less real sky, the box
+                         representing the camera's fixed angular FOV against that same background
+                         has to scale by the same factor to stay physically accurate — real user
+                         feedback (2026-09-05): zoom worked but the FOV box stayed a fixed pixel
+                         size regardless. -->
                     <Rectangle Width="{Binding FovRectWidth}" Height="{Binding FovRectHeight}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"
                                IsHitTestVisible="False"
                                Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" StrokeDashArray="4,3">
                         <Rectangle.RenderTransform>
-                            <RotateTransform Angle="{Binding DisplayRotationAngle}" />
+                            <TransformGroup>
+                                <ScaleTransform ScaleX="{Binding ImageZoom}" ScaleY="{Binding ImageZoom}" />
+                                <RotateTransform Angle="{Binding DisplayRotationAngle}" />
+                            </TransformGroup>
                         </Rectangle.RenderTransform>
                     </Rectangle>
                     <TextBlock Text="{Binding SkyMapStatusText}" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -152,12 +162,25 @@
                 <!-- A real slider, not just a typed number — matches Touch-N-Stars' own
                      rotation control (FramingOffsetView.vue's <input type="range" min="0"
                      max="360">) exactly, since the FOV rectangle's own on-screen rotation gives
-                     immediate visual feedback as you drag it, which a bare TextBox doesn't. -->
-                <StackPanel Orientation="Horizontal" IsEnabled="{Binding UseRotation}">
-                    <Slider Minimum="0" Maximum="360" Value="{Binding RotationAngle, UpdateSourceTrigger=PropertyChanged}"
-                            Width="180" VerticalAlignment="Center" Margin="0,0,10,0" />
-                    <TextBlock Text="{Binding RotationAngle, StringFormat='{}{0:F0}°'}" VerticalAlignment="Center" Width="40" Opacity="0.85" />
-                </StackPanel>
+                     immediate visual feedback as you drag it, which a bare TextBox doesn't.
+                     Rebuilt (2026-09-05, real user feedback "looks awful") to match real NINA's
+                     OWN proven rotation Slider usage exactly — NINA/View/FramingAssistantView.xaml
+                     puts its own rotation Slider in a Grid's star-sized column (so it stretches to
+                     fill, rather than a fixed pixel Width inside a StackPanel, which is what this
+                     control used before) and sets IsSnapToTickEnabled/TickFrequency for real tick
+                     marks — copying that layout instead of guessing a second time. -->
+                <Grid IsEnabled="{Binding UseRotation}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <Slider Grid.Column="0" Minimum="0" Maximum="359.99"
+                            IsSnapToTickEnabled="True" TickFrequency="5"
+                            Value="{Binding RotationAngle, UpdateSourceTrigger=PropertyChanged}"
+                            VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding RotationAngle, StringFormat='{}{0:F0}°'}"
+                               VerticalAlignment="Center" Width="40" Opacity="0.85" />
+                </Grid>
             </StackPanel>
 
             <Button Command="{Binding SlewAndCenterCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"

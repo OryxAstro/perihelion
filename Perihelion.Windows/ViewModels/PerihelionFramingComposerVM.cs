@@ -13,6 +13,7 @@ using NINA.WPF.Base.SkySurvey;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,9 +49,13 @@ namespace Perihelion.ViewModels {
         // this SAME fixed coordinate space using the image's own real FoVWidth (always set by
         // every ISkySurvey implementation, regardless of pixel resolution), so it lines up
         // correctly with the displayed image regardless of its native size -- WPF's own Image
-        // control stretches the source bitmap to fill this fixed area either way. 480, not the
-        // original 320 -- real user feedback (2026-09-05): the whole window read as too small.
-        public const double SkyMapDisplaySize = 480;
+        // control stretches the source bitmap to fill this fixed area either way. 600, not the
+        // original 320 (then 480) -- real user feedback (2026-09-05, reported twice) that the
+        // whole window read as too small. MUST match the XAML Border's own Width/Height exactly
+        // (PerihelionFramingComposerWindow.xaml) -- this constant is the only source of truth
+        // for pixelsPerArcmin/FovRectWidth/Height below, so a mismatch here silently misdraws
+        // the FOV rectangle's real size relative to the displayed image.
+        public const double SkyMapDisplaySize = 600;
 
         // Requests a field of view wider than the camera's own actual FOV, so the displayed sky
         // map shows real surrounding context (other stars/objects) around the FOV rectangle, not
@@ -96,7 +101,12 @@ namespace Perihelion.ViewModels {
             // (persisting to the profile, re-triggering LoadSkyMapAsync) are for when the USER
             // changes the dropdown; LoadSkyMapAsync below already runs once regardless, so
             // running it a second time here too would just be a redundant fetch on open.
-            selectedImageSource = profileService.ActiveProfile.FramingAssistantSettings.LastSelectedImageSource;
+            // Falls back to NASA if the persisted preference isn't one of ImageSources' own
+            // entries (e.g. real NINA's own default of Offline/SKYATLAS, deliberately excluded
+            // from that list -- see its own doc comment) -- otherwise the ComboBox would come up
+            // with nothing selected at all.
+            var lastSource = profileService.ActiveProfile.FramingAssistantSettings.LastSelectedImageSource;
+            selectedImageSource = ImageSources.Contains(lastSource) ? lastSource : SkySurveySource.NASA;
 
             SlewAndCenterCommand = new AsyncRelayCommand(SlewAndCenterAction, () => !IsBusy && telescopeMediator.GetInfo().Connected);
             SlewAndCenterCommand.RegisterPropertyChangeNotification(this, nameof(IsBusy));
@@ -119,14 +129,17 @@ namespace Perihelion.ViewModels {
 
         // --- Image source ---
 
-        /// <summary>File/Cache deliberately excluded -- File needs a local file picker (not
-        /// built here) and Cache only has content once something else has already populated it.
-        /// The remaining five are all live, no-setup sky-survey sources plus the offline
-        /// placeholder, matching what a user picking an image source in real NINA would actually
-        /// choose between.</summary>
+        /// <summary>File/Cache/Offline all deliberately excluded -- File needs a local file
+        /// picker (not built here), Cache only has content once something else has already
+        /// populated it, and Offline (SkyAtlasSkySurvey) turned out, on reading its own real
+        /// source, to be a flat mid-grey placeholder with no actual imagery at all (confirmed:
+        /// it fills every pixel with the literal byte value 30, nothing else) -- real, even in
+        /// stock NINA, but genuinely useless for this feature specifically ("see real objects to
+        /// frame against"), so it was actively misleading to list it as if it were a real choice.
+        /// The remaining five are all live, no-setup sky-survey sources with real imagery.</summary>
         public IReadOnlyList<SkySurveySource> ImageSources { get; } = new[] {
             SkySurveySource.NASA, SkySurveySource.HIPS2FITS, SkySurveySource.STSCI,
-            SkySurveySource.ESO, SkySurveySource.SKYSERVER, SkySurveySource.SKYATLAS,
+            SkySurveySource.ESO, SkySurveySource.SKYSERVER,
         };
 
         private SkySurveySource selectedImageSource;
@@ -188,7 +201,13 @@ namespace Perihelion.ViewModels {
         // behaviors library this project doesn't reference. Zoom clamping happens there too, the
         // natural place to enforce "don't zoom out past 1x".
 
-        private double imageZoom = 1.0;
+        // 2.5, not 1.0 -- real bug found from a real screenshot: at zoom exactly 1.0 the fetched
+        // image is displayed at precisely the viewport's own size (Stretch="UniformToFill" on an
+        // image whose own aspect matches a same-aspect container is an exact fit, no overflow at
+        // all), so ANY pan at that zoom level immediately exposed the image's real edge (the
+        // black strip the screenshot showed) -- there was no slack to pan into. Starting zoomed
+        // in past 1.0 guarantees real overflow to pan around within from the moment this opens.
+        private double imageZoom = 2.5;
         public double ImageZoom {
             get => imageZoom;
             set { imageZoom = value; RaisePropertyChanged(); }
@@ -324,12 +343,14 @@ namespace Perihelion.ViewModels {
                     (int)SkyMapDisplaySize, (int)SkyMapDisplaySize, CancellationToken.None, new Progress<int>());
 
                 SkyImage = image.Image;
-                // Reset -- a freshly (re)loaded sky map has no pan/zoom applied to it yet, and
+                // Reset -- a freshly (re)loaded sky map has no pan applied to it yet, and
                 // switching image source mid-session shouldn't leave a stale offset from the
-                // previous image's own pixel scale.
+                // previous image's own pixel scale. Zoom resets to the same >1.0 default
+                // ImageZoom's own field initializer uses, not 1.0 -- see its own comment for why
+                // 1.0 specifically has zero pannable overflow.
                 ImagePanX = 0;
                 ImagePanY = 0;
-                ImageZoom = 1.0;
+                ImageZoom = 2.5;
 
                 pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
                 FovRectWidth = Math.Min(SkyMapDisplaySize, cameraFovWidthArcmin * pixelsPerArcmin);

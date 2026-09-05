@@ -47,6 +47,10 @@ namespace Perihelion.Views {
             var vm = ViewModel;
             var factor = e.Delta > 0 ? 1.1 : 1.0 / 1.1;
             vm.ImageZoom = System.Math.Clamp(vm.ImageZoom * factor, MinZoom, MaxZoom);
+            // Re-clamp the EXISTING pan to whatever range the new zoom level allows -- zooming
+            // back out after panning near the old zoom's own edge would otherwise leave the pan
+            // sitting beyond the new (smaller) overflow, exposing the image's real edge again.
+            ClampPan(vm);
             e.Handled = true;
         }
 
@@ -63,12 +67,25 @@ namespace Perihelion.Views {
             var vm = ViewModel;
             vm.ImagePanX += position.X - lastMousePosition.X;
             vm.ImagePanY += position.Y - lastMousePosition.Y;
+            ClampPan(vm);
             lastMousePosition = position;
         }
 
         private void SkyMap_MouseLeftButtonUp(object sender, MouseButtonEventArgs e) {
             dragging = false;
             ((UIElement)sender).ReleaseMouseCapture();
+        }
+
+        /// <summary>Keeps the pan from ever revealing the fetched image's own real edge -- real
+        /// bug found from a real screenshot (a visible black strip after dragging): at zoom z,
+        /// the image (Stretch="UniformToFill" on a same-aspect container) renders at
+        /// z*SkyMapDisplaySize, so the overflow available to pan into on each side is exactly
+        /// (z-1)*SkyMapDisplaySize/2 -- zero at z=1, which is exactly why the very first build
+        /// could expose the edge on literally any drag at the default zoom.</summary>
+        private static void ClampPan(PerihelionFramingComposerVM vm) {
+            var maxOffset = (vm.ImageZoom - 1.0) * PerihelionFramingComposerVM.SkyMapDisplaySize / 2.0;
+            vm.ImagePanX = System.Math.Clamp(vm.ImagePanX, -maxOffset, maxOffset);
+            vm.ImagePanY = System.Math.Clamp(vm.ImagePanY, -maxOffset, maxOffset);
         }
     }
 }
