@@ -108,8 +108,8 @@
                     <Rectangle Width="{Binding FovRectWidth}" Height="{Binding FovRectHeight}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"
                                IsHitTestVisible="False"
-                               Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1"
-                               StrokeDashArray="1.6,1.2" StrokeDashCap="Round">
+                               Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="0.6"
+                               StrokeDashArray="1.6,2.2" StrokeDashCap="Round">
                         <Rectangle.RenderTransform>
                             <TransformGroup>
                                 <ScaleTransform ScaleX="{Binding ImageZoom}" ScaleY="{Binding ImageZoom}" />
@@ -157,8 +157,11 @@
                  nothing a rotation angle could do without one, so offering the control at all
                  would just invite the exact "rotator not connected" failure this whole redesign
                  exists to avoid (see PerihelionSequenceBuilder's own comment on Center vs
-                 CenterAndRotate). -->
-            <StackPanel Margin="0,0,0,16" IsEnabled="{Binding RotatorConnected}">
+                 CenterAndRotate). Determine Rotation from Camera below is deliberately OUTSIDE
+                 this gated StackPanel — it's a read-only plate-solve measurement, useful with or
+                 without a rotator connected (real user request, 2026-09-05: "so users without
+                 rotators can see what the framing is"). -->
+            <StackPanel Margin="0,0,0,10" IsEnabled="{Binding RotatorConnected}">
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <TextBlock Text="Rotate to" VerticalAlignment="Center" Margin="0,0,10,0" />
                     <CheckBox IsChecked="{Binding UseRotation}" />
@@ -187,10 +190,50 @@
                 </Grid>
             </StackPanel>
 
-            <Button Command="{Binding SlewAndCenterCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"
-                    ToolTip="Runs a real slew, plate-solve, and center against the mount right now (and rotate, if checked above) -- the same NINA sequence items Add to Sequence itself uses.">
-                <TextBlock Text="Slew and Center" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+            <!-- Real plate-solve rotation readout — works with or without a rotator connected;
+                 see PerihelionFramingComposerVM.DetermineRotationAction's own doc comment for the
+                 full reasoning and the real NINA source this was ported from. -->
+            <Button Command="{Binding DetermineRotationCommand}" HorizontalAlignment="Left" Margin="0,0,0,10"
+                    ToolTip="Captures a frame right now and plate-solves it to read the camera's real current rotation -- works with or without a rotator; if a rotator IS connected, it's also synced to the measured value.">
+                <TextBlock Text="Determine Rotation from Camera" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
             </Button>
+
+            <!-- Slew and Center (label itself reflects the Slew options popup's own Center/Rotate
+                 toggles — see SlewButtonLabel's own doc comment) plus its settings cog. -->
+            <Grid Margin="0,0,0,8" HorizontalAlignment="Left">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="6" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" Command="{Binding SlewAndCenterCommand}"
+                        ToolTip="Runs a real slew (and plate-solve center / rotate, depending on the cog's own options) against the mount right now -- the same NINA sequence items Add to Sequence itself uses.">
+                    <TextBlock Text="{Binding SlewButtonLabel}" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                </Button>
+                <Button Grid.Column="2" Name="SlewOptionsCogButton" Command="{Binding ToggleSlewOptionsCommand}"
+                        Width="30" Padding="0" ToolTip="Slew options -- choose Slew, Slew &amp; Center, or Slew, Center &amp; Rotate.">
+                    <TextBlock Text="&#9881;" FontSize="15" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                </Button>
+                <Popup PlacementTarget="{Binding ElementName=SlewOptionsCogButton}" Placement="Bottom"
+                       IsOpen="{Binding SlewOptionsOpen}" StaysOpen="False" AllowsTransparency="True">
+                    <Border Background="{DynamicResource BackgroundBrush}" BorderBrush="{DynamicResource BorderBrush}"
+                            BorderThickness="1" Padding="12" Margin="0,4,0,0">
+                        <StackPanel Width="210">
+                            <TextBlock Text="Slew Options" FontWeight="Bold" Margin="0,0,0,8" />
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                <CheckBox IsChecked="{Binding IncludeCenter}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Text="Center (plate-solve)" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" IsEnabled="{Binding RotatorConnected}">
+                                <CheckBox IsChecked="{Binding UseRotation}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <TextBlock Text="Rotate" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="Rotate needs a connected rotator and forces Center on -- there's no rotate-without-centering step."
+                                       TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+                </Popup>
+            </Grid>
             <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,16" />
 
             <Separator Margin="0,0,0,12" />
@@ -215,13 +258,19 @@
 
             <Separator Margin="0,0,0,12" />
 
+            <TextBlock Text="Use This Framing sets the offset (and rotation, if used) in the plugin, for Add to Sequence and Quick Track to pick up -- it doesn't slew or start anything by itself."
+                       TextWrapping="Wrap" Opacity="0.7" FontSize="11" Margin="0,0,0,10" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button Name="CancelButton" Click="CancelButton_Click" Margin="0,0,8,0">
-                    <TextBlock Text="Cancel" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
-                </Button>
-                <Button Name="ConfirmButton" Click="ConfirmButton_Click"
+                <Button Name="ConfirmButton" Click="ConfirmButton_Click" Margin="0,0,8,0"
                         ToolTip="Uses whatever offset and rotation are captured above for Add to Sequence and Quick Track.">
                     <TextBlock Text="Use This Framing" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                </Button>
+                <Button Command="{Binding ResetCommand}" Margin="0,0,8,0"
+                        ToolTip="Clears pan/zoom, rotation, and offset back to how this window opened -- doesn't close it.">
+                    <TextBlock Text="Reset" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                </Button>
+                <Button Name="CancelButton" Click="CancelButton_Click">
+                    <TextBlock Text="Cancel" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                 </Button>
             </StackPanel>
         </StackPanel>

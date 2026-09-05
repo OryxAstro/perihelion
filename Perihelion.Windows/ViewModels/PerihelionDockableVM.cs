@@ -60,6 +60,9 @@ namespace Perihelion.ViewModels {
         private readonly IGuiderMediator guiderMediator;
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IRotatorMediator rotatorMediator;
+        private readonly ICameraMediator cameraMediator;
+        private readonly IImagingMediator imagingMediator;
+        private readonly IFilterWheelMediator filterWheelMediator;
         private readonly IImageDataFactory imageDataFactory;
         private readonly INighttimeCalculator nighttimeCalculator;
         private readonly DispatcherTimer statusTimer;
@@ -72,12 +75,14 @@ namespace Perihelion.ViewModels {
         // explanation and the working alternative used instead. INighttimeCalculator below is a
         // different case -- confirmed safe because Orbitals' own real, working dockable VM
         // (OrbitalsVM) imports this exact type directly into its own constructor. IRotatorMediator
-        // (added 2026-09-05, for the Framing Composer's own rotator-aware framing) and
+        // (added 2026-09-05, for the Framing Composer's own rotator-aware framing),
         // IImageDataFactory (added the same day, for the Composer's own real sky-map fetch via
-        // SkySurveyFactory -- confirmed safely MEF-importable since nitr57/ninaAPI's own
-        // AdvancedAPI.cs imports it directly too) are the same kind of standard, non-special
-        // interfaces as ITelescopeMediator/IGuiderMediator above, not the ISequencerFactory/
-        // ISequenceMediator special case.
+        // SkySurveyFactory), and ICameraMediator/IImagingMediator/IFilterWheelMediator (added the
+        // same day, for the Composer's own real "Determine Rotation from Camera" plate-solve --
+        // confirmed safely MEF-importable since nitr57/ninaAPI's own AdvancedAPI.cs imports all
+        // three directly too) are the same kind of standard, non-special interfaces as
+        // ITelescopeMediator/IGuiderMediator above, not the ISequencerFactory/ISequenceMediator
+        // special case.
         // IFramingAssistantVM/IApplicationMediator are deliberately NOT imported -- "Frame" opens
         // Perihelion's own popup Framing Composer, not NINA's own Framing Assistant tab. (An
         // earlier same-day attempt to jump to that tab instead, reasoned from reading
@@ -90,12 +95,18 @@ namespace Perihelion.ViewModels {
             IGuiderMediator guiderMediator,
             ITelescopeMediator telescopeMediator,
             IRotatorMediator rotatorMediator,
+            ICameraMediator cameraMediator,
+            IImagingMediator imagingMediator,
+            IFilterWheelMediator filterWheelMediator,
             IImageDataFactory imageDataFactory,
             INighttimeCalculator nighttimeCalculator) : base(profileService) {
             this.profileService = profileService;
             this.guiderMediator = guiderMediator;
             this.telescopeMediator = telescopeMediator;
             this.rotatorMediator = rotatorMediator;
+            this.cameraMediator = cameraMediator;
+            this.imagingMediator = imagingMediator;
+            this.filterWheelMediator = filterWheelMediator;
             this.imageDataFactory = imageDataFactory;
             this.nighttimeCalculator = nighttimeCalculator;
 
@@ -916,7 +927,8 @@ namespace Perihelion.ViewModels {
             }
 
             var trueCoordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
-            var composerVm = new PerihelionFramingComposerVM(Loaded.Name, trueCoordinates, telescopeMediator, rotatorMediator, profileService, imageDataFactory, factory);
+            var composerVm = new PerihelionFramingComposerVM(Loaded.Name, trueCoordinates, telescopeMediator, rotatorMediator,
+                cameraMediator, imagingMediator, filterWheelMediator, profileService, imageDataFactory, factory);
             var window = new Perihelion.Views.PerihelionFramingComposerWindow(composerVm) {
                 Owner = System.Windows.Application.Current?.MainWindow,
             };

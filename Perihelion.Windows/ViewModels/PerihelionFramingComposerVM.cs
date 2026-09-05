@@ -2,13 +2,18 @@ using CommunityToolkit.Mvvm.Input;
 using NINA.Astrometry;
 using NINA.Core.Enum;
 using NINA.Core.Model;
+using NINA.Core.Model.Equipment;
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
+using NINA.Equipment.Equipment.MyCamera;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Equipment.Model;
 using NINA.Image.Interfaces;
+using NINA.PlateSolving;
 using NINA.Profile.Interfaces;
 using NINA.Sequencer;
 using NINA.Sequencer.SequenceItem.Platesolving;
+using NINA.Sequencer.SequenceItem.Telescope;
 using NINA.WPF.Base.SkySurvey;
 using System;
 using System.Collections.Generic;
@@ -70,6 +75,9 @@ namespace Perihelion.ViewModels {
 
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IRotatorMediator rotatorMediator;
+        private readonly ICameraMediator cameraMediator;
+        private readonly IImagingMediator imagingMediator;
+        private readonly IFilterWheelMediator filterWheelMediator;
         private readonly IProfileService profileService;
         private readonly IImageDataFactory imageDataFactory;
         private readonly ISequencerFactory factory;
@@ -84,6 +92,9 @@ namespace Perihelion.ViewModels {
             Coordinates trueCoordinates,
             ITelescopeMediator telescopeMediator,
             IRotatorMediator rotatorMediator,
+            ICameraMediator cameraMediator,
+            IImagingMediator imagingMediator,
+            IFilterWheelMediator filterWheelMediator,
             IProfileService profileService,
             IImageDataFactory imageDataFactory,
             ISequencerFactory factory) {
@@ -91,6 +102,9 @@ namespace Perihelion.ViewModels {
             this.trueCoordinates = trueCoordinates;
             this.telescopeMediator = telescopeMediator;
             this.rotatorMediator = rotatorMediator;
+            this.cameraMediator = cameraMediator;
+            this.imagingMediator = imagingMediator;
+            this.filterWheelMediator = filterWheelMediator;
             this.profileService = profileService;
             this.imageDataFactory = imageDataFactory;
             this.factory = factory;
@@ -111,7 +125,15 @@ namespace Perihelion.ViewModels {
             SlewAndCenterCommand = new AsyncRelayCommand(SlewAndCenterAction, () => !IsBusy && telescopeMediator.GetInfo().Connected);
             SlewAndCenterCommand.RegisterPropertyChangeNotification(this, nameof(IsBusy));
 
+            DetermineRotationCommand = new AsyncRelayCommand(DetermineRotationAction,
+                () => !IsBusy && cameraMediator.GetInfo().Connected && cameraMediator.IsFreeToCapture(this));
+            DetermineRotationCommand.RegisterPropertyChangeNotification(this, nameof(IsBusy));
+            DetermineRotationCommand.RegisterPropertyChangeNotification(cameraMediator.GetInfo(), nameof(CameraInfo.Connected));
+
             CaptureOffsetCommand = new RelayCommand(CaptureOffsetAction, () => telescopeMediator.GetInfo().Connected);
+
+            ToggleSlewOptionsCommand = new RelayCommand(() => SlewOptionsOpen = !SlewOptionsOpen);
+            ResetCommand = new RelayCommand(ResetAction);
 
             ConfirmCommand = new RelayCommand(() => Confirmed = true);
             CancelCommand = new RelayCommand(() => Confirmed = false);
@@ -159,9 +181,55 @@ namespace Perihelion.ViewModels {
         }
 
         private bool useRotation;
+        /// <summary>Rotate implies Center (NINA's own CenterAndRotate always centers first --
+        /// there's no "rotate without centering" sequence item), so turning this on also forces
+        /// IncludeCenter on -- backing field set directly to avoid a redundant recursive
+        /// notification storm through IncludeCenter's own setter, then explicitly notified below
+        /// so its own CheckBox binding still picks up the change.</summary>
         public bool UseRotation {
             get => useRotation;
-            set { useRotation = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(DisplayRotationAngle)); }
+            set {
+                useRotation = value;
+                if (useRotation) includeCenter = true;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(DisplayRotationAngle));
+                RaisePropertyChanged(nameof(SlewButtonLabel));
+                RaisePropertyChanged(nameof(IncludeCenter));
+            }
+        }
+
+        private bool includeCenter = true;
+        /// <summary>Backs the "Center" toggle in the Slew options popup -- turning it off also
+        /// forces UseRotation off (same reasoning as above, opposite direction).</summary>
+        public bool IncludeCenter {
+            get => includeCenter;
+            set {
+                includeCenter = value;
+                if (!includeCenter) useRotation = false;
+                RaisePropertyChanged();
+                RaisePropertyChanged(nameof(SlewButtonLabel));
+                RaisePropertyChanged(nameof(UseRotation));
+                RaisePropertyChanged(nameof(DisplayRotationAngle));
+            }
+        }
+
+        private bool slewOptionsOpen;
+        /// <summary>Drives the Slew options Popup's own IsOpen -- the cog button next to Slew and
+        /// Center toggles this via ToggleSlewOptionsCommand.</summary>
+        public bool SlewOptionsOpen {
+            get => slewOptionsOpen;
+            set { slewOptionsOpen = value; RaisePropertyChanged(); }
+        }
+
+        /// <summary>Real user request (2026-09-05): the Slew and Center button's own label should
+        /// reflect exactly what it's about to do, since Center and Rotate are now independently
+        /// toggleable via the Slew options popup rather than fixed.</summary>
+        public string SlewButtonLabel {
+            get {
+                if (UseRotation) return "Slew, Center & Rotate";
+                if (IncludeCenter) return "Slew & Center";
+                return "Slew";
+            }
         }
 
         private double rotationAngle;
@@ -375,7 +443,10 @@ namespace Perihelion.ViewModels {
         }
 
         public AsyncRelayCommand SlewAndCenterCommand { get; }
+        public AsyncRelayCommand DetermineRotationCommand { get; }
         public RelayCommand CaptureOffsetCommand { get; }
+        public RelayCommand ToggleSlewOptionsCommand { get; }
+        public RelayCommand ResetCommand { get; }
         public RelayCommand ConfirmCommand { get; }
         public RelayCommand CancelCommand { get; }
 
@@ -389,9 +460,17 @@ namespace Perihelion.ViewModels {
         /// some other angle.</summary>
         public double? CapturedRotationAngle => UseRotation ? RotationAngle : (double?)null;
 
+        /// <summary>Three real, distinct outcomes depending on the Slew options popup's own
+        /// IncludeCenter/UseRotation toggles -- SlewButtonLabel above always names exactly which
+        /// one is about to run. Plain Slew (no plate-solve) uses the same real
+        /// NINA.Sequencer.SequenceItem.Telescope.SlewScopeToRaDec item Add to Sequence's own
+        /// "just point there" step would use -- a real, if less common, use case for a quick test
+        /// frame before committing to a full plate-solved center.</summary>
         private async Task SlewAndCenterAction() {
             IsBusy = true;
-            StatusText = UseRotation ? $"Slewing, centering, and rotating to {RotationAngle}°..." : "Slewing and centering...";
+            StatusText = UseRotation
+                ? $"Slewing, centering, and rotating to {RotationAngle}°..."
+                : IncludeCenter ? "Slewing and centering..." : "Slewing...";
             try {
                 var progress = new Progress<ApplicationStatus>(s => StatusText = s.Status ?? StatusText);
                 if (UseRotation) {
@@ -400,13 +479,20 @@ namespace Perihelion.ViewModels {
                     rotate.Coordinates = new InputCoordinates(trueCoordinates);
                     rotate.PositionAngle = RotationAngle;
                     await rotate.Execute(progress, CancellationToken.None);
-                } else {
+                    StatusText = "Centered and rotated. Nudge the mount now if you want to frame off-center (e.g. a comet's tail), then Capture Offset.";
+                } else if (IncludeCenter) {
                     var center = factory.GetItem<Center>();
                     center.Inherited = false;
                     center.Coordinates = new InputCoordinates(trueCoordinates);
                     await center.Execute(progress, CancellationToken.None);
+                    StatusText = "Centered. Nudge the mount now if you want to frame off-center (e.g. a comet's tail), then Capture Offset.";
+                } else {
+                    var slew = factory.GetItem<SlewScopeToRaDec>();
+                    slew.Inherited = false;
+                    slew.Coordinates = new InputCoordinates(trueCoordinates);
+                    await slew.Execute(progress, CancellationToken.None);
+                    StatusText = "Slewed (no plate-solve center). Nudge the mount now if you want to frame off-center, then Capture Offset.";
                 }
-                StatusText = "Centered. Nudge the mount now if you want to frame off-center (e.g. a comet's tail), then Capture Offset.";
             } catch (Exception ex) {
                 StatusText = $"Slew/center failed: {ex.Message}";
                 Notification.ShowError($"Perihelion: framing slew/center failed: {ex.Message}");
@@ -414,6 +500,88 @@ namespace Perihelion.ViewModels {
             } finally {
                 IsBusy = false;
             }
+        }
+
+        /// <summary>Real plate-solve rotation readout -- the only way a user WITHOUT a rotator can
+        /// know what framing rotation they'll actually get (the "Rotate to" section above is
+        /// disabled entirely without one, since there's nothing to command), and a quick sanity
+        /// check for a user WITH one before picking a target angle. Ported directly from real
+        /// NINA's own FramingAssistantVM.GetRotationFromCamera
+        /// (NINA/ViewModel/FramingAssistant/FramingAssistantVM.cs) -- same CaptureSolver/
+        /// PlateSolverFactory/CaptureSolverParameter construction sourced from the same
+        /// PlateSolveSettings, not reinvented. Unlike that method, RotationAngle is set directly
+        /// to the solved PositionAngle with no "360 -" inversion -- Perihelion's own
+        /// SlewAndCenterAction passes RotationAngle straight through to CenterAndRotate.PositionAngle
+        /// with no inversion either, so the two have to agree for "measure it, then use it" to
+        /// actually round-trip correctly.</summary>
+        private async Task DetermineRotationAction() {
+            IsBusy = true;
+            StatusText = "Capturing and plate-solving to determine camera rotation...";
+            try {
+                var settings = profileService.ActiveProfile.PlateSolveSettings;
+                var seq = new CaptureSequence {
+                    Binning = new BinningMode(settings.Binning, settings.Binning),
+                    Gain = settings.Gain,
+                    FilterType = settings.Filter,
+                    ExposureTime = settings.ExposureTime,
+                    TotalExposureCount = 1,
+                };
+                var plateSolver = PlateSolverFactory.GetPlateSolver(settings);
+                var blindSolver = PlateSolverFactory.GetBlindSolver(settings);
+                var parameter = new CaptureSolverParameter {
+                    Attempts = 1,
+                    Binning = settings.Binning,
+                    DownSampleFactor = settings.DownSampleFactor,
+                    FocalLength = profileService.ActiveProfile.TelescopeSettings.FocalLength,
+                    MaxObjects = settings.MaxObjects,
+                    PixelSize = profileService.ActiveProfile.CameraSettings.PixelSize,
+                    ReattemptDelay = TimeSpan.FromMinutes(settings.ReattemptDelay),
+                    Regions = settings.Regions,
+                    SearchRadius = settings.SearchRadius,
+                    Coordinates = telescopeMediator.GetCurrentPosition(),
+                    BlindFailoverEnabled = settings.BlindFailoverEnabled,
+                };
+                var captureSolver = new CaptureSolver(plateSolver, blindSolver, imagingMediator, filterWheelMediator);
+                var progress = new Progress<ApplicationStatus>(s => StatusText = s.Status ?? StatusText);
+                var result = await captureSolver.Solve(seq, parameter, null, progress, CancellationToken.None);
+
+                if (result.Success) {
+                    RotationAngle = Math.Round(AstroUtil.EuclidianModulus(result.PositionAngle, 360), 1);
+                    UseRotation = true;
+                    // Same real behavior as FramingAssistantVM's own version -- if a rotator IS
+                    // connected, sync its reported position to match what was just measured
+                    // (calibration), it doesn't command a move anywhere.
+                    if (rotatorMediator.GetInfo().Connected) {
+                        rotatorMediator.Sync((float)result.PositionAngle);
+                    }
+                    StatusText = $"Camera rotation determined: {RotationAngle}°.";
+                } else {
+                    StatusText = "Determine rotation failed: plate solve was unsuccessful.";
+                    Notification.ShowError("Perihelion: determining camera rotation failed -- plate solve was unsuccessful.");
+                }
+            } catch (Exception ex) {
+                StatusText = $"Determine rotation failed: {ex.Message}";
+                Notification.ShowError($"Perihelion: determining camera rotation failed: {ex.Message}");
+                Logger.Error("Perihelion: PerihelionFramingComposerVM.DetermineRotationAction failed", ex);
+            } finally {
+                IsBusy = false;
+            }
+        }
+
+        /// <summary>Clears every adjustment made in this Composer session (pan/zoom, rotation,
+        /// offset) back to the defaults it opened with -- lets a user start over without closing
+        /// and reopening the whole window. Does not touch SelectedImageSource/RotatorConnected
+        /// (real profile/hardware state, not a session adjustment).</summary>
+        private void ResetAction() {
+            ImagePanX = 0;
+            ImagePanY = 0;
+            ImageZoom = 2.5;
+            UseRotation = false;
+            RotationAngle = 0;
+            IncludeCenter = true;
+            OffsetRaArcsec = 0;
+            OffsetDecArcsec = 0;
+            StatusText = "Reset -- framing adjustments cleared.";
         }
 
         /// <summary>Same math as PerihelionDockableVM's own SetOffsetFromMountAction -- captures
