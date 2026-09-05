@@ -567,18 +567,55 @@ namespace Perihelion.ViewModels {
 
         public RelayCommand AddToSequenceCommand { get; }
 
-        // Temporarily disabled: neither PerihelionDockableVM's own [ImportingConstructor] nor
-        // PerihelionPlugin's (both tried, both confirmed by a real composition failure) can
-        // import ISequencerFactory/ISequenceMediator. The first attempt silently broke just this
-        // VM's own composition (the panel vanished from the Imaging tab, no error anywhere). The
-        // second broke PerihelionPlugin's own composition entirely -- a real MEF
-        // CompositionException, "No exports were found that match the constraint ...
-        // IPluginManifest", i.e. the whole plugin failed to load. Both reverted. The actual
-        // sequence-building logic (PerihelionSequenceBuilder) is untouched and still correct --
-        // this needs a different way to reach NINA's sequencer from a third-party plugin before
-        // it can be wired back up, not yet found.
+        // Wired up 2026-09-05 -- see PerihelionPlugin's own updated comment on SequenceMediator
+        // and PerihelionSequenceBuilder.ResolveFactory's doc comment for the full story: this VM
+        // still never imports ISequencerFactory/ISequenceMediator directly (that's still not
+        // safe -- unchanged from before), it reads PerihelionPlugin's own static
+        // SequenceMediator field instead (populated from a constructor import that turns out
+        // to work fine on ITS OWN, now that ISequencerFactory isn't also being imported
+        // alongside it) and reflects the real ISequencerFactory out of it the same way
+        // nitr57/ninaAPI's own Sequence.cs route does.
         private void AddToSequenceAction() {
-            Notification.ShowError("Add to Sequence isn't available yet in this build -- use Quick Track, or add the target manually in the Advanced Sequencer.");
+            if (Loaded == null) return;
+
+            var sequenceMediator = PerihelionPlugin.SequenceMediator;
+            if (sequenceMediator == null) {
+                Notification.ShowError("Perihelion: the sequencer isn't available yet -- try again once NINA has fully started.");
+                return;
+            }
+            if (!sequenceMediator.Initialized) {
+                Notification.ShowError("Perihelion: the Advanced Sequencer hasn't finished starting up yet.");
+                return;
+            }
+            var factory = PerihelionSequenceBuilder.ResolveFactory(sequenceMediator);
+            if (factory == null) {
+                Notification.ShowError("Perihelion: could not reach the sequencer's item factory -- see log.");
+                Logger.Error("Perihelion: PerihelionSequenceBuilder.ResolveFactory returned null even though Initialized was true");
+                return;
+            }
+
+            try {
+                var filter = SelectedFilterName == NoFilterChangeOption
+                    ? null
+                    : profileService.ActiveProfile.FilterWheelSettings.FilterWheelFilters.FirstOrDefault(f => f.Name == SelectedFilterName);
+
+                var container = PerihelionSequenceBuilder.BuildTargetContainer(
+                    factory,
+                    Loaded.ObjectType,
+                    Loaded.Name,
+                    new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours),
+                    LoadedCoordinatesWithOffset(),
+                    Guiding,
+                    MeridianFlip,
+                    AutofocusEnabled ? AutofocusMinutes : (double?)null,
+                    new PerihelionSequenceBuilder.ExposureSettings(filter, ExposureSeconds, FrameCount));
+
+                sequenceMediator.AddAdvancedTarget(container);
+                StatusText = $"Added {Loaded.Name} to the Advanced Sequencer.";
+            } catch (Exception ex) {
+                Notification.ShowError($"Perihelion: failed to add to sequence: {ex.Message}");
+                Logger.Error("Perihelion: AddToSequenceAction failed", ex);
+            }
         }
 
         public AsyncRelayCommand LoadCommand { get; }

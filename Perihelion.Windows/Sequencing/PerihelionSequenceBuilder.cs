@@ -3,13 +3,17 @@ using NINA.Core.Model.Equipment;
 using NINA.Sequencer;
 using NINA.Sequencer.Conditions;
 using NINA.Sequencer.Container;
+using NINA.Sequencer.Interfaces.Mediator;
+using NINA.Sequencer.Mediator;
 using NINA.Sequencer.SequenceItem.FilterWheel;
 using NINA.Sequencer.SequenceItem.Guider;
 using NINA.Sequencer.SequenceItem.Imaging;
 using NINA.Sequencer.SequenceItem.Platesolving;
 using NINA.Sequencer.Trigger.Autofocus;
+using NINA.Sequencer.Trigger.MeridianFlip;
 using Perihelion.Astrometry;
 using Perihelion.SequenceItems;
+using System.Reflection;
 
 namespace Perihelion.Sequencing {
 
@@ -26,6 +30,33 @@ namespace Perihelion.Sequencing {
     /// constructor parameter lists.
     /// </summary>
     public static class PerihelionSequenceBuilder {
+        /// <summary>
+        /// ISequencerFactory has no direct MEF import path at all -- confirmed from its own real
+        /// source (NINA.Sequencer/SequencerFactory.cs): it's a plain class registered in NINA's
+        /// separate Microsoft.Extensions.DependencyInjection container, constructed there from
+        /// MEF-aggregated item/condition/trigger lists, but never itself exported via [Export]
+        /// for MEF to hand back out. nitr57/ninaAPI's own Sequence.cs hits this same wall and
+        /// works around it with exactly this reflection: SequenceMediator (the concrete class
+        /// behind ISequenceMediator, which unlike ISequencerFactory IS safely MEF-importable --
+        /// see PerihelionPlugin's own updated comment) keeps a private `sequenceNavigation`
+        /// field, and that object in turn keeps a private `factory` field that's the actual
+        /// ISequencerFactory instance NINA's own sequencer editor uses. Both field names
+        /// confirmed directly against NINA's real source (SequenceMediator.cs,
+        /// SequenceNavigationVM.cs), not guessed. Returns null if the sequencer hasn't finished
+        /// starting up yet, or if either field is missing (e.g. renamed in a future NINA version)
+        /// -- callers must treat null as "not available right now", not throw.
+        /// </summary>
+        public static ISequencerFactory? ResolveFactory(ISequenceMediator mediator) {
+            if (!mediator.Initialized || mediator is not SequenceMediator concrete) return null;
+            var nav = typeof(SequenceMediator)
+                .GetField("sequenceNavigation", BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.GetValue(concrete);
+            if (nav == null) return null;
+            return nav.GetType()
+                .GetField("factory", BindingFlags.NonPublic | BindingFlags.Instance)
+                ?.GetValue(nav) as ISequencerFactory;
+        }
+
         /// <summary>Filter null means "leave the wheel alone" -- the installed NINA.Sequencer
         /// (3.2.0.9001) SwitchFilter takes a real FilterInfo via its settable Filter property,
         /// not the string-based ComboBoxText/ Xfilter expression system added in a later,
@@ -42,6 +73,7 @@ namespace Perihelion.Sequencing {
             Coordinates trueCoordinates,
             Coordinates slewCoordinates,
             bool guiding,
+            bool meridianFlip,
             double? autofocusMinutes,
             ExposureSettings exposure) {
             var dso = factory.GetContainer<DeepSkyObjectContainer>();
@@ -107,6 +139,10 @@ namespace Perihelion.Sequencing {
 
             imagingInstructions.Add(filterLoop);
             dso.Add(imagingInstructions);
+
+            if (meridianFlip) {
+                dso.Add(factory.GetTrigger<MeridianFlipTrigger>());
+            }
 
             if (autofocusMinutes is double minutes && minutes > 0) {
                 var afTrigger = factory.GetTrigger<AutofocusAfterTimeTrigger>();
