@@ -15,7 +15,7 @@
       hand-edit already did.
     -->
     <DataTemplate x:Key="Perihelion_Options" DataType="{x:Type local:PerihelionPlugin}">
-        <StackPanel Margin="10" MaxWidth="400" HorizontalAlignment="Left">
+        <StackPanel Margin="10" HorizontalAlignment="Stretch">
             <TextBlock Text="Perihelion" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
             <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,12">
                 Perihelion hosts its own small HTTP server for the Touch-N-Stars panel
