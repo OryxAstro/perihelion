@@ -1,8 +1,9 @@
 <Window x:Class="Perihelion.Views.PerihelionFramingComposerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:Perihelion.ViewModels"
         Title="Perihelion Framing Composer"
-        Width="440" SizeToContent="Height"
+        Width="700" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="{DynamicResource BackgroundBrush}">
@@ -16,6 +17,12 @@
       system/white background otherwise. Same Button-Foreground fix as PerihelionDockableView.xaml
       applies here for the same reason (NINA's own global implicit TextBlock style otherwise wins
       over a Button's intended Foreground) — see that file's own comment for the full mechanism.
+
+      Real sky map (left column), not NINA's own Framing Assistant tab and not a custom-drawn
+      abstraction — genuine sky-survey imagery fetched via NINA.WPF.Base.SkySurvey (same
+      plugin-safe assembly AltitudeChart already came from), with an FOV rectangle sized from the
+      user's own real camera/telescope profile settings. See PerihelionFramingComposerVM's own
+      LoadSkyMapAsync doc comment for exactly how.
     -->
     <Window.Resources>
         <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -23,81 +30,118 @@
             <Setter Property="Foreground" Value="{DynamicResource ButtonForegroundBrush}" />
         </Style>
     </Window.Resources>
-    <StackPanel Margin="16">
-        <TextBlock Text="{Binding TargetName}" FontSize="16" FontWeight="Bold" Margin="0,0,0,4" />
-        <TextBlock Text="{Binding PositionText}" Opacity="0.8" Margin="0,0,0,16" />
+    <Grid Margin="16">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="16" />
+            <ColumnDefinition Width="300" />
+        </Grid.ColumnDefinitions>
 
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-            <TextBlock Text="Rotator" VerticalAlignment="Center" Margin="0,0,10,0" />
-            <TextBlock VerticalAlignment="Center">
-                <TextBlock.Style>
-                    <!-- BasedOn is required here — same real bug already caught once in this
-                         project's main panel Button style: a bare inline Style with no BasedOn
-                         completely REPLACES NINA's own app-wide implicit TextBlock style (which
-                         sets Foreground to PrimaryBrush) rather than adding to it, so this
-                         TextBlock fell back to WPF's true framework default (plain black) instead
-                         — confirmed as the real cause of the black text in a real screenshot. -->
-                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
-                        <Setter Property="Text" Value="Not connected" />
-                        <Setter Property="Opacity" Value="0.6" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding RotatorConnected}" Value="True">
-                                <Setter Property="Text" Value="Connected" />
-                                <Setter Property="Opacity" Value="1" />
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-        </StackPanel>
-        <!-- Disabled entirely (not just unchecked) when no rotator is connected — there's
-             nothing a rotation angle could do without one, so offering the control at all would
-             just invite the exact "rotator not connected" failure this whole redesign exists to
-             avoid (see PerihelionSequenceBuilder's own comment on Center vs CenterAndRotate). -->
-        <StackPanel Orientation="Horizontal" Margin="0,0,0,16" IsEnabled="{Binding RotatorConnected}">
-            <TextBlock Text="Rotate to" VerticalAlignment="Center" Margin="0,0,10,0" />
-            <CheckBox IsChecked="{Binding UseRotation}" Margin="0,0,10,0" />
-            <TextBox Text="{Binding RotationAngle, UpdateSourceTrigger=PropertyChanged}" Width="60" VerticalAlignment="Center"
-                     IsEnabled="{Binding UseRotation}" Margin="0,0,6,0" />
-            <TextBlock Text="°" VerticalAlignment="Center" Opacity="0.7" />
-        </StackPanel>
+        <!-- Sky map + FOV rectangle. Fixed size matching
+             PerihelionFramingComposerVM.SkyMapDisplaySize exactly — both need to agree since the
+             VM computes FovRectLeft/Top/Width/Height in that same fixed coordinate space. -->
+        <Border Grid.Column="0" Width="320" Height="320" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+                Background="Black" VerticalAlignment="Top">
+            <Grid ClipToBounds="True">
+                <Image Source="{Binding SkyImage}" Stretch="UniformToFill" />
+                <Canvas>
+                    <!-- Dashed, matching this project's own existing path-chart convention
+                         (PerihelionDockableView.xaml's 10-Night Path) rather than a plain solid
+                         line. -->
+                    <Rectangle Canvas.Left="{Binding FovRectLeft}" Canvas.Top="{Binding FovRectTop}"
+                               Width="{Binding FovRectWidth}" Height="{Binding FovRectHeight}"
+                               Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" StrokeDashArray="4,3" />
+                    <!-- Target crosshair, fixed at the canvas center (160,160 for a 320x320
+                         area) — the target itself is always centered in the requested sky map
+                         image by construction (LoadSkyMapAsync requests it centered on
+                         trueCoordinates), so this never needs to be computed or bound. -->
+                    <Line X1="150" Y1="160" X2="170" Y2="160" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
+                    <Line X1="160" Y1="150" X2="160" Y2="170" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
+                </Canvas>
+                <TextBlock Text="{Binding SkyMapStatusText}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           TextWrapping="Wrap" TextAlignment="Center" MaxWidth="280" Opacity="0.85" />
+            </Grid>
+        </Border>
 
-        <Button Command="{Binding SlewAndCenterCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"
-                ToolTip="Runs a real slew, plate-solve, and center against the mount right now (and rotate, if checked above) -- the same NINA sequence items Add to Sequence itself uses.">
-            <TextBlock Text="Slew and Center" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
-        </Button>
-        <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,16" />
+        <!-- Controls -->
+        <StackPanel Grid.Column="2">
+            <TextBlock Text="{Binding TargetName}" FontSize="16" FontWeight="Bold" Margin="0,0,0,4" />
+            <TextBlock Text="{Binding PositionText}" Opacity="0.8" Margin="0,0,0,16" />
 
-        <Separator Margin="0,0,0,12" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="Rotator" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBlock VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <!-- BasedOn is required here — same real bug already caught once in this
+                             project's main panel Button style: a bare inline Style with no
+                             BasedOn completely REPLACES NINA's own app-wide implicit TextBlock
+                             style (which sets Foreground to PrimaryBrush) rather than adding to
+                             it, so this TextBlock fell back to WPF's true framework default
+                             (plain black) instead — confirmed as the real cause of the black
+                             text in a real screenshot. -->
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
+                            <Setter Property="Text" Value="Not connected" />
+                            <Setter Property="Opacity" Value="0.6" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding RotatorConnected}" Value="True">
+                                    <Setter Property="Text" Value="Connected" />
+                                    <Setter Property="Opacity" Value="1" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+            <!-- Disabled entirely (not just unchecked) when no rotator is connected — there's
+                 nothing a rotation angle could do without one, so offering the control at all
+                 would just invite the exact "rotator not connected" failure this whole redesign
+                 exists to avoid (see PerihelionSequenceBuilder's own comment on Center vs
+                 CenterAndRotate). -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,16" IsEnabled="{Binding RotatorConnected}">
+                <TextBlock Text="Rotate to" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <CheckBox IsChecked="{Binding UseRotation}" Margin="0,0,10,0" />
+                <TextBox Text="{Binding RotationAngle, UpdateSourceTrigger=PropertyChanged}" Width="60" VerticalAlignment="Center"
+                         IsEnabled="{Binding UseRotation}" Margin="0,0,6,0" />
+                <TextBlock Text="°" VerticalAlignment="Center" Opacity="0.7" />
+            </StackPanel>
 
-        <TextBlock Text="Nudge the mount by hand now if you want to frame off-center (e.g. a comet's tail), then capture that as an offset."
-                   TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,10" />
-        <Grid Margin="0,0,0,8">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="90" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="110" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Grid.Column="0" Text="Offset RA" VerticalAlignment="Center" Margin="0,0,4,0" />
-            <TextBlock Grid.Column="1" Text="{Binding OffsetRaText}" VerticalAlignment="Center" Margin="0,0,10,0" />
-            <TextBlock Grid.Column="2" Text="Offset Dec" VerticalAlignment="Center" Margin="0,0,4,0" />
-            <TextBlock Grid.Column="3" Text="{Binding OffsetDecText}" VerticalAlignment="Center" />
-        </Grid>
-        <Button Command="{Binding CaptureOffsetCommand}" HorizontalAlignment="Left" Margin="0,0,0,16">
-            <TextBlock Text="Capture Offset from Mount" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
-        </Button>
-
-        <Separator Margin="0,0,0,12" />
-
-        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Name="CancelButton" Click="CancelButton_Click" Margin="0,0,8,0">
-                <TextBlock Text="Cancel" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+            <Button Command="{Binding SlewAndCenterCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"
+                    ToolTip="Runs a real slew, plate-solve, and center against the mount right now (and rotate, if checked above) -- the same NINA sequence items Add to Sequence itself uses.">
+                <TextBlock Text="Slew and Center" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
             </Button>
-            <Button Name="ConfirmButton" Click="ConfirmButton_Click"
-                    ToolTip="Uses whatever offset and rotation are captured above for Add to Sequence and Quick Track.">
-                <TextBlock Text="Use This Framing" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+            <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,16" />
+
+            <Separator Margin="0,0,0,12" />
+
+            <TextBlock Text="Nudge the mount by hand now if you want to frame off-center (e.g. a comet's tail), then capture that as an offset."
+                       TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,10" />
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="90" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="110" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Offset RA" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBlock Grid.Column="1" Text="{Binding OffsetRaText}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBlock Grid.Column="2" Text="Offset Dec" VerticalAlignment="Center" Margin="0,0,4,0" />
+                <TextBlock Grid.Column="3" Text="{Binding OffsetDecText}" VerticalAlignment="Center" />
+            </Grid>
+            <Button Command="{Binding CaptureOffsetCommand}" HorizontalAlignment="Left" Margin="0,0,0,16">
+                <TextBlock Text="Capture Offset from Mount" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
             </Button>
+
+            <Separator Margin="0,0,0,12" />
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Name="CancelButton" Click="CancelButton_Click" Margin="0,0,8,0">
+                    <TextBlock Text="Cancel" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                </Button>
+                <Button Name="ConfirmButton" Click="ConfirmButton_Click"
+                        ToolTip="Uses whatever offset and rotation are captured above for Add to Sequence and Quick Track.">
+                    <TextBlock Text="Use This Framing" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                </Button>
+            </StackPanel>
         </StackPanel>
-    </StackPanel>
+    </Grid>
 </Window>

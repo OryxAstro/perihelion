@@ -4,13 +4,17 @@ using NINA.Core.Model;
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Image.Interfaces;
+using NINA.Profile.Interfaces;
 using NINA.Sequencer;
 using NINA.Sequencer.SequenceItem.Platesolving;
+using NINA.WPF.Base.SkySurvey;
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Media.Imaging;
 using RelayCommand = CommunityToolkit.Mvvm.Input.RelayCommand;
 
 namespace Perihelion.ViewModels {
@@ -35,8 +39,25 @@ namespace Perihelion.ViewModels {
     /// Quick Track to pick up -- rather than a number someone guessed.
     /// </summary>
     public class PerihelionFramingComposerVM : INotifyPropertyChanged {
+        // Fixed on-screen size of the sky map display -- deliberately independent of whatever
+        // pixel resolution the fetched SkySurveyImage actually comes back at (confirmed from
+        // NINA.WPF.Base's own NASASkySurvey.cs that this varies with the requested field of view,
+        // not with any width/height passed to GetImage). The FOV rectangle below is computed in
+        // this SAME fixed coordinate space using the image's own real FoVWidth (always set by
+        // every ISkySurvey implementation, regardless of pixel resolution), so it lines up
+        // correctly with the displayed image regardless of its native size -- WPF's own Image
+        // control stretches the source bitmap to fill this fixed area either way.
+        public const double SkyMapDisplaySize = 320;
+
+        // Requests a field of view wider than the camera's own actual FOV, so the displayed sky
+        // map shows real surrounding context (other stars/objects) around the FOV rectangle, not
+        // just the rectangle itself filling the whole view.
+        private const double SkyMapZoomOutFactor = 3.0;
+
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IRotatorMediator rotatorMediator;
+        private readonly IProfileService profileService;
+        private readonly IImageDataFactory imageDataFactory;
         private readonly ISequencerFactory factory;
         private readonly Coordinates trueCoordinates;
 
@@ -49,11 +70,15 @@ namespace Perihelion.ViewModels {
             Coordinates trueCoordinates,
             ITelescopeMediator telescopeMediator,
             IRotatorMediator rotatorMediator,
+            IProfileService profileService,
+            IImageDataFactory imageDataFactory,
             ISequencerFactory factory) {
             TargetName = targetName;
             this.trueCoordinates = trueCoordinates;
             this.telescopeMediator = telescopeMediator;
             this.rotatorMediator = rotatorMediator;
+            this.profileService = profileService;
+            this.imageDataFactory = imageDataFactory;
             this.factory = factory;
 
             PositionText = $"RA {AstroUtil.HoursToHMS(trueCoordinates.RA)}  Dec {AstroUtil.DegreesToDMS(trueCoordinates.Dec)}";
@@ -66,6 +91,12 @@ namespace Perihelion.ViewModels {
 
             ConfirmCommand = new RelayCommand(() => Confirmed = true);
             CancelCommand = new RelayCommand(() => Confirmed = false);
+
+            // Fire-and-forget, same pattern as PerihelionDockableVM's own constructor
+            // auto-loading the Browse list -- SkyMapStatusText/SkyMapLoading reflect progress and
+            // any failure, so a slow or unreachable sky-survey endpoint doesn't block this window
+            // from opening or being usable for Slew and Center/Capture Offset in the meantime.
+            _ = LoadSkyMapAsync();
         }
 
         public string TargetName { get; }
@@ -112,6 +143,93 @@ namespace Perihelion.ViewModels {
 
         public string OffsetRaText => AstroUtil.HoursToHMS(offsetRaArcsec / 3600.0 / 15.0);
         public string OffsetDecText => AstroUtil.DegreesToDMS(offsetDecArcsec / 3600.0);
+
+        // --- Sky map ---
+
+        private BitmapSource? skyImage;
+        public BitmapSource? SkyImage {
+            get => skyImage;
+            private set { skyImage = value; RaisePropertyChanged(); }
+        }
+
+        private bool skyMapLoading = true;
+        public bool SkyMapLoading {
+            get => skyMapLoading;
+            private set { skyMapLoading = value; RaisePropertyChanged(); }
+        }
+
+        private string skyMapStatusText = "Loading sky map...";
+        public string SkyMapStatusText {
+            get => skyMapStatusText;
+            private set { skyMapStatusText = value; RaisePropertyChanged(); }
+        }
+
+        // FOV rectangle, in the same fixed SkyMapDisplaySize coordinate space the Image control
+        // itself renders into (see SkyMapDisplaySize's own doc comment for why pixel-exact source
+        // resolution doesn't matter here).
+        private double fovRectWidth, fovRectHeight, fovRectLeft, fovRectTop;
+        public double FovRectWidth { get => fovRectWidth; private set { fovRectWidth = value; RaisePropertyChanged(); } }
+        public double FovRectHeight { get => fovRectHeight; private set { fovRectHeight = value; RaisePropertyChanged(); } }
+        public double FovRectLeft { get => fovRectLeft; private set { fovRectLeft = value; RaisePropertyChanged(); } }
+        public double FovRectTop { get => fovRectTop; private set { fovRectTop = value; RaisePropertyChanged(); } }
+
+        /// <summary>Fetches a real sky-survey image centered on the target, sized to show
+        /// genuine surrounding context (SkyMapZoomOutFactor wider than the camera's own actual
+        /// field of view), then computes the FOV rectangle overlay from the user's own real gear
+        /// settings -- CameraSettings.PixelSize + TelescopeSettings.FocalLength for arcsec/pixel
+        /// (AstroUtil.ArcsecPerPixel, already used elsewhere in this project for MaxExposureText),
+        /// times FramingAssistantSettings.CameraWidth/CameraHeight for the sensor's own pixel
+        /// dimensions -- the SAME persisted settings NINA's own real Framing Assistant uses for
+        /// this exact purpose (IFramingAssistantSettings, confirmed from its own real source),
+        /// not something reinvented here. LastSelectedImageSource is reused for the same reason:
+        /// whatever image source the user already prefers (or has working, if they don't have
+        /// reliable internet) in the real Framing Assistant is almost certainly the right default
+        /// here too, rather than hardcoding one. SkySurveyFactory/ISkySurvey are both real,
+        /// plugin-safe NINA.WPF.Base APIs (same assembly AltitudeChart came from) -- this is
+        /// genuine sky-survey imagery, not a custom rendering.</summary>
+        private async Task LoadSkyMapAsync() {
+            SkyMapLoading = true;
+            SkyMapStatusText = "Loading sky map...";
+            try {
+                var cameraSettings = profileService.ActiveProfile.CameraSettings;
+                var telescopeSettings = profileService.ActiveProfile.TelescopeSettings;
+                var framingSettings = profileService.ActiveProfile.FramingAssistantSettings;
+
+                var arcsecPerPixel = AstroUtil.ArcsecPerPixel(cameraSettings.PixelSize, telescopeSettings.FocalLength);
+                var cameraFovWidthArcmin = arcsecPerPixel * framingSettings.CameraWidth / 60.0;
+                var cameraFovHeightArcmin = arcsecPerPixel * framingSettings.CameraHeight / 60.0;
+
+                var requestedFovArcmin = Math.Max(cameraFovWidthArcmin, cameraFovHeightArcmin) * SkyMapZoomOutFactor;
+                if (!(requestedFovArcmin > 0) || double.IsNaN(requestedFovArcmin)) {
+                    // Camera/telescope profile not fully configured (0 focal length, 0 pixel
+                    // size, or 0 resolution) -- fall back to a reasonable 1-degree view rather
+                    // than requesting a nonsensical or zero field of view.
+                    requestedFovArcmin = 60;
+                    cameraFovWidthArcmin = cameraFovHeightArcmin = 0;
+                }
+
+                var survey = new SkySurveyFactory(imageDataFactory).Create(framingSettings.LastSelectedImageSource);
+                var image = await survey.GetImage(TargetName, trueCoordinates, requestedFovArcmin,
+                    (int)SkyMapDisplaySize, (int)SkyMapDisplaySize, CancellationToken.None, new Progress<int>());
+
+                SkyImage = image.Image;
+
+                var pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
+                FovRectWidth = Math.Min(SkyMapDisplaySize, cameraFovWidthArcmin * pixelsPerArcmin);
+                FovRectHeight = Math.Min(SkyMapDisplaySize, cameraFovHeightArcmin * pixelsPerArcmin);
+                FovRectLeft = (SkyMapDisplaySize - FovRectWidth) / 2;
+                FovRectTop = (SkyMapDisplaySize - FovRectHeight) / 2;
+
+                SkyMapStatusText = cameraFovWidthArcmin > 0
+                    ? string.Empty
+                    : "Camera/telescope profile isn't fully configured -- showing the sky map without a real FOV rectangle.";
+            } catch (Exception ex) {
+                SkyMapStatusText = $"Sky map unavailable: {ex.Message}";
+                Logger.Warning($"Perihelion: PerihelionFramingComposerVM.LoadSkyMapAsync failed: {ex}");
+            } finally {
+                SkyMapLoading = false;
+            }
+        }
 
         public AsyncRelayCommand SlewAndCenterCommand { get; }
         public RelayCommand CaptureOffsetCommand { get; }

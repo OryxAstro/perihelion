@@ -8,6 +8,7 @@ using NINA.Core.Utility.Notification;
 using NINA.Equipment.Equipment.MyGuider;
 using NINA.Equipment.Equipment.MyTelescope;
 using NINA.Equipment.Interfaces.Mediator;
+using NINA.Image.Interfaces;
 using NINA.Profile.Interfaces;
 using NINA.Sequencer;
 using NINA.Sequencer.Interfaces.Mediator;
@@ -59,6 +60,7 @@ namespace Perihelion.ViewModels {
         private readonly IGuiderMediator guiderMediator;
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IRotatorMediator rotatorMediator;
+        private readonly IImageDataFactory imageDataFactory;
         private readonly INighttimeCalculator nighttimeCalculator;
         private readonly DispatcherTimer statusTimer;
         private CancellationTokenSource? loadCts;
@@ -70,15 +72,17 @@ namespace Perihelion.ViewModels {
         // explanation and the working alternative used instead. INighttimeCalculator below is a
         // different case -- confirmed safe because Orbitals' own real, working dockable VM
         // (OrbitalsVM) imports this exact type directly into its own constructor. IRotatorMediator
-        // (added 2026-09-05, for the Framing Composer's own rotator-aware framing) is the same
-        // kind of standard, non-special equipment mediator as ITelescopeMediator/IGuiderMediator
-        // above, not the ISequencerFactory/ISequenceMediator special case -- no reason to expect
-        // it to be any less safe, though this is the first time this VM has imported a mediator
-        // beyond the ones already proven working here, so it's still worth confirming the panel
-        // loads after this change specifically, not just assuming.
-        // IFramingAssistantVM/IApplicationMediator were removed here (2026-09-05) -- FrameAction
-        // no longer jumps to NINA's own Framing Assistant tab, it opens the Framing Composer
-        // instead, which needed neither.
+        // (added 2026-09-05, for the Framing Composer's own rotator-aware framing) and
+        // IImageDataFactory (added the same day, for the Composer's own real sky-map fetch via
+        // SkySurveyFactory -- confirmed safely MEF-importable since nitr57/ninaAPI's own
+        // AdvancedAPI.cs imports it directly too) are the same kind of standard, non-special
+        // interfaces as ITelescopeMediator/IGuiderMediator above, not the ISequencerFactory/
+        // ISequenceMediator special case.
+        // IFramingAssistantVM/IApplicationMediator are deliberately NOT imported -- "Frame" opens
+        // Perihelion's own popup Framing Composer, not NINA's own Framing Assistant tab. (An
+        // earlier same-day attempt to jump to that tab instead, reasoned from reading
+        // NINA.Joko.Plugin.Orbitals' own OrbitalsVM.cs, was explicitly rejected -- Perihelion
+        // needs its own real popup with a real sky-map/FOV view, not a redirect elsewhere.)
 
         [ImportingConstructor]
         public PerihelionDockableVM(
@@ -86,11 +90,13 @@ namespace Perihelion.ViewModels {
             IGuiderMediator guiderMediator,
             ITelescopeMediator telescopeMediator,
             IRotatorMediator rotatorMediator,
+            IImageDataFactory imageDataFactory,
             INighttimeCalculator nighttimeCalculator) : base(profileService) {
             this.profileService = profileService;
             this.guiderMediator = guiderMediator;
             this.telescopeMediator = telescopeMediator;
             this.rotatorMediator = rotatorMediator;
+            this.imageDataFactory = imageDataFactory;
             this.nighttimeCalculator = nighttimeCalculator;
 
             Title = "Perihelion";
@@ -886,15 +892,14 @@ namespace Perihelion.ViewModels {
             return new Coordinates(ra, dec, Epoch.J2000, Coordinates.RAType.Hours);
         }
 
-        /// <summary>Opens the Perihelion Framing Composer -- real user feedback (2026-09-05),
-        /// after a raw "type a rotation angle" TextBox on the Add to Sequence card was rightly
-        /// rejected: rotation and offset shouldn't be typed in blind, they should come from an
-        /// actual framing session (real slew, real plate-solve, real rotate if a rotator is
-        /// connected), with the result captured back here for Add to Sequence/Quick Track to use
-        /// -- not a guessed number. Same factory-resolution path as AddToSequenceAction (see its
-        /// own comment): PerihelionPlugin's static SequenceMediator field, reflected via
-        /// PerihelionSequenceBuilder.ResolveFactory, since this VM still never imports
-        /// ISequencerFactory/ISequenceMediator directly.</summary>
+        /// <summary>Opens Perihelion's own popup Framing Composer -- a real sky/FOV view plus
+        /// Slew and Center, rotation (real, if a rotator is connected), and offset capture, all
+        /// carried into Add to Sequence/Quick Track on confirm. Deliberately Perihelion's own
+        /// popup, not a jump to NINA's own Framing Assistant tab (considered and explicitly
+        /// rejected -- Perihelion needs its own real window here, not a redirect). Same factory-
+        /// resolution path as AddToSequenceAction (see its own comment): PerihelionPlugin's
+        /// static SequenceMediator field, reflected via PerihelionSequenceBuilder.ResolveFactory,
+        /// since this VM still never imports ISequencerFactory/ISequenceMediator directly.</summary>
         private void FrameAction() {
             if (Loaded == null) return;
 
@@ -911,7 +916,7 @@ namespace Perihelion.ViewModels {
             }
 
             var trueCoordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
-            var composerVm = new PerihelionFramingComposerVM(Loaded.Name, trueCoordinates, telescopeMediator, rotatorMediator, factory);
+            var composerVm = new PerihelionFramingComposerVM(Loaded.Name, trueCoordinates, telescopeMediator, rotatorMediator, profileService, imageDataFactory, factory);
             var window = new Perihelion.Views.PerihelionFramingComposerWindow(composerVm) {
                 Owner = System.Windows.Application.Current?.MainWindow,
             };

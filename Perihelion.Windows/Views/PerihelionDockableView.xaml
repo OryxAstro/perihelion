@@ -345,7 +345,7 @@
                      comment for why). -->
                 <UniformGrid Columns="3" Margin="0,4,0,0">
                     <Button Command="{Binding FrameCommand}" Margin="0,0,4,4"
-                            ToolTip="Opens the Perihelion Framing Composer -- a real slew, center, and (if a rotator is connected) rotate against the mount, plus an offset capture for framing off-center. Does not set a tracking rate by itself.">
+                            ToolTip="Opens the Perihelion Framing Composer -- a real sky/FOV view, Slew and Center, rotation (if a rotator is connected), and offset capture, carried into Add to Sequence and Quick Track.">
                         <TextBlock Text="Frame" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                     <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4">
