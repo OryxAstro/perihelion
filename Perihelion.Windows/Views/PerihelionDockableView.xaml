@@ -309,9 +309,29 @@
                         <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
                             <StackPanel>
                                 <Canvas Width="{Binding PathViewBoxWidth}" Height="{Binding PathViewBoxHeight}">
-                                    <!-- Dashed, matching the Touch-N-Stars web panel's own path
-                                         chart convention rather than a plain solid line. -->
-                                    <Polyline Points="{Binding PathPoints}" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" StrokeDashArray="4,3" />
+                                    <!-- Light reference grid — a proportion aid only (is the
+                                         curve steep? does it cross a third of the box?), not a
+                                         labeled coordinate readout. Matches Touch-N-Stars' own
+                                         OrbitalPathChart.vue exactly (quarter divisions). Drawn
+                                         first so the path/dots/scale bar render on top of it. -->
+                                    <ItemsControl ItemsSource="{Binding PathGridLines}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Line X1="{Binding X1}" Y1="{Binding Y1}" X2="{Binding X2}" Y2="{Binding Y2}"
+                                                      Stroke="#334155" StrokeThickness="1" Opacity="0.4" />
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <!-- Violet, matching the Framing Composer's own path overlay
+                                         and Touch-N-Stars' own convention exactly, rather than
+                                         the plain foreground color this used before — reads as
+                                         the same "path" visual language everywhere in the app. -->
+                                    <Polyline Points="{Binding PathPoints}" Stroke="#A78BFA" StrokeThickness="1.5" Opacity="0.85" />
                                     <ItemsControl ItemsSource="{Binding PathMarkers}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -339,7 +359,7 @@
                                                 <Ellipse Width="{Binding Size}" Height="{Binding Size}" ToolTip="{Binding Tooltip}">
                                                     <Ellipse.Style>
                                                         <Style TargetType="Ellipse">
-                                                            <Setter Property="Fill" Value="{DynamicResource ButtonForegroundBrush}" />
+                                                            <Setter Property="Fill" Value="#A78BFA" />
                                                             <Setter Property="Stroke" Value="{x:Null}" />
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding IsTonight}" Value="True">
@@ -347,7 +367,7 @@
                                                                 </DataTrigger>
                                                                 <DataTrigger Binding="{Binding IsEnd}" Value="True">
                                                                     <Setter Property="Fill" Value="Transparent" />
-                                                                    <Setter Property="Stroke" Value="{DynamicResource ButtonForegroundBrush}" />
+                                                                    <Setter Property="Stroke" Value="#A78BFA" />
                                                                     <Setter Property="StrokeThickness" Value="1.5" />
                                                                 </DataTrigger>
                                                             </Style.Triggers>
@@ -357,11 +377,36 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+                                    <!-- Real angular scale bar — a reference for the line's own
+                                         length, not a coordinate grid. Ported from Touch-N-Stars'
+                                         own OrbitalPathChart.vue (nice round steps, placed on
+                                         whichever side has more clearance from the whole path).
+                                         Visibility/tick positions all precomputed in the VM (see
+                                         PathScaleBar's own doc comment) rather than via XAML
+                                         converters this project doesn't otherwise have. -->
+                                    <Line Visibility="{Binding PathScaleBarVisibility}"
+                                          X1="{Binding PathScaleBarInfo.X1}" Y1="{Binding PathScaleBarInfo.Y}"
+                                          X2="{Binding PathScaleBarInfo.X2}" Y2="{Binding PathScaleBarInfo.Y}"
+                                          Stroke="#94A3B8" StrokeThickness="1.5" />
+                                    <Line Visibility="{Binding PathScaleBarVisibility}"
+                                          X1="{Binding PathScaleBarInfo.X1}" Y1="{Binding PathScaleBarInfo.TickTopY}"
+                                          X2="{Binding PathScaleBarInfo.X1}" Y2="{Binding PathScaleBarInfo.TickBottomY}"
+                                          Stroke="#94A3B8" StrokeThickness="1.5" />
+                                    <Line Visibility="{Binding PathScaleBarVisibility}"
+                                          X1="{Binding PathScaleBarInfo.X2}" Y1="{Binding PathScaleBarInfo.TickTopY}"
+                                          X2="{Binding PathScaleBarInfo.X2}" Y2="{Binding PathScaleBarInfo.TickBottomY}"
+                                          Stroke="#94A3B8" StrokeThickness="1.5" />
+                                    <TextBlock Visibility="{Binding PathScaleBarVisibility}"
+                                               Canvas.Left="{Binding PathScaleBarInfo.X1}"
+                                               Canvas.Top="{Binding PathScaleBarInfo.LabelY}"
+                                               Text="{Binding PathScaleBarInfo.Label}" FontSize="9" Foreground="#94A3B8" />
                                 </Canvas>
                                 <Grid Margin="0,4,0,0">
                                     <TextBlock Text="{Binding PathLeftLabel}" HorizontalAlignment="Left" FontSize="10" Opacity="0.7" />
                                     <TextBlock Text="{Binding PathRightLabel}" HorizontalAlignment="Right" FontSize="10" Opacity="0.7" />
                                 </Grid>
+                                <TextBlock Text="{Binding PathDriftSummaryText}" FontSize="10" Opacity="0.6" Margin="0,2,0,0"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
                     </StackPanel>

@@ -90,8 +90,12 @@
                              that should pan/zoom along with the image and target marker — see
                              PathPolylinePoints/PathMarkers' own doc comment on the projection
                              math and why day 0 isn't drawn as its own separate dot. -->
-                        <Polyline Points="{Binding PathPolylinePoints}" Stroke="#A78BFA" StrokeThickness="1.6"
-                                  StrokeDashArray="4,3" IsHitTestVisible="False" />
+                        <!-- Solid, thin, slightly translucent — matches FramingOffsetView.vue's
+                             own real canvas-drawn values exactly (lineWidth 1.8, no dash, dots
+                             r=2) rather than the bolder dashed/oversized first pass, which read
+                             as too heavy against the sky map (real user feedback, 2026-09-06). -->
+                        <Polyline Points="{Binding PathPolylinePoints}" Stroke="#A78BFA" StrokeThickness="1.2"
+                                  Opacity="0.85" IsHitTestVisible="False" />
                         <ItemsControl ItemsSource="{Binding PathMarkers}" IsHitTestVisible="False">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate>
@@ -100,9 +104,9 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Ellipse Width="5" Height="5" Fill="#A78BFA" ToolTip="{Binding Tooltip}">
+                                    <Ellipse Width="3.5" Height="3.5" Fill="#A78BFA" ToolTip="{Binding Tooltip}">
                                         <Ellipse.RenderTransform>
-                                            <TranslateTransform X="-2.5" Y="-2.5" />
+                                            <TranslateTransform X="-1.75" Y="-1.75" />
                                         </Ellipse.RenderTransform>
                                     </Ellipse>
                                 </DataTemplate>

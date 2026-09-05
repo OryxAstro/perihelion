@@ -125,6 +125,14 @@ namespace Perihelion.ViewModels {
 
             PositionText = $"RA {AstroUtil.HoursToHMS(trueCoordinates.RA)}  Dec {AstroUtil.DegreesToDMS(trueCoordinates.Dec)}";
             RotatorConnected = rotatorMediator.GetInfo().Connected;
+            // Defaults to whatever RotatorConnected already is, not unconditionally off -- real
+            // user feedback (2026-09-06): with a rotator actually connected, requiring a manual
+            // toggle every time this opens was just friction for what's almost always the wanted
+            // behavior. The toggle itself still exists (backing field set directly here, not via
+            // the property setter, so this doesn't trigger its own IncludeCenter side effect) --
+            // a user WITH a rotator can still opt out for one session; a user WITHOUT one still
+            // opens with it correctly off.
+            useRotation = RotatorConnected;
             // Backing field directly, not the property setter -- the setter's own side effects
             // (persisting to the profile, re-triggering LoadSkyMapAsync) are for when the USER
             // changes the dropdown; LoadSkyMapAsync below already runs once regardless, so
@@ -710,7 +718,9 @@ namespace Perihelion.ViewModels {
             ImagePanX = 0;
             ImagePanY = 0;
             ImageZoom = 2.5;
-            UseRotation = false;
+            // Back to the same smart default the window opened with (see the constructor's own
+            // comment) -- RotatorConnected, not unconditionally off.
+            UseRotation = RotatorConnected;
             RotationAngle = 0;
             IncludeCenter = true;
             OffsetRaArcsec = 0;

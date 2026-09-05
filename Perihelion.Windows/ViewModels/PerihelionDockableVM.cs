@@ -521,6 +521,56 @@ namespace Perihelion.ViewModels {
         public string PathLeftLabel => pathLeftLabel;
         public string PathRightLabel => pathRightLabel;
 
+        /// <summary>A light interior line, purely a proportion aid (is the curve steep? does it
+        /// cross a third of the box?) -- matches Touch-N-Stars' own OrbitalPathChart.vue gridX/
+        /// gridY exactly (quarter divisions of the plot box, not a labeled coordinate grid).</summary>
+        public sealed class PathGridLine {
+            public required double X1 { get; init; }
+            public required double Y1 { get; init; }
+            public required double X2 { get; init; }
+            public required double Y2 { get; init; }
+        }
+        public ObservableCollection<PathGridLine> PathGridLines { get; } = new();
+
+        /// <summary>"0.98° total drift over 9 nights (~0.11°/night)" -- cos(dec)-compensated true
+        /// angular separation between the path's own first/last points (same convention as
+        /// OrbitalTracking.cs's own tracking-rate math), unlike the chart's own plot, which
+        /// independently stretches RA and Dec to fill the box and so isn't a true angular shape.
+        /// Ported directly from OrbitalPathChart.vue's own endpointDriftDeg/driftSummary.</summary>
+        private string pathDriftSummaryText = string.Empty;
+        public string PathDriftSummaryText => pathDriftSummaryText;
+
+        /// <summary>A real angular reference for the path line's own length -- not a coordinate
+        /// grid. X1/X2/Y are already in the same canvas pixel space as PathPoints/PathMarkers;
+        /// LabelText sits just above the bar's own start tick. Null when there's no meaningful
+        /// path (fewer than 2 nights, or the two endpoints plot on top of each other). Ported
+        /// from OrbitalPathChart.vue's own scaleBar/scaleBarSide/NICE_DEG_STEPS -- same "nice"
+        /// round-value selection and same whichever-side-has-more-clearance-from-the-whole-path
+        /// logic, simplified only in that the label is always left-anchored at the bar's own
+        /// start tick rather than also flipping its own text-anchor per side (WPF has no
+        /// equivalent to SVG's text-anchor without pre-measuring the string's rendered width).</summary>
+        public sealed class PathScaleBar {
+            public required double X1 { get; init; }
+            public required double X2 { get; init; }
+            public required double Y { get; init; }
+            // Precomputed here, not via XAML arithmetic (no built-in +/- binding converter in
+            // this project, and one real property per tick is simpler than adding one) -- the
+            // two end-tick verticals and the label's own row, all a few px off the bar's own Y.
+            public required double TickTopY { get; init; }
+            public required double TickBottomY { get; init; }
+            public required double LabelY { get; init; }
+            public required string Label { get; init; }
+        }
+        private PathScaleBar? pathScaleBar;
+        public PathScaleBar? PathScaleBarInfo {
+            get => pathScaleBar;
+            private set { pathScaleBar = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(PathScaleBarVisibility)); }
+        }
+        // Plain Visibility, not a bool + BooleanToVisibilityConverter -- this project has no
+        // converters declared as resources anywhere yet, and a real enum property here is one
+        // less thing to wire up for a single binding.
+        public System.Windows.Visibility PathScaleBarVisibility => PathScaleBarInfo != null ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
         // --- Tonight's altitude ---
         //
         // Uses NINA's own real AltitudeChart control (NINA.WPF.Base.View.AltitudeChart) rather
@@ -678,6 +728,7 @@ namespace Perihelion.ViewModels {
                 nameof(MeanAnomalyNowText), nameof(EccentricAnomalyNowText), nameof(TrueAnomalyNowText),
                 nameof(DistanceNowText), nameof(EpochText), nameof(EpochJulianText), nameof(PeriapsisText), nameof(PeriapsisJulianText), nameof(SourceText),
                 nameof(PathPoints), nameof(PathMarkers), nameof(PathLeftLabel), nameof(PathRightLabel),
+                nameof(PathGridLines), nameof(PathDriftSummaryText), nameof(PathScaleBarInfo), nameof(PathScaleBarVisibility),
             }) {
                 RaisePropertyChanged(name);
             }
@@ -814,10 +865,31 @@ namespace Perihelion.ViewModels {
         // half-clipped.
         private const double PathMarkerInset = 6;
 
+        // "Nice" round angular values for the scale bar, smallest first -- ported directly from
+        // OrbitalPathChart.vue's own NICE_DEG_STEPS.
+        private static readonly (double Deg, string Label)[] PathNiceDegSteps = {
+            (1.0 / 3600, "1\""), (2.0 / 3600, "2\""), (5.0 / 3600, "5\""), (10.0 / 3600, "10\""), (30.0 / 3600, "30\""),
+            (1.0 / 60, "1'"), (2.0 / 60, "2'"), (5.0 / 60, "5'"), (10.0 / 60, "10'"), (30.0 / 60, "30'"),
+            (1, "1°"), (2, "2°"), (5, "5°"), (10, "10°"), (20, "20°"), (30, "30°"),
+        };
+
+        // Ported from OrbitalPathChart.vue's own formatDeg -- picks whichever unit (deg/arcmin/
+        // arcsec) reads as a sensible number rather than always showing a tiny or huge degree
+        // value.
+        private static string FormatDeg(double deg) {
+            if (deg >= 1) return $"{deg.ToString(deg < 10 ? "F2" : "F1")}°";
+            var arcmin = deg * 60;
+            if (arcmin >= 1) return $"{arcmin.ToString(arcmin < 10 ? "F1" : "F0")}′";
+            return $"{(deg * 3600).ToString("F0")}″";
+        }
+
         private void BuildPathPolyline(IReadOnlyList<(DateTime date, double raHours, double decDeg)>? path) {
             var points = new PointCollection();
             var markers = new List<PathMarker>();
             pathLeftLabel = pathRightLabel = string.Empty;
+            pathDriftSummaryText = string.Empty;
+            PathGridLines.Clear();
+            PathScaleBarInfo = null;
             if (path == null || path.Count == 0) {
                 PathPoints = points;
                 PathMarkers.Clear();
@@ -859,6 +931,71 @@ namespace Perihelion.ViewModels {
 
             PathMarkers.Clear();
             foreach (var m in markers) PathMarkers.Add(m);
+
+            // Light interior grid -- quarter divisions of the plot box, matching
+            // OrbitalPathChart.vue's own gridX/gridY exactly.
+            for (var i = 1; i <= 3; i++) {
+                var gx = PathMarkerInset + i / 4.0 * plotWidth;
+                PathGridLines.Add(new PathGridLine { X1 = gx, Y1 = PathMarkerInset, X2 = gx, Y2 = PathMarkerInset + plotHeight });
+                var gy = PathMarkerInset + i / 4.0 * plotHeight;
+                PathGridLines.Add(new PathGridLine { X1 = PathMarkerInset, Y1 = gy, X2 = PathMarkerInset + plotWidth, Y2 = gy });
+            }
+
+            // True angular separation between the path's own endpoints -- cos(dec)-compensated
+            // (same convention as OrbitalTracking.cs's own tracking-rate math), unlike the plot
+            // above, which independently stretches RA and Dec and so isn't a true angular shape.
+            // Ported from OrbitalPathChart.vue's own endpointDriftDeg/driftSummary.
+            if (path.Count >= 2) {
+                var first = path[0];
+                var last = path[^1];
+                var dRaHours = last.raHours - first.raHours;
+                while (dRaHours > 12) dRaHours -= 24;
+                while (dRaHours < -12) dRaHours += 24;
+                var dRaDeg = dRaHours * 15;
+                var dDecDeg = last.decDeg - first.decDeg;
+                var avgDecRad = (first.decDeg + last.decDeg) / 2 * Math.PI / 180;
+                var totalDeg = Math.Sqrt(Math.Pow(dRaDeg * Math.Cos(avgDecRad), 2) + dDecDeg * dDecDeg);
+                var nights = path.Count - 1;
+                var perNightDeg = totalDeg / nights;
+                pathDriftSummaryText = $"{FormatDeg(totalDeg)} total drift over {nights} nights (~{FormatDeg(perNightDeg)}/night)";
+
+                // Real angular scale bar, sized from the endpoints' own actual pixel distance
+                // (so it reflects the plot's own effective scale) and placed on whichever
+                // horizontal side has the most clearance from the WHOLE path, not just the start
+                // point -- a curved path can swing close to either bottom corner somewhere other
+                // than its very first point. Ported from OrbitalPathChart.vue's own scaleBar/
+                // scaleBarSide.
+                var firstPoint = points[0];
+                var lastPoint = points[^1];
+                var pxDistance = Math.Sqrt(Math.Pow(lastPoint.X - firstPoint.X, 2) + Math.Pow(lastPoint.Y - firstPoint.Y, 2));
+                if (pxDistance >= 1 && totalDeg > 0) {
+                    var degPerPx = totalDeg / pxDistance;
+                    var maxBarPx = plotWidth * 0.4;
+                    var chosen = PathNiceDegSteps[0];
+                    foreach (var step in PathNiceDegSteps) {
+                        var px = step.Deg / degPerPx;
+                        if (px > maxBarPx) break;
+                        chosen = step;
+                    }
+                    var barPx = chosen.Deg / degPerPx;
+                    if (barPx >= 4) {
+                        var barY = PathMarkerInset + plotHeight - 6;
+                        double MinDistanceToBox(double boxX1, double boxX2) => points.Min(p => {
+                            var dx = p.X < boxX1 ? boxX1 - p.X : p.X > boxX2 ? p.X - boxX2 : 0;
+                            return Math.Sqrt(dx * dx + Math.Pow(p.Y - barY, 2));
+                        });
+                        var leftX1 = PathMarkerInset;
+                        var rightX1 = PathMarkerInset + plotWidth - barPx;
+                        var useLeft = MinDistanceToBox(leftX1, leftX1 + barPx) >= MinDistanceToBox(rightX1, rightX1 + barPx);
+                        var barX1 = useLeft ? leftX1 : rightX1;
+                        PathScaleBarInfo = new PathScaleBar {
+                            X1 = barX1, X2 = barX1 + barPx, Y = barY,
+                            TickTopY = barY - 3, TickBottomY = barY + 3, LabelY = barY - 14,
+                            Label = chosen.Label,
+                        };
+                    }
+                }
+            }
 
             // Labels sit in their own row below the plot (see the view), not overlaid on the
             // canvas -- a real-hardware test found the overlaid version colliding with the line
