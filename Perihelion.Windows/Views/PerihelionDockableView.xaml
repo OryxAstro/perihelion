@@ -15,6 +15,12 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="8">
 
+                <!-- Page title — same idea as Orbitals' own large heading at the top of its
+                     panel, deliberately different wording ("Orbital Elements" is specifically
+                     Orbitals' own panel name, not a generic label to reuse). -->
+                <TextBlock Text="Comet &amp; Asteroid Tracking" FontSize="18" Margin="0,0,0,8" />
+                <Separator Margin="0,0,0,10" />
+
                 <!-- Browse -->
                 <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
                 <Grid Margin="0,0,0,4">
@@ -25,7 +31,20 @@
                     </Grid.ColumnDefinitions>
                     <ComboBox Grid.Column="0" Width="90" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
                     <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" />
-                    <Button Grid.Column="2" Content="Refresh" Command="{Binding RefreshBrowseListCommand}" Height="30" FontWeight="Bold" />
+                    <Button Grid.Column="2" Content="Refresh" Command="{Binding RefreshBrowseListCommand}"
+                            Height="30" MinWidth="90" FontWeight="Bold" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                </Grid>
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             VerticalContentAlignment="Center" Margin="0,0,6,0" />
+                    <Button Grid.Column="2" Content="Search" Command="{Binding SearchCommand}"
+                            Height="30" MinWidth="70" FontWeight="Bold" Foreground="{DynamicResource ButtonForegroundBrush}" />
                 </Grid>
                 <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/ListViewItem
                      globally, not plain ListBox/ListBoxItem (confirmed from a real resource
@@ -52,7 +71,8 @@
                         </GridView>
                     </ListView.View>
                 </ListView>
-                <Button Content="Load" Command="{Binding LoadCommand}" HorizontalAlignment="Left" Height="30" FontWeight="Bold" Margin="0,0,0,10" />
+                <Button Content="Load" Command="{Binding LoadCommand}" HorizontalAlignment="Left"
+                        Height="30" MinWidth="90" FontWeight="Bold" Foreground="{DynamicResource ButtonForegroundBrush}" Margin="0,0,0,10" />
 
                 <Separator Margin="0,0,0,10" />
 
@@ -130,16 +150,29 @@
                     <TextBlock Grid.Column="3" Text="{Binding OffsetDecText, Mode=OneWay}" VerticalAlignment="Center" />
                 </Grid>
 
-                <!-- Action buttons — same 2x3 arrangement as Orbitals' own panel. -->
+                <!-- Action buttons — same 2x3 arrangement as Orbitals' own panel. Foreground/
+                     FontWeight/Height set once here via an implicit Style scoped to this grid,
+                     rather than repeated on all six buttons. -->
                 <UniformGrid Columns="3" Margin="0,4,0,0">
-                    <Button Content="Frame" Command="{Binding FrameCommand}" Margin="0,0,4,4" Height="30" FontWeight="Bold"
+                    <UniformGrid.Resources>
+                        <!-- BasedOn is required — a bare Style with no BasedOn replaces NINA's
+                             own app-wide implicit Button style (StandardButton's whole
+                             ControlTemplate, including its teal background/hover states)
+                             entirely, rather than adding to it. -->
+                        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                            <Setter Property="Height" Value="30" />
+                            <Setter Property="FontWeight" Value="Bold" />
+                            <Setter Property="Foreground" Value="{DynamicResource ButtonForegroundBrush}" />
+                        </Style>
+                    </UniformGrid.Resources>
+                    <Button Content="Frame" Command="{Binding FrameCommand}" Margin="0,0,4,4"
                             ToolTip="Sends the current (offset-adjusted) position to NINA's own Framing Assistant to plan FOV/rotation. Does not set a tracking rate or slew by itself." />
-                    <Button Content="Set Tracking Rate" Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4" Height="30" FontWeight="Bold" />
-                    <Button Content="Set Offset" Command="{Binding SetOffsetFromMountCommand}" Margin="4,0,0,4" Height="30" FontWeight="Bold"
+                    <Button Content="Set Tracking Rate" Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4" />
+                    <Button Content="Set Offset" Command="{Binding SetOffsetFromMountCommand}" Margin="4,0,0,4"
                             ToolTip="Captures the mount's current actual position minus this target's true position as the offset above -- manually frame first, then capture." />
-                    <Button Content="Slew and Track" Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0" Height="30" FontWeight="Bold" />
-                    <Button Content="Set Guider Shift Rate" Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,4,0" Height="30" FontWeight="Bold" />
-                    <Button Content="Clear Offset" Command="{Binding ResetOffsetCommand}" Margin="4,0,0,0" Height="30" FontWeight="Bold" />
+                    <Button Content="Slew and Track" Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0" />
+                    <Button Content="Set Guider Shift Rate" Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,4,0" />
+                    <Button Content="Clear Offset" Command="{Binding ResetOffsetCommand}" Margin="4,0,0,0" />
                 </UniformGrid>
 
                 <Separator Margin="0,6,0,10" />
@@ -276,7 +309,8 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
-                <Button Content="Add to Sequence" Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left" Height="30" FontWeight="Bold"
+                <Button Content="Add to Sequence" Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left"
+                        Height="30" MinWidth="90" FontWeight="Bold" Foreground="{DynamicResource ButtonForegroundBrush}"
                         ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer." />
 
                 <Separator Margin="0,10,0,10" />
@@ -294,8 +328,10 @@
                     </StackPanel>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                    <Button Content="Start Quick Track" Command="{Binding StartQuickTrackCommand}" Height="30" FontWeight="Bold" Margin="0,0,8,0" />
-                    <Button Content="Stop" Command="{Binding StopQuickTrackCommand}" Height="30" FontWeight="Bold" />
+                    <Button Content="Start Quick Track" Command="{Binding StartQuickTrackCommand}"
+                            Height="30" MinWidth="90" FontWeight="Bold" Foreground="{DynamicResource ButtonForegroundBrush}" Margin="0,0,8,0" />
+                    <Button Content="Stop" Command="{Binding StopQuickTrackCommand}"
+                            Height="30" MinWidth="70" FontWeight="Bold" Foreground="{DynamicResource ButtonForegroundBrush}" />
                 </StackPanel>
                 <TextBlock Text="{Binding QuickTrackStatusText}" TextWrapping="Wrap" Opacity="0.85" />
 

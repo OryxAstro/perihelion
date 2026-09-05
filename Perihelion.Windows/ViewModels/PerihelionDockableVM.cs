@@ -22,12 +22,14 @@ using Perihelion.Sequencing;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using RelayCommand = CommunityToolkit.Mvvm.Input.RelayCommand;
@@ -99,6 +101,10 @@ namespace Perihelion.ViewModels {
             ObjectTypes = new[] { OrbitalObjectType.Comet, OrbitalObjectType.Asteroid };
             SelectedObjectType = OrbitalObjectType.Comet;
             BrowseObjects = new ObservableCollection<BrowseObject>();
+            browseObjectsView = CollectionViewSource.GetDefaultView(BrowseObjects);
+            browseObjectsView.Filter = o => string.IsNullOrWhiteSpace(SearchText)
+                || (o is BrowseObject b && b.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+            SearchCommand = new RelayCommand(() => browseObjectsView.Refresh());
             PathPoints = new PointCollection();
             AutoReapplyMinutes = 15;
             StatusText = "Click Refresh to browse live comets and asteroids.";
@@ -176,6 +182,19 @@ namespace Perihelion.ViewModels {
         }
 
         public ObservableCollection<BrowseObject> BrowseObjects { get; }
+
+        // CollectionViewSource.GetDefaultView returns the exact same ICollectionView WPF already
+        // uses internally for the ListView's own ItemsSource="{Binding BrowseObjects}" binding --
+        // setting Filter here affects what that ListView shows with no XAML change needed at all.
+        private readonly ICollectionView browseObjectsView;
+
+        private string searchText = string.Empty;
+        public string SearchText {
+            get => searchText;
+            set { searchText = value; RaisePropertyChanged(); browseObjectsView.Refresh(); }
+        }
+
+        public RelayCommand SearchCommand { get; }
 
         private BrowseObject? selectedBrowseObject;
         public BrowseObject? SelectedBrowseObject {
