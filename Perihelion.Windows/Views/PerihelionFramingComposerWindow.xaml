@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:Perihelion.ViewModels"
         Title="Perihelion Framing Composer"
-        Width="860" SizeToContent="Height"
+        Width="980" SizeToContent="Height" MaxHeight="820"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="{DynamicResource BackgroundBrush}">
@@ -30,6 +30,12 @@
             <Setter Property="Foreground" Value="{DynamicResource ButtonForegroundBrush}" />
         </Style>
     </Window.Resources>
+    <!-- ScrollViewer + Window's own MaxHeight (above), real user feedback (2026-09-05): on a
+         shorter screen this window's content was taller than the visible area with no way to
+         reach the rest of it — SizeToContent="Height" alone has no notion of "too tall for this
+         screen". With MaxHeight set, WPF sizes the window to its content up to that cap and this
+         ScrollViewer handles whatever doesn't fit beyond it, rather than silently clipping it. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <Grid Margin="16">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -62,7 +68,7 @@
                  stays fixed at the viewport's own center always (HorizontalAlignment/
                  VerticalAlignment=Center, no Canvas position at all), same as TNS's own FOV
                  overlay — there is no independently-draggable FOV box. -->
-            <Border Width="480" Height="480" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
+            <Border Width="600" Height="600" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     Background="Black" VerticalAlignment="Top" ClipToBounds="True"
                     MouseWheel="SkyMap_MouseWheel" MouseLeftButtonDown="SkyMap_MouseLeftButtonDown"
                     MouseMove="SkyMap_MouseMove" MouseLeftButtonUp="SkyMap_MouseLeftButtonUp">
@@ -78,7 +84,8 @@
                         </Grid.RenderTransform>
                         <Image Source="{Binding SkyImage}" Stretch="UniformToFill" />
                         <!-- Target marker — a real dot/circle, fixed at the exact center of the
-                             untransformed image (240,240 for a 480x480 area). The target itself
+                             untransformed image (dead center of the Border above, whatever its
+                             own current size is). The target itself
                              is always centered in the requested sky map image by construction
                              (LoadSkyMapAsync requests it centered on trueCoordinates), so this
                              never needs to be computed or bound — only the shared transform
@@ -137,12 +144,20 @@
                  would just invite the exact "rotator not connected" failure this whole redesign
                  exists to avoid (see PerihelionSequenceBuilder's own comment on Center vs
                  CenterAndRotate). -->
-            <StackPanel Orientation="Horizontal" Margin="0,0,0,16" IsEnabled="{Binding RotatorConnected}">
-                <TextBlock Text="Rotate to" VerticalAlignment="Center" Margin="0,0,10,0" />
-                <CheckBox IsChecked="{Binding UseRotation}" Margin="0,0,10,0" />
-                <TextBox Text="{Binding RotationAngle, UpdateSourceTrigger=PropertyChanged}" Width="60" VerticalAlignment="Center"
-                         IsEnabled="{Binding UseRotation}" Margin="0,0,6,0" />
-                <TextBlock Text="°" VerticalAlignment="Center" Opacity="0.7" />
+            <StackPanel Margin="0,0,0,16" IsEnabled="{Binding RotatorConnected}">
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <TextBlock Text="Rotate to" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <CheckBox IsChecked="{Binding UseRotation}" />
+                </StackPanel>
+                <!-- A real slider, not just a typed number — matches Touch-N-Stars' own
+                     rotation control (FramingOffsetView.vue's <input type="range" min="0"
+                     max="360">) exactly, since the FOV rectangle's own on-screen rotation gives
+                     immediate visual feedback as you drag it, which a bare TextBox doesn't. -->
+                <StackPanel Orientation="Horizontal" IsEnabled="{Binding UseRotation}">
+                    <Slider Minimum="0" Maximum="360" Value="{Binding RotationAngle, UpdateSourceTrigger=PropertyChanged}"
+                            Width="180" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Text="{Binding RotationAngle, StringFormat='{}{0:F0}°'}" VerticalAlignment="Center" Width="40" Opacity="0.85" />
+                </StackPanel>
             </StackPanel>
 
             <Button Command="{Binding SlewAndCenterCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"
@@ -184,4 +199,5 @@
             </StackPanel>
         </StackPanel>
     </Grid>
+    </ScrollViewer>
 </Window>

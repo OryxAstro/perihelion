@@ -54,8 +54,14 @@ namespace Perihelion.ViewModels {
 
         // Requests a field of view wider than the camera's own actual FOV, so the displayed sky
         // map shows real surrounding context (other stars/objects) around the FOV rectangle, not
-        // just the rectangle itself filling the whole view.
-        private const double SkyMapZoomOutFactor = 3.0;
+        // just the rectangle itself filling the whole view. 6x, not the original 3x -- real user
+        // feedback (2026-09-05): this is a single static fetched image being panned around, not a
+        // true tiled/infinite map (that would need a real interactive planetarium library like
+        // Touch-N-Stars' own celestia-atlas, which is JS-only), so there's a genuine, honest limit
+        // to how far this can be panned before reaching the edge of the fetched image regardless
+        // of this factor -- a wider request just pushes that edge further out, it doesn't remove
+        // it.
+        private const double SkyMapZoomOutFactor = 6.0;
 
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IRotatorMediator rotatorMediator;
