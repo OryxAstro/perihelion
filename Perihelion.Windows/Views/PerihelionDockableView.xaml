@@ -345,7 +345,7 @@
                      comment for why). -->
                 <UniformGrid Columns="3" Margin="0,4,0,0">
                     <Button Command="{Binding FrameCommand}" Margin="0,0,4,4"
-                            ToolTip="Sends the current (offset-adjusted) position to NINA's own Framing Assistant to plan FOV/rotation. Does not set a tracking rate or slew by itself.">
+                            ToolTip="Opens the Perihelion Framing Composer -- a real slew, center, and (if a rotator is connected) rotate against the mount, plus an offset capture for framing off-center. Does not set a tracking rate by itself.">
                         <TextBlock Text="Frame" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
                     </Button>
                     <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4">
@@ -514,19 +514,11 @@
                              TextBlock is the only way to actually label one — placed to its left
                              in the same row (not stacked above it) per real user feedback
                              (2026-09-05), to save vertical space.
-                             Default OFF — real user feedback (2026-09-05): the sequence builder
-                             used to always send "Slew, center and rotate", which fails validation
-                             ("rotator not connected") for anyone without one. Now an explicit
-                             choice: unchecked sends plain "Slew and center" (no rotator involved
-                             at all); checked sends "Slew, center and rotate" to the angle below,
-                             for users who do have a rotator and want real framing control. -->
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <TextBlock Text="Use rotator" VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <CheckBox IsChecked="{Binding UseRotator}" Margin="0,0,10,0" />
-                            <TextBox Text="{Binding RotationAngle, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center" Margin="0,0,6,0"
-                                     IsEnabled="{Binding UseRotator}" />
-                            <TextBlock Text="°" VerticalAlignment="Center" Opacity="0.7" />
-                        </StackPanel>
+                             Rotation is no longer a raw typed angle here (2026-09-05) — it now
+                             comes from the Perihelion Framing Composer (opened via the "Frame"
+                             button below), which drives a real rotate-and-verify against the
+                             mount rather than taking a guessed number. Nothing to bind here for
+                             it; AddToSequenceAction reads CapturedRotationAngle directly. -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <TextBlock Text="Meridian flip" VerticalAlignment="Center" Margin="0,0,10,0" />
                             <CheckBox IsChecked="{Binding MeridianFlip}" />

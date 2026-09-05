@@ -58,8 +58,7 @@ namespace Perihelion.ViewModels {
         private readonly IProfileService profileService;
         private readonly IGuiderMediator guiderMediator;
         private readonly ITelescopeMediator telescopeMediator;
-        private readonly IFramingAssistantVM framingAssistantVM;
-        private readonly IApplicationMediator applicationMediator;
+        private readonly IRotatorMediator rotatorMediator;
         private readonly INighttimeCalculator nighttimeCalculator;
         private readonly DispatcherTimer statusTimer;
         private CancellationTokenSource? loadCts;
@@ -70,22 +69,29 @@ namespace Perihelion.ViewModels {
         // PerihelionPlugin's own static SequencerFactory/SequenceMediator fields for the full
         // explanation and the working alternative used instead. INighttimeCalculator below is a
         // different case -- confirmed safe because Orbitals' own real, working dockable VM
-        // (OrbitalsVM) imports this exact type directly into its own constructor.
+        // (OrbitalsVM) imports this exact type directly into its own constructor. IRotatorMediator
+        // (added 2026-09-05, for the Framing Composer's own rotator-aware framing) is the same
+        // kind of standard, non-special equipment mediator as ITelescopeMediator/IGuiderMediator
+        // above, not the ISequencerFactory/ISequenceMediator special case -- no reason to expect
+        // it to be any less safe, though this is the first time this VM has imported a mediator
+        // beyond the ones already proven working here, so it's still worth confirming the panel
+        // loads after this change specifically, not just assuming.
+        // IFramingAssistantVM/IApplicationMediator were removed here (2026-09-05) -- FrameAction
+        // no longer jumps to NINA's own Framing Assistant tab, it opens the Framing Composer
+        // instead, which needed neither.
 
         [ImportingConstructor]
         public PerihelionDockableVM(
             IProfileService profileService,
             IGuiderMediator guiderMediator,
             ITelescopeMediator telescopeMediator,
-            IFramingAssistantVM framingAssistantVM,
-            IApplicationMediator applicationMediator,
+            IRotatorMediator rotatorMediator,
             INighttimeCalculator nighttimeCalculator) : base(profileService) {
             this.profileService = profileService;
             this.guiderMediator = guiderMediator;
             this.telescopeMediator = telescopeMediator;
+            this.rotatorMediator = rotatorMediator;
             this.nighttimeCalculator = nighttimeCalculator;
-            this.framingAssistantVM = framingAssistantVM;
-            this.applicationMediator = applicationMediator;
 
             Title = "Perihelion";
             // MEF composition order between this VM and PerihelionPlugin's own resource-merging
@@ -131,7 +137,7 @@ namespace Perihelion.ViewModels {
             LoadCommand.RegisterPropertyChangeNotification(this, nameof(SelectedBrowseObject));
             LoadCommand.RegisterPropertyChangeNotification(this, nameof(IsBusy));
 
-            FrameCommand = new AsyncRelayCommand(FrameAction, () => Loaded != null);
+            FrameCommand = new RelayCommand(FrameAction, () => Loaded != null);
             FrameCommand.RegisterPropertyChangeNotification(this, nameof(Loaded));
 
             SlewAndTrackCommand = new AsyncRelayCommand(SlewAndTrackAction, () => Loaded != null && telescopeMediator.GetInfo().Connected);
@@ -460,6 +466,17 @@ namespace Perihelion.ViewModels {
         public string OffsetRaText => AstroUtil.HoursToHMS(offsetRaArcsec / 3600.0 / 15.0);
         public string OffsetDecText => AstroUtil.DegreesToDMS(offsetDecArcsec / 3600.0);
 
+        /// <summary>Set only by FrameAction, from whatever the Framing Composer actually
+        /// achieved -- null means plain Center (no rotator involved), matching how
+        /// PerihelionSequenceBuilder.BuildTargetContainer's own rotationAngle parameter already
+        /// works. Read by AddToSequenceAction; Quick Track doesn't use this at all (it has no
+        /// centering/framing step of its own, see QuickTrack's own architecture notes).</summary>
+        private double? capturedRotationAngle;
+        public double? CapturedRotationAngle {
+            get => capturedRotationAngle;
+            private set { capturedRotationAngle = value; RaisePropertyChanged(); }
+        }
+
         /// <summary>One marker per night on the path, positioned in the same coordinate space
         /// as PathPoints (Left/Top already centered, not top-left-anchored). IsTonight flags day
         /// 0 (the same "now" instant Load's own position/rate came from); IsEnd flags the last
@@ -553,22 +570,6 @@ namespace Perihelion.ViewModels {
             set { meridianFlip = value; RaisePropertyChanged(); }
         }
 
-        // Default false -- real user feedback (2026-09-05): with no rotator connected,
-        // CenterAndRotate fails validation and blocks the whole sequence, so this needs to be an
-        // explicit opt-in rather than assumed. Checked, it lets a user with a real rotator set an
-        // actual framing angle instead of being stuck on plain Center.
-        private bool useRotator;
-        public bool UseRotator {
-            get => useRotator;
-            set { useRotator = value; RaisePropertyChanged(); }
-        }
-
-        private double rotationAngle;
-        public double RotationAngle {
-            get => rotationAngle;
-            set { rotationAngle = value; RaisePropertyChanged(); }
-        }
-
         private bool autofocusEnabled;
         public bool AutofocusEnabled {
             get => autofocusEnabled;
@@ -622,7 +623,7 @@ namespace Perihelion.ViewModels {
                     new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours),
                     LoadedCoordinatesWithOffset(),
                     Guiding,
-                    UseRotator ? RotationAngle : (double?)null,
+                    CapturedRotationAngle,
                     AutofocusEnabled ? AutofocusMinutes : (double?)null,
                     new PerihelionSequenceBuilder.ExposureSettings(filter, ExposureSeconds, FrameCount));
 
@@ -650,7 +651,7 @@ namespace Perihelion.ViewModels {
         }
 
         public AsyncRelayCommand LoadCommand { get; }
-        public AsyncRelayCommand FrameCommand { get; }
+        public RelayCommand FrameCommand { get; }
         public AsyncRelayCommand SlewAndTrackCommand { get; }
         public AsyncRelayCommand SetTrackingRateCommand { get; }
         public AsyncRelayCommand SetGuiderShiftRateCommand { get; }
@@ -885,19 +886,44 @@ namespace Perihelion.ViewModels {
             return new Coordinates(ra, dec, Epoch.J2000, Coordinates.RAType.Hours);
         }
 
-        private async Task FrameAction() {
+        /// <summary>Opens the Perihelion Framing Composer -- real user feedback (2026-09-05),
+        /// after a raw "type a rotation angle" TextBox on the Add to Sequence card was rightly
+        /// rejected: rotation and offset shouldn't be typed in blind, they should come from an
+        /// actual framing session (real slew, real plate-solve, real rotate if a rotator is
+        /// connected), with the result captured back here for Add to Sequence/Quick Track to use
+        /// -- not a guessed number. Same factory-resolution path as AddToSequenceAction (see its
+        /// own comment): PerihelionPlugin's static SequenceMediator field, reflected via
+        /// PerihelionSequenceBuilder.ResolveFactory, since this VM still never imports
+        /// ISequencerFactory/ISequenceMediator directly.</summary>
+        private void FrameAction() {
             if (Loaded == null) return;
-            try {
-                var dso = new NINA.Astrometry.DeepSkyObject(
-                    Loaded.Name,
-                    LoadedCoordinatesWithOffset(),
-                    profileService.ActiveProfile.ApplicationSettings.SkyAtlasImageRepository,
-                    profileService.ActiveProfile.AstrometrySettings.Horizon);
-                applicationMediator.ChangeTab(ApplicationTab.FRAMINGASSISTANT);
-                await framingAssistantVM.SetCoordinates(dso);
-            } catch (Exception ex) {
-                Notification.ShowError($"Perihelion: failed to send to framing wizard: {ex.Message}");
-                Logger.Error("Perihelion: failed to send to framing wizard", ex);
+
+            var sequenceMediator = PerihelionPlugin.SequenceMediator;
+            if (sequenceMediator == null || !sequenceMediator.Initialized) {
+                Notification.ShowError("Perihelion: the sequencer isn't available yet -- try again once NINA has fully started.");
+                return;
+            }
+            var factory = PerihelionSequenceBuilder.ResolveFactory(sequenceMediator);
+            if (factory == null) {
+                Notification.ShowError("Perihelion: could not reach the sequencer's item factory -- see log.");
+                Logger.Error("Perihelion: PerihelionSequenceBuilder.ResolveFactory returned null even though Initialized was true");
+                return;
+            }
+
+            var trueCoordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
+            var composerVm = new PerihelionFramingComposerVM(Loaded.Name, trueCoordinates, telescopeMediator, rotatorMediator, factory);
+            var window = new Perihelion.Views.PerihelionFramingComposerWindow(composerVm) {
+                Owner = System.Windows.Application.Current?.MainWindow,
+            };
+            window.ShowDialog();
+
+            if (composerVm.Confirmed == true) {
+                OffsetRaArcsec = composerVm.OffsetRaArcsec;
+                OffsetDecArcsec = composerVm.OffsetDecArcsec;
+                CapturedRotationAngle = composerVm.CapturedRotationAngle;
+                StatusText = CapturedRotationAngle is double angle
+                    ? $"Framing captured -- rotate to {angle}°, offset RA {OffsetRaText} Dec {OffsetDecText}."
+                    : $"Framing captured -- offset RA {OffsetRaText} Dec {OffsetDecText}.";
             }
         }
 
