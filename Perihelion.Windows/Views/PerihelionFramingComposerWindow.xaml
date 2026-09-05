@@ -108,7 +108,8 @@
                     <Rectangle Width="{Binding FovRectWidth}" Height="{Binding FovRectHeight}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"
                                IsHitTestVisible="False"
-                               Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" StrokeDashArray="4,3">
+                               Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1"
+                               StrokeDashArray="1.6,1.2" StrokeDashCap="Round">
                         <Rectangle.RenderTransform>
                             <TransformGroup>
                                 <ScaleTransform ScaleX="{Binding ImageZoom}" ScaleY="{Binding ImageZoom}" />
