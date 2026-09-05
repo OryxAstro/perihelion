@@ -42,7 +42,7 @@ namespace Perihelion {
             }
             apiServer = new PerihelionApiServer(telescopeMediator, guiderMediator, profileService, port);
 
-            RegisterOptionsTemplate();
+            RegisterWindowsResources();
         }
 
         /// <summary>The configured port, persisted per-profile via PluginOptionsAccessor -- the
@@ -59,29 +59,37 @@ namespace Perihelion {
             }
         }
 
-        /// <summary>NINA's own Options > Plugins page looks up a DataTemplate keyed
-        /// "{plugin.Name}_Options" in Application.Current.Resources (confirmed directly from
-        /// NINA.ViewModel.Plugins.PluginOptionsDataTemplateSelector's own source) -- registering
-        /// one is what turns "no options UI at all" into a real settings page there. Guarded to
-        /// only ever run on Windows: PINS renders no WPF UI shell at all, so nothing there would
-        /// ever look this key up in the first place -- PINS' own System.Windows.Compat stub
-        /// actually provides a harmless, always-non-null Application.Current (checked directly
-        /// against its source), so this guard is about not registering a meaningless entry into
-        /// that stub's own MergedDictionaries list, not about avoiding a null-reference crash.
-        /// The actual XAML (PerihelionOptionsView.xaml) is Windows-build-only for the same
-        /// reason -- see Perihelion.Windows.csproj's own comment on UseWPF.</summary>
-        private void RegisterOptionsTemplate() {
+        /// <summary>Three Windows-only WPF resources this plugin registers itself, since PINS
+        /// renders no WPF UI shell at all and never looks any of them up (PINS' own
+        /// System.Windows.Compat stub gives a harmless, always-non-null Application.Current, so
+        /// this guard is about not adding meaningless entries to that stub's own
+        /// MergedDictionaries, not about avoiding a null-reference crash):
+        /// - PerihelionOptionsView.xaml -- NINA's Options > Plugins page looks up a DataTemplate
+        ///   keyed "{plugin.Name}_Options" in Application.Current.Resources (confirmed directly
+        ///   from NINA.ViewModel.Plugins.PluginOptionsDataTemplateSelector's own source).
+        /// - PerihelionIcon.xaml -- the GeometryGroup PerihelionDockableVM's own constructor
+        ///   looks up by name for its dock-tab icon, in place of DockableVM's default
+        ///   PuzzlePieceSVG. Deliberately merged first: PerihelionDockableVM falls back
+        ///   gracefully if this hasn't landed yet (MEF composition order between two independent
+        ///   exports isn't guaranteed), but there's no reason not to give it the best chance.
+        /// - PerihelionDockableView.xaml -- the implicit (DataType-only) DataTemplate NINA's own
+        ///   imaging-tab dock host resolves automatically for a PerihelionDockableVM instance.
+        /// All three XAML files are Windows-build-only -- see Perihelion.Windows.csproj's own
+        /// comment on UseWPF.</summary>
+        private void RegisterWindowsResources() {
             if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return;
-            try {
-                System.Windows.Application.Current.Resources.MergedDictionaries.Add(
-                    new System.Windows.ResourceDictionary {
-                        Source = new Uri("pack://application:,,,/Perihelion;component/Views/PerihelionOptionsView.xaml"),
-                    });
-            } catch (Exception ex) {
-                // Never worth failing plugin Initialize() over a missing options page -- the
-                // server itself doesn't depend on this at all, only the Settings UI would show
-                // nothing where a real options page should be.
-                Logger.Error($"Perihelion: could not register options page: {ex}");
+            foreach (var path in new[] { "Resources/PerihelionIcon.xaml", "Views/PerihelionDockableView.xaml", "Views/PerihelionOptionsView.xaml" }) {
+                try {
+                    System.Windows.Application.Current.Resources.MergedDictionaries.Add(
+                        new System.Windows.ResourceDictionary {
+                            Source = new Uri($"pack://application:,,,/Perihelion;component/{path}"),
+                        });
+                } catch (Exception ex) {
+                    // Never worth failing plugin Initialize() over a missing WPF resource -- the
+                    // server itself doesn't depend on any of these, only the affected UI surface
+                    // (settings page, dock icon, or dock panel content) would look wrong.
+                    Logger.Error($"Perihelion: could not register {path}: {ex}");
+                }
             }
         }
 
