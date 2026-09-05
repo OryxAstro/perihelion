@@ -380,7 +380,17 @@
                         <TextBlock Text="Position" FontWeight="Bold" Margin="0,0,0,2" />
                         <TextBlock Text="{Binding PositionText}" />
                         <TextBlock Text="{Binding RateText}" Margin="0,2,0,0" />
-                        <TextBlock Margin="0,2,0,0"><Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText, Mode=OneWay}" /></TextBlock>
+                        <!-- Real user question, 2026-09-06, after seeing a much bigger number than
+                             they'd actually shoot (617s for a Bortle 6 site with a broadband
+                             UV/IR-cut filter): this figure is a TRACKING ceiling only (seconds
+                             until the target drifts 1px relative to the background stars) — it
+                             has no idea about sky background, light pollution, or your filter, so
+                             it is very often NOT the real limiting factor. A ToolTip is the
+                             lightest fix that doesn't crowd an already-dense Position column. -->
+                        <TextBlock Margin="0,2,0,0"
+                                   ToolTip="Tracking limit only -- seconds before the target drifts 1px relative to the background stars. Doesn't account for sky background/light pollution or your filter, which is usually the real limit on sub length under a broadband filter at a brighter site.">
+                            <Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText, Mode=OneWay}" />
+                        </TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText, Mode=OneWay}" /></TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Observed (COBS): " /><Run Text="{Binding ObservedMagnitudeText, Mode=OneWay}" /></TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
