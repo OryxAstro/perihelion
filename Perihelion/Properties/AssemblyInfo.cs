@@ -19,7 +19,7 @@ using System.Runtime.InteropServices;
 // The minimum version of PiNStars/N.I.N.A. this plugin is compatible with.
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.0.0.1031")]
 
-[assembly: AssemblyMetadata("Homepage", "https://github.com/OryxAstro/perihelion")]
+[assembly: AssemblyMetadata("Homepage", "https://www.buymeacoffee.com/OryxAstro")]
 [assembly: AssemblyMetadata("License", "GPL-3.0-or-later")]
 [assembly: AssemblyMetadata("LicenseURL", "https://github.com/OryxAstro/perihelion/blob/main/LICENSE")]
 [assembly: AssemblyMetadata("Repository", "https://github.com/OryxAstro/perihelion")]
