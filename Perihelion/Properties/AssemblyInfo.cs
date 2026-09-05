@@ -34,10 +34,14 @@ elements, with no external service or internet dependency in the field.
 
 Features
 
+* Every position and rate that actually drives hardware (Frame, Slew and Track, Set
+  Tracking Rate, Quick Track) is corrected for light-time, stellar aberration, and the
+  real observing site — a true topocentric position, not Earth's center — rather than a
+  naive instantaneous geocentric snapshot.
 * A native dockable panel (Imaging tab, real Windows NINA only) to browse live comet and
-  asteroid brightness, preview tonight's position, rate, orbital elements and a 10-night
-  path, then Frame, Slew and Track, Set Tracking Rate, Set Guider Shift Rate, or start an
-  ad-hoc Quick Track — all in one place.
+  asteroid brightness, preview tonight's altitude, a 10-night path, rate and orbital
+  elements, then Frame, Slew and Track, Set Tracking Rate, Set Guider Shift Rate, or start
+  an ad-hoc Quick Track — all in one place.
 * The same tracking, browsing and Quick Track features from the Perihelion panel in
   Touch-N-Stars, for PINS and remote/mobile control either way.
 * Quick Track's own optional auto re-apply, recomputing and resending the rate on an
