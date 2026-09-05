@@ -45,10 +45,14 @@ Features
 * Falls back to guiding-only shift tracking (PHD2's own native mechanism) when the mount's
   own driver can't take a custom base tracking rate at all.
 * An ""Add to Sequence"" step for the Advanced Sequencer, for a full unattended run.
+* Real observed comet brightness from COBS (the Comet OBServation database) shown alongside
+  the predicted magnitude — the predicted value can be badly wrong during a real outburst,
+  which is only obvious when the real observed number sits right next to it.
 
 Object Types
 
-* Comets — live elements from the Minor Planet Center's public comet-elements feed.
+* Comets — live elements from the Minor Planet Center's public comet-elements feed, with
+  real observed brightness from COBS.
 * Numbered asteroids — a curated list of bright, well-known asteroids (not the full MPC
   catalog).
 

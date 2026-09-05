@@ -55,8 +55,12 @@ namespace Perihelion.Astrometry {
         /// be badly wrong during a real outburst -- 10P/Tempel and 220P/McNaught are verified
         /// real cases several magnitudes off -- and that's invisible unless the real observed
         /// value is right there next to it, not one tap away on a detail view.</summary>
-        public double? ObservedMagnitude { get; init; }
-        public double? ObservedAverageMagnitude { get; init; }
+        // Settable, not init-only: the native Windows panel populates the list instantly without
+        // COBS (same reasoning as includeCobs's own doc comment below -- don't block the initial
+        // render), then fills these in per-comet in the background as each one's own COBS fetch
+        // completes, same pattern as the Touch-N-Stars panel's own fetchBrowseObjects.js.
+        public double? ObservedMagnitude { get; set; }
+        public double? ObservedAverageMagnitude { get; set; }
 
         public required double RaHours { get; init; }
         public required double DecDeg { get; init; }

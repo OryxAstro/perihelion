@@ -331,6 +331,45 @@ namespace Perihelion.Astrometry {
             return OrbitalMechanics.RotatePerifocalToEcliptic(xOrbit, yOrbit, comet.InclinationDeg, comet.NodeDeg, comet.ArgPeriDeg);
         }
 
+        private static double SolveKeplerEccentricAnomaly(double meanAnomalyRad, double eccentricity) {
+            var e = meanAnomalyRad;
+            for (var i = 0; i < 30; i++) {
+                var dE = (e - eccentricity * Math.Sin(e) - meanAnomalyRad) / (1 - eccentricity * Math.Cos(e));
+                e -= dE;
+                if (Math.Abs(dE) < 1e-12) break;
+            }
+            return e;
+        }
+
+        /// <summary>Classical mean/eccentric/true anomaly "now" for an elliptical comet (e &lt; 1)
+        /// -- null for a parabolic/hyperbolic one, where these don't apply the same way. A comet
+        /// has no separate "epoch" the way an asteroid does: its own perihelion passage time T
+        /// IS the instant mean anomaly is exactly zero, by definition, so mean anomaly here is
+        /// simply the mean motion times days-since-T -- the same classical two-body relation
+        /// AsteroidOrbits.ComputeAnomalies uses, just anchored at T instead of a stored epoch.
+        /// A genuinely separate, simpler solve than HeliocentricEcliptic's own universal-variable
+        /// propagator above (which has to handle parabolic/hyperbolic too); this only ever runs
+        /// for e &lt; 1, where the classical Kepler equation is exact and directly solvable.</summary>
+        public static AsteroidOrbits.OrbitAnomalies? ComputeAnomalies(CometElements comet, DateTime date) {
+            if (comet.Eccentricity >= 1) return null;
+
+            var a = comet.Q / (1 - comet.Eccentricity);
+            var meanMotion = Math.Sqrt(OrbitalMechanics.GaussianKSquared / Math.Pow(a, 3)); // rad/day
+            var daysSincePerihelion = (date.ToUniversalTime() - comet.PerihelionDate).TotalDays;
+            var meanAnomaly = OrbitalMechanics.NormalizeRad(meanMotion * daysSincePerihelion);
+            var eccentricAnomaly = SolveKeplerEccentricAnomaly(meanAnomaly, comet.Eccentricity);
+
+            var e = comet.Eccentricity;
+            var trueAnomaly = 2 * Math.Atan2(Math.Sqrt(1 + e) * Math.Sin(eccentricAnomaly / 2), Math.Sqrt(1 - e) * Math.Cos(eccentricAnomaly / 2));
+            var radius = a * (1 - e * Math.Cos(eccentricAnomaly));
+
+            return new AsteroidOrbits.OrbitAnomalies(
+                MeanAnomalyDeg: meanAnomaly / OrbitalMechanics.Deg2Rad,
+                EccentricAnomalyDeg: OrbitalMechanics.NormalizeRad(eccentricAnomaly) / OrbitalMechanics.Deg2Rad,
+                TrueAnomalyDeg: OrbitalMechanics.NormalizeRad(trueAnomaly) / OrbitalMechanics.Deg2Rad,
+                DistanceAu: radius);
+        }
+
         /// <summary>
         /// Standard (and well-known to be approximate) comet magnitude formula:
         /// m = H + 5*log10(delta) + 2.5*G*log10(r), where r = heliocentric distance and
