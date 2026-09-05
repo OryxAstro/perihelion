@@ -29,5 +29,13 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyMetadata("ScreenshotURL", "")]
 [assembly: AssemblyMetadata("AltScreenshotURL", "")]
 [assembly: AssemblyMetadata("LongDescription", @"Sets a mount's custom RA/Dec tracking rate for a comet or asteroid so it stays centered
-in frame without fighting the sidereal rate. Computed live, on-device, from real orbital
-elements — no external service or internet dependency in the field.")]
+in frame without fighting the sidereal rate — computed live, on-device, from real orbital
+elements, with no external service or internet dependency in the field. Falls back to
+guiding-only shift tracking when the mount's own driver can't take a custom rate.
+
+Also runs a small standalone server that powers the Perihelion panel in Touch-N-Stars:
+browse live comet/asteroid brightness, preview tonight's position and a 10-night path,
+start an ad-hoc Quick Track (with optional auto re-apply as the rate drifts), or add a
+full tracking sequence to the Advanced Sequencer.
+
+Standalone: no shared code, cache format, or affiliation with NINA.Joko.Plugin.Orbitals.")]
