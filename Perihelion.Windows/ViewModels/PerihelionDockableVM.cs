@@ -105,6 +105,11 @@ namespace Perihelion.ViewModels {
             browseObjectsView.Filter = o => string.IsNullOrWhiteSpace(SearchText)
                 || (o is BrowseObject b && b.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
             SearchCommand = new RelayCommand(() => browseObjectsView.Refresh());
+
+            UpdateCometsCommand = new AsyncRelayCommand(UpdateCometsAction);
+            UpdateCobsCommand = new AsyncRelayCommand(UpdateCobsAction);
+            RefreshLastUpdatedText();
+
             PathPoints = new PointCollection();
             AutoReapplyMinutes = 15;
             StatusText = "Click Refresh to browse live comets and asteroids.";
@@ -195,6 +200,72 @@ namespace Perihelion.ViewModels {
         }
 
         public RelayCommand SearchCommand { get; }
+
+        // --- Update Databases ---
+        //
+        // Real user concern: does this cache actually persist across NINA restarts/reboots, or
+        // could it silently clear out? Verified empirically, not assumed: both
+        // %LocalAppData%\NINA\PerihelionData\comet-elements-cache.json and
+        // \comet-activity-cache.json (COBS) already exist on the real deployed machine from
+        // earlier in this same session, surviving every restart and redeploy since -- this is
+        // the same stable, persistent NINA.Core.Utility.CoreUtil.APPLICATIONTEMPPATH root that
+        // hosts the Plugins folder itself (confirmed from NINA.Plugin/Constants.cs using the same
+        // constant for its own UserExtensionsFolder), not a volatile OS temp directory despite
+        // the confusing name. CometOrbits' own comet-elements cache has a 6-hour TTL and is used
+        // automatically by Load/Refresh; these two buttons are the explicit "do it now, bypass
+        // the TTL" actions, matching Orbitals' own per-object-type Update button and this
+        // project's existing PINS-side /objects/refresh-cobs route (mirrored exactly, not
+        // reinvented) for the same real reason -- a full COBS sweep across every comet takes
+        // several seconds to tens of seconds, so it stays a deliberate, explicit action rather
+        // than something that runs silently on every Load.
+        private string cometsLastUpdatedText = "Never";
+        public string CometsLastUpdatedText => cometsLastUpdatedText;
+        private string cobsLastUpdatedText = "Never";
+        public string CobsLastUpdatedText => cobsLastUpdatedText;
+
+        public AsyncRelayCommand UpdateCometsCommand { get; }
+        public AsyncRelayCommand UpdateCobsCommand { get; }
+
+        private void RefreshLastUpdatedText() {
+            cometsLastUpdatedText = CometOrbits.LastSyncedUtc is DateTime c ? c.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never";
+            cobsLastUpdatedText = CometActivity.LastFullRefreshUtc is DateTime o ? o.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never";
+            RaisePropertyChanged(nameof(CometsLastUpdatedText));
+            RaisePropertyChanged(nameof(CobsLastUpdatedText));
+        }
+
+        private async Task UpdateCometsAction() {
+            IsBusy = true;
+            StatusText = "Updating comet elements from MPC...";
+            try {
+                var ok = await CometOrbits.SyncNowAsync(HttpClient, CancellationToken.None);
+                StatusText = ok ? "Comet elements updated." : "Comet elements update failed -- see log.";
+            } catch (Exception ex) {
+                StatusText = $"Comet elements update failed: {ex.Message}";
+                Notification.ShowError($"Perihelion: comet elements update failed: {ex.Message}");
+            } finally {
+                RefreshLastUpdatedText();
+                IsBusy = false;
+            }
+        }
+
+        private async Task UpdateCobsAction() {
+            IsBusy = true;
+            StatusText = "Refreshing COBS observed magnitudes (can take a while)...";
+            try {
+                var objects = await OrbitalTracking.ListBrowseObjectsAsync(HttpClient, DateTime.UtcNow, CancellationToken.None, includeCobs: true, forceRefreshCobs: true);
+                BrowseObjects.Clear();
+                foreach (var o in objects.Where(o => o.ObjectType == SelectedObjectType)) {
+                    BrowseObjects.Add(o);
+                }
+                StatusText = $"COBS refreshed -- {BrowseObjects.Count} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded.";
+            } catch (Exception ex) {
+                StatusText = $"COBS refresh failed: {ex.Message}";
+                Notification.ShowError($"Perihelion: COBS refresh failed: {ex.Message}");
+            } finally {
+                RefreshLastUpdatedText();
+                IsBusy = false;
+            }
+        }
 
         private BrowseObject? selectedBrowseObject;
         public BrowseObject? SelectedBrowseObject {

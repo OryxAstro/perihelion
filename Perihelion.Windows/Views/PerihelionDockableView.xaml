@@ -17,22 +17,18 @@
                  Foreground on every button. BasedOn is required — a bare Style with no BasedOn
                  replaces NINA's own app-wide implicit Button style (StandardButton's whole
                  ControlTemplate, including its teal background/hover states) entirely, rather
-                 than adding to it. ContentTemplate wraps plain string Content in a TextBlock with
-                 a real Margin — StandardButton's own ContentPresenter has a hardcoded
-                 Margin="0,0,0,0" and never reads Button.Padding at all (confirmed from its real
-                 source), so Padding is silently a no-op here; Margin on a child element is always
-                 respected by the layout system regardless of the parent's own template, which is
-                 what actually gives button text real horizontal breathing room. -->
+                 than adding to it.
+                 Horizontal spacing is NOT handled here — a previous attempt set ContentTemplate
+                 on this style to wrap Content in a Margin'd TextBlock, which turned out to be
+                 just as much a no-op as Padding: StandardButton's own ContentPresenter binds only
+                 Content="{TemplateBinding Content}", never ContentTemplate, confirmed from its
+                 real source (NINA.WPF.Base/Resources/Styles/Button.xaml). The only binding that
+                 actually reaches the button is Content itself — so every button below sets its
+                 own actual Content to a "<TextBlock Text=... Margin="14,0" />" element instead of
+                 a plain string, giving the Margin something real to attach to. -->
             <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                 <Setter Property="Height" Value="30" />
                 <Setter Property="Foreground" Value="{DynamicResource ButtonForegroundBrush}" />
-                <Setter Property="ContentTemplate">
-                    <Setter.Value>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding}" Margin="14,0" />
-                        </DataTemplate>
-                    </Setter.Value>
-                </Setter>
             </Style>
         </DataTemplate.Resources>
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -44,55 +40,106 @@
                 <TextBlock Text="Comet &amp; Asteroid Tracking" FontSize="18" Margin="0,0,0,8" />
                 <Separator Margin="0,0,0,10" />
 
-                <!-- Browse -->
-                <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
-                <Grid Margin="0,0,0,4">
+                <!-- Browse (left) / Update Databases (right) -->
+                <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="2*" />
+                        <ColumnDefinition Width="16" />
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
-                    <ComboBox Grid.Column="0" Width="90" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
-                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" />
-                    <Button Grid.Column="2" Content="Refresh" Command="{Binding RefreshBrowseListCommand}" />
+
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <ComboBox Grid.Column="0" Width="90" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
+                            <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" />
+                            <Button Grid.Column="2" Command="{Binding RefreshBrowseListCommand}">
+                                <TextBlock Text="Refresh" Margin="14,0" />
+                            </Button>
+                        </Grid>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                                     MaxWidth="160" HorizontalAlignment="Left" VerticalContentAlignment="Center" Margin="0,0,6,0" />
+                            <Button Grid.Column="2" Command="{Binding SearchCommand}">
+                                <TextBlock Text="Search" Margin="14,0" />
+                            </Button>
+                        </Grid>
+                        <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/
+                             ListViewItem globally, not plain ListBox/ListBoxItem (confirmed from
+                             a real resource dump in this app's own log, then from NINA's actual
+                             source — NINA.WPF.Base/Resources/Styles/ListView.xaml). That same
+                             source is why a plain ItemTemplate rendered nothing at all after the
+                             background fix: NINA's global ListViewItem style hardcodes its
+                             content as a bare GridViewRowPresenter with no Columns of its own —
+                             it only draws anything once ListView.View is an actual GridView,
+                             whose GridView.ColumnCollection feeds those columns. A real GridView
+                             here (not a custom ItemTemplate) is what NINA's own theme actually
+                             expects, and its column cells use the app's normal default TextBlock
+                             style automatically, same as any other page text. -->
+                        <ListView ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Name" Width="180" DisplayMemberBinding="{Binding Name}" />
+                                    <GridViewColumn Header="Magnitude" Width="90">
+                                        <GridViewColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding Magnitude, StringFormat='mag {0:F1}'}" Opacity="0.7" />
+                                            </DataTemplate>
+                                        </GridViewColumn.CellTemplate>
+                                    </GridViewColumn>
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+                        <Button Command="{Binding LoadCommand}" HorizontalAlignment="Left">
+                            <TextBlock Text="Load" Margin="14,0" />
+                        </Button>
+                    </StackPanel>
+
+                    <!-- Same idea as Orbitals' own per-object-type Update/Last Updated rows, and
+                         this project's existing PINS-side sync status — explicit, deliberate
+                         refresh actions with their own real "when" (CometOrbits.LastSyncedUtc /
+                         CometActivity.LastFullRefreshUtc, both disk-persisted — see
+                         RefreshLastUpdatedText's own doc comment for how that was verified). -->
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Update Databases" FontWeight="Bold" Margin="0,0,0,4" />
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Command="{Binding UpdateCometsCommand}" Margin="0,0,8,0">
+                                <TextBlock Text="Comets" Margin="14,0" />
+                            </Button>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap">
+                                <Run Text="Last Updated: " /><Run Text="{Binding CometsLastUpdatedText, Mode=OneWay}" />
+                            </TextBlock>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button Grid.Column="0" Command="{Binding UpdateCobsCommand}" Margin="0,0,8,0"
+                                    ToolTip="Refreshes real observed brightness from COBS for every comet in the browse list. Takes several seconds to tens of seconds -- a deliberate, explicit action, not something that runs automatically.">
+                                <TextBlock Text="COBS" Margin="14,0" />
+                            </Button>
+                            <TextBlock Grid.Column="1" VerticalAlignment="Center" Opacity="0.7" TextWrapping="Wrap">
+                                <Run Text="Last Updated: " /><Run Text="{Binding CobsLastUpdatedText, Mode=OneWay}" />
+                            </TextBlock>
+                        </Grid>
+                    </StackPanel>
                 </Grid>
-                <Grid Margin="0,0,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                             VerticalContentAlignment="Center" Margin="0,0,6,0" />
-                    <Button Grid.Column="2" Content="Search" Command="{Binding SearchCommand}" />
-                </Grid>
-                <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/ListViewItem
-                     globally, not plain ListBox/ListBoxItem (confirmed from a real resource
-                     dump in this app's own log, then from NINA's actual source —
-                     NINA.WPF.Base/Resources/Styles/ListView.xaml). That same source is why a
-                     plain ItemTemplate rendered nothing at all after the background fix: NINA's
-                     global ListViewItem style hardcodes its content as a bare
-                     GridViewRowPresenter with no Columns of its own — it only draws anything
-                     once ListView.View is an actual GridView, whose GridView.ColumnCollection
-                     feeds those columns. A real GridView here (not a custom ItemTemplate) is
-                     what NINA's own theme actually expects, and its column cells use the app's
-                     normal default TextBlock style automatically, same as any other page text. -->
-                <ListView ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
-                    <ListView.View>
-                        <GridView>
-                            <GridViewColumn Header="Name" Width="180" DisplayMemberBinding="{Binding Name}" />
-                            <GridViewColumn Header="Magnitude" Width="90">
-                                <GridViewColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding Magnitude, StringFormat='mag {0:F1}'}" Opacity="0.7" />
-                                    </DataTemplate>
-                                </GridViewColumn.CellTemplate>
-                            </GridViewColumn>
-                        </GridView>
-                    </ListView.View>
-                </ListView>
-                <Button Content="Load" Command="{Binding LoadCommand}" HorizontalAlignment="Left" Margin="0,0,0,10" />
 
                 <Separator Margin="0,0,0,10" />
 
@@ -171,17 +218,31 @@
                 </Grid>
 
                 <!-- Action buttons — same 2x3 arrangement as Orbitals' own panel. Height/
-                     Foreground/spacing come from the shared Button style in this DataTemplate's
-                     own Resources (see the top of this file). -->
+                     Foreground come from the shared Button style in this DataTemplate's own
+                     Resources (see the top of this file); each button's own text is a nested
+                     TextBlock with a real Margin, not a plain Content string (see that same
+                     comment for why). -->
                 <UniformGrid Columns="3" Margin="0,4,0,0">
-                    <Button Content="Frame" Command="{Binding FrameCommand}" Margin="0,0,4,4"
-                            ToolTip="Sends the current (offset-adjusted) position to NINA's own Framing Assistant to plan FOV/rotation. Does not set a tracking rate or slew by itself." />
-                    <Button Content="Set Tracking Rate" Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4" />
-                    <Button Content="Set Offset" Command="{Binding SetOffsetFromMountCommand}" Margin="4,0,0,4"
-                            ToolTip="Captures the mount's current actual position minus this target's true position as the offset above -- manually frame first, then capture." />
-                    <Button Content="Slew and Track" Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0" />
-                    <Button Content="Set Guider Shift Rate" Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,4,0" />
-                    <Button Content="Clear Offset" Command="{Binding ResetOffsetCommand}" Margin="4,0,0,0" />
+                    <Button Command="{Binding FrameCommand}" Margin="0,0,4,4"
+                            ToolTip="Sends the current (offset-adjusted) position to NINA's own Framing Assistant to plan FOV/rotation. Does not set a tracking rate or slew by itself.">
+                        <TextBlock Text="Frame" Margin="14,0" />
+                    </Button>
+                    <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4">
+                        <TextBlock Text="Set Tracking Rate" Margin="14,0" />
+                    </Button>
+                    <Button Command="{Binding SetOffsetFromMountCommand}" Margin="4,0,0,4"
+                            ToolTip="Captures the mount's current actual position minus this target's true position as the offset above -- manually frame first, then capture.">
+                        <TextBlock Text="Set Offset" Margin="14,0" />
+                    </Button>
+                    <Button Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0">
+                        <TextBlock Text="Slew and Track" Margin="14,0" />
+                    </Button>
+                    <Button Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,4,0">
+                        <TextBlock Text="Set Guider Shift Rate" Margin="14,0" />
+                    </Button>
+                    <Button Command="{Binding ResetOffsetCommand}" Margin="4,0,0,0">
+                        <TextBlock Text="Clear Offset" Margin="14,0" />
+                    </Button>
                 </UniformGrid>
 
                 <Separator Margin="0,6,0,10" />
@@ -318,8 +379,10 @@
                         </StackPanel>
                     </StackPanel>
                 </StackPanel>
-                <Button Content="Add to Sequence" Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left"
-                        ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer." />
+                <Button Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left"
+                        ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer.">
+                    <TextBlock Text="Add to Sequence" Margin="14,0" />
+                </Button>
 
                 <Separator Margin="0,10,0,10" />
 
@@ -336,8 +399,12 @@
                     </StackPanel>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                    <Button Content="Start Quick Track" Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0" />
-                    <Button Content="Stop" Command="{Binding StopQuickTrackCommand}" />
+                    <Button Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0">
+                        <TextBlock Text="Start Quick Track" Margin="14,0" />
+                    </Button>
+                    <Button Command="{Binding StopQuickTrackCommand}">
+                        <TextBlock Text="Stop" Margin="14,0" />
+                    </Button>
                 </StackPanel>
                 <TextBlock Text="{Binding QuickTrackStatusText}" TextWrapping="Wrap" Opacity="0.85" />
 
