@@ -271,111 +271,10 @@
 
                 <Separator Margin="0,0,0,10" />
 
-                <!-- Position / rate / elements -->
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                        <TextBlock Text="Position" FontWeight="Bold" Margin="0,0,0,2" />
-                        <TextBlock Text="{Binding PositionText}" />
-                        <TextBlock Text="{Binding RateText}" Margin="0,2,0,0" />
-                        <TextBlock Margin="0,2,0,0"><Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Observed (COBS): " /><Run Text="{Binding ObservedMagnitudeText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="Orbital Elements" FontWeight="Bold" Margin="0,0,0,2" />
-                        <!-- Matches NINA.Joko.Plugin.Orbitals' own two-column elements layout:
-                             Epoch and Periapsis are two real, separate quantities (a comet's own
-                             perihelion passage time is not a substitute for its reference epoch),
-                             shown side by side rather than one-or-the-other. -->
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
-                                <TextBlock Margin="0,2,0,0"><Run Text="Epoch: " /><Run Text="{Binding EpochText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Epoch (Julian): " /><Run Text="{Binding EpochJulianText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Perihelion Distance: " /><Run Text="{Binding PerihelionDistanceText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Eccentricity: " /><Run Text="{Binding EccentricityText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Inclination: " /><Run Text="{Binding InclinationText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Arg of Perihelion: " /><Run Text="{Binding ArgPeriText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Node: " /><Run Text="{Binding NodeText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Source: " /><Run Text="{Binding SourceText, Mode=OneWay}" /></TextBlock>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Margin="0,2,0,0"><Run Text="Periapsis: " /><Run Text="{Binding PeriapsisText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Periapsis (Julian): " /><Run Text="{Binding PeriapsisJulianText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly at Epoch: " /><Run Text="{Binding MeanAnomalyAtEpochText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Semi-Major Axis: " /><Run Text="{Binding SemiMajorAxisText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly: " /><Run Text="{Binding MeanAnomalyNowText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Eccentric Anomaly: " /><Run Text="{Binding EccentricAnomalyNowText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="True Anomaly: " /><Run Text="{Binding TrueAnomalyNowText, Mode=OneWay}" /></TextBlock>
-                                <TextBlock Margin="0,2,0,0"><Run Text="Distance: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
-                            </StackPanel>
-                        </Grid>
-                    </StackPanel>
-                </Grid>
-
-                <!-- Offset — kept as editable fields (precise manual control is still useful),
-                     with a real "Set Offset" capture button alongside them now too: same
-                     semantic as NINA.Joko.Plugin.Orbitals' own SetOffset (confirmed from its
-                     real source), which takes the mount's actual current position minus the
-                     target's true position, so manually framing (slew/plate-solve/center
-                     wherever you actually want, e.g. a comet's tail rather than its nucleus)
-                     and then capturing that positioning is a real alternative to typing exact
-                     values by hand. Read-only, HH:MM:SS/DMS — matches Orbitals' own displayed
-                     format for RAOffset/DecOffset exactly, not a raw arcsec number. -->
-                <Grid Margin="0,8,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="90" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="110" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Offset RA" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <TextBlock Grid.Column="1" Text="{Binding OffsetRaText, Mode=OneWay}" VerticalAlignment="Center" Margin="0,0,10,0" />
-                    <TextBlock Grid.Column="2" Text="Offset Dec" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <TextBlock Grid.Column="3" Text="{Binding OffsetDecText, Mode=OneWay}" VerticalAlignment="Center" />
-                </Grid>
-
-                <!-- Action buttons — same 2x3 arrangement as Orbitals' own panel. Height/
-                     Foreground come from the shared Button style in this DataTemplate's own
-                     Resources (see the top of this file); each button's own text is a nested
-                     TextBlock with a real Margin, not a plain Content string (see that same
-                     comment for why). -->
-                <UniformGrid Columns="3" Margin="0,4,0,0">
-                    <Button Command="{Binding FrameCommand}" Margin="0,0,4,4"
-                            ToolTip="Opens the Perihelion Framing Composer -- a real sky/FOV view, Slew and Center, rotation (if a rotator is connected), and offset capture, carried into Add to Sequence and Quick Track.">
-                        <TextBlock Text="Frame" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                    <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4">
-                        <TextBlock Text="Set Tracking Rate" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                    <Button Command="{Binding SetOffsetFromMountCommand}" Margin="4,0,0,4"
-                            ToolTip="Captures the mount's current actual position minus this target's true position as the offset above -- manually frame first, then capture.">
-                        <TextBlock Text="Set Offset" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                    <Button Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0">
-                        <TextBlock Text="Slew and Track" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                    <Button Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,4,0">
-                        <TextBlock Text="Set Guider Shift Rate" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                    <Button Command="{Binding ResetOffsetCommand}" Margin="4,0,0,0">
-                        <TextBlock Text="Clear Offset" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                </UniformGrid>
-
-                <Separator Margin="0,6,0,10" />
-
-                <!-- Tonight's altitude / 10-night path -->
+                <!-- Tonight's altitude / 10-night path — moved above Position/Orbital Elements,
+                     2026-09-05, real user feedback: these are the actionable "is this worth
+                     shooting tonight" visual checks, more useful as the first thing seen after
+                     loading a target than a wall of orbital-element numbers below. -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -467,6 +366,113 @@
                         </Border>
                     </StackPanel>
                 </Grid>
+
+                <Separator Margin="0,6,0,10" />
+
+                <!-- Position / rate / elements -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Position" FontWeight="Bold" Margin="0,0,0,2" />
+                        <TextBlock Text="{Binding PositionText}" />
+                        <TextBlock Text="{Binding RateText}" Margin="0,2,0,0" />
+                        <TextBlock Margin="0,2,0,0"><Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Observed (COBS): " /><Run Text="{Binding ObservedMagnitudeText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Orbital Elements" FontWeight="Bold" Margin="0,0,0,2" />
+                        <!-- Matches NINA.Joko.Plugin.Orbitals' own two-column elements layout:
+                             Epoch and Periapsis are two real, separate quantities (a comet's own
+                             perihelion passage time is not a substitute for its reference epoch),
+                             shown side by side rather than one-or-the-other. -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                <TextBlock Margin="0,2,0,0"><Run Text="Epoch: " /><Run Text="{Binding EpochText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Epoch (Julian): " /><Run Text="{Binding EpochJulianText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Perihelion Distance: " /><Run Text="{Binding PerihelionDistanceText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Eccentricity: " /><Run Text="{Binding EccentricityText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Inclination: " /><Run Text="{Binding InclinationText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Arg of Perihelion: " /><Run Text="{Binding ArgPeriText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Node: " /><Run Text="{Binding NodeText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Source: " /><Run Text="{Binding SourceText, Mode=OneWay}" /></TextBlock>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Margin="0,2,0,0"><Run Text="Periapsis: " /><Run Text="{Binding PeriapsisText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Periapsis (Julian): " /><Run Text="{Binding PeriapsisJulianText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly at Epoch: " /><Run Text="{Binding MeanAnomalyAtEpochText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Semi-Major Axis: " /><Run Text="{Binding SemiMajorAxisText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly: " /><Run Text="{Binding MeanAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Eccentric Anomaly: " /><Run Text="{Binding EccentricAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="True Anomaly: " /><Run Text="{Binding TrueAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Distance: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Offset — kept as editable fields (precise manual control is still useful).
+                     Setting it is now the Framing Composer's own job (Frame's Capture Offset from
+                     Mount, or dragging the sky map) — the standalone "Set Offset" button that used
+                     to duplicate that same math directly from this page was removed, 2026-09-05,
+                     real user feedback that it had become redundant now the Composer covers the
+                     same capture with better context (a real sky map, tied into Slew/Rotate).
+                     Read-only, HH:MM:SS/DMS — matches Orbitals' own displayed format for
+                     RAOffset/DecOffset exactly, not a raw arcsec number. -->
+                <Grid Margin="0,8,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="110" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Offset RA" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding OffsetRaText, Mode=OneWay}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <TextBlock Grid.Column="2" Text="Offset Dec" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock Grid.Column="3" Text="{Binding OffsetDecText, Mode=OneWay}" VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- Action buttons — 5 now (Set Offset removed, see above), still a 3-column
+                     UniformGrid so it just leaves the last cell empty rather than needing a
+                     re-layout. Height/Foreground come from the shared Button style in this
+                     DataTemplate's own Resources (see the top of this file); each button's own
+                     text is a nested TextBlock with a real Margin, not a plain Content string
+                     (see that same comment for why). Slew and Track / Set Guider Shift Rate got
+                     real explanatory ToolTips added, 2026-09-05 — real user feedback that their
+                     overlap with Frame + Start Quick Track was confusing without one; kept rather
+                     than removed since each still covers a real, if narrower, case Quick Track
+                     doesn't (a plain no-guiding test slew; reapplying just the guiding shift
+                     without restarting Quick Track's own session). -->
+                <UniformGrid Columns="3" Margin="0,4,0,0">
+                    <Button Command="{Binding FrameCommand}" Margin="0,0,4,4"
+                            ToolTip="Opens the Perihelion Framing Composer -- a real sky/FOV view, Slew and Center, rotation (if a rotator is connected), and offset capture, carried into Add to Sequence and Quick Track.">
+                        <TextBlock Text="Frame" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    </Button>
+                    <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4">
+                        <TextBlock Text="Set Tracking Rate" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    </Button>
+                    <Button Command="{Binding ResetOffsetCommand}" Margin="4,0,0,4">
+                        <TextBlock Text="Clear Offset" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    </Button>
+                    <Button Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0"
+                            ToolTip="Quick GoTo (no plate-solve center) plus setting the tracking rate only -- no guiding, no auto-reapply. For precise framing or a full tracking session, use Frame + Start Quick Track instead.">
+                        <TextBlock Text="Slew and Track" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    </Button>
+                    <Button Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,0,0"
+                            ToolTip="Sets only the guider's own shift rate, independent of the telescope's base tracking rate -- Start Quick Track already does this automatically when Guiding is checked. Use this on its own only to reapply just the guiding shift without restarting Quick Track's own session.">
+                        <TextBlock Text="Set Guider Shift Rate" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    </Button>
+                </UniformGrid>
 
                 <Separator Margin="0,14,0,14" />
 

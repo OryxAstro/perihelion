@@ -171,10 +171,6 @@ namespace Perihelion.ViewModels {
 
             ResetOffsetCommand = new RelayCommand(() => { OffsetRaArcsec = 0; OffsetDecArcsec = 0; }, () => OffsetRaArcsec != 0 || OffsetDecArcsec != 0);
 
-            SetOffsetFromMountCommand = new RelayCommand(SetOffsetFromMountAction, () => Loaded != null && telescopeMediator.GetInfo().Connected);
-            SetOffsetFromMountCommand.RegisterPropertyChangeNotification(this, nameof(Loaded));
-            SetOffsetFromMountCommand.RegisterPropertyChangeNotification(telescopeMediator.GetInfo(), nameof(TelescopeInfo.Connected));
-
             AddToSequenceCommand = new RelayCommand(AddToSequenceAction, () => Loaded != null);
             AddToSequenceCommand.RegisterPropertyChangeNotification(this, nameof(Loaded));
 
@@ -673,22 +669,6 @@ namespace Perihelion.ViewModels {
         public AsyncRelayCommand SetTrackingRateCommand { get; }
         public AsyncRelayCommand SetGuiderShiftRateCommand { get; }
         public RelayCommand ResetOffsetCommand { get; }
-        public RelayCommand SetOffsetFromMountCommand { get; }
-
-        /// <summary>Same semantic as NINA.Joko.Plugin.Orbitals' own SetOffset (confirmed from
-        /// its real source): captures wherever the mount is ACTUALLY pointed right now --
-        /// telescopeMediator.GetCurrentPosition(), not anything computed -- as a persistent
-        /// offset relative to the target's own true position. The real workflow this enables:
-        /// manually slew/plate-solve/center wherever you actually want to frame (a comet's tail,
-        /// not its nucleus), then capture that exact positioning here instead of typing arcsec
-        /// numbers by hand. raHours/decDeg are already the object's true (offset-free) computed
-        /// position from the last Load, same fields LoadedCoordinatesWithOffset itself reads.</summary>
-        private void SetOffsetFromMountAction() {
-            if (Loaded == null) return;
-            var current = telescopeMediator.GetCurrentPosition();
-            OffsetRaArcsec = Math.Round((current.RA - raHours) * 15 * 3600, 1);
-            OffsetDecArcsec = Math.Round((current.Dec - decDeg) * 3600, 1);
-        }
 
         private void RaiseLoadedDataChanged() {
             foreach (var name in new[] {
