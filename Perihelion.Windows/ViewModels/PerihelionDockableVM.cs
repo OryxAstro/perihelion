@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.Input;
 using CosineKitty;
 using NINA.Astrometry;
+using NINA.Astrometry.Interfaces;
 using NINA.Core.Enum;
 using NINA.Core.Utility;
 using NINA.Core.Utility.Notification;
@@ -51,17 +52,13 @@ namespace Perihelion.ViewModels {
         private const int PathDays = 10;
         private const double PathViewWidth = 260;
         private const double PathViewHeight = 140;
-        private const double TransitViewWidth = 260;
-        private const double TransitViewHeight = 140;
-        private const double TransitHoursSpan = 12; // +/- this many hours around "now"
-        private const double TransitMinAltitude = -20; // degrees -- chart's own Y range floor
-        private const double TransitMaxAltitude = 90;
 
         private readonly IProfileService profileService;
         private readonly IGuiderMediator guiderMediator;
         private readonly ITelescopeMediator telescopeMediator;
         private readonly IFramingAssistantVM framingAssistantVM;
         private readonly IApplicationMediator applicationMediator;
+        private readonly INighttimeCalculator nighttimeCalculator;
         private readonly DispatcherTimer statusTimer;
         private CancellationTokenSource? loadCts;
 
@@ -69,7 +66,9 @@ namespace Perihelion.ViewModels {
         // hard way that doing so silently breaks this VM's own MEF composition entirely (the
         // whole panel vanishes from the Imaging tab, no error, no log signal). See
         // PerihelionPlugin's own static SequencerFactory/SequenceMediator fields for the full
-        // explanation and the working alternative used instead.
+        // explanation and the working alternative used instead. INighttimeCalculator below is a
+        // different case -- confirmed safe because Orbitals' own real, working dockable VM
+        // (OrbitalsVM) imports this exact type directly into its own constructor.
 
         [ImportingConstructor]
         public PerihelionDockableVM(
@@ -77,10 +76,12 @@ namespace Perihelion.ViewModels {
             IGuiderMediator guiderMediator,
             ITelescopeMediator telescopeMediator,
             IFramingAssistantVM framingAssistantVM,
-            IApplicationMediator applicationMediator) : base(profileService) {
+            IApplicationMediator applicationMediator,
+            INighttimeCalculator nighttimeCalculator) : base(profileService) {
             this.profileService = profileService;
             this.guiderMediator = guiderMediator;
             this.telescopeMediator = telescopeMediator;
+            this.nighttimeCalculator = nighttimeCalculator;
             this.framingAssistantVM = framingAssistantVM;
             this.applicationMediator = applicationMediator;
 
@@ -244,12 +245,15 @@ namespace Perihelion.ViewModels {
             ? observedAverageMagnitude is double avg ? $"{m:F2} (5-obs avg {avg:F2})" : m.ToString("F2")
             : "n/a";
 
-        // Elements card -- fields present depend on ObjectType (comets have no fixed epoch /
-        // mean-anomaly-at-epoch; asteroids have no perihelion-passage date in these elements).
+        // Elements card -- matches NINA.Joko.Plugin.Orbitals' own layout (Epoch AND Periapsis
+        // shown side by side, not one-or-the-other): a comet's own perihelion passage time T is
+        // a real, separate quantity from "Epoch" (the reference date its Mean Anomaly at Epoch
+        // is computed for -- today's date at 00:00 UTC, same convention confirmed against a real
+        // Orbitals screenshot for the same comet on the same day), not a substitute for it.
         private double? eccentricity, inclinationDeg, argPeriDeg, nodeDeg, perihelionDistanceAu, semiMajorAxisAu;
         private double? meanAnomalyAtEpochDeg, meanAnomalyNowDeg, eccentricAnomalyNowDeg, trueAnomalyNowDeg, distanceNowAu;
-        private DateTime? epochOrPerihelionUtc;
-        private string epochOrPerihelionLabel = "Epoch";
+        private DateTime? epochUtc, periapsisUtc;
+        private string sourceText = "--";
 
         public string EccentricityText => eccentricity is double e ? e.ToString("F4") : "--";
         public string InclinationText => inclinationDeg is double i ? $"{i:F4}°" : "--";
@@ -257,13 +261,25 @@ namespace Perihelion.ViewModels {
         public string NodeText => nodeDeg is double n ? $"{n:F4}°" : "--";
         public string PerihelionDistanceText => perihelionDistanceAu is double q ? $"{q:F4} au" : "--";
         public string SemiMajorAxisText => semiMajorAxisAu is double a ? $"{a:F4} au" : "n/a (non-elliptical)";
-        public string MeanAnomalyAtEpochText => meanAnomalyAtEpochDeg is double m ? $"{m:F4}°" : "n/a";
-        public string MeanAnomalyNowText => meanAnomalyNowDeg is double m ? $"{m:F4}°" : "n/a";
-        public string EccentricAnomalyNowText => eccentricAnomalyNowDeg is double e ? $"{e:F4}°" : "n/a";
-        public string TrueAnomalyNowText => trueAnomalyNowDeg is double t ? $"{t:F4}°" : "n/a";
+        // Wrapped to (-180, 180], matching Orbitals' own sign convention -- real user feedback
+        // comparing the two side by side for the same comet found the raw [0, 360) values (this
+        // panel's own original convention) confusingly "dramatically different" at a glance
+        // (e.g. 356.25° here vs. -3.75° there) when they were actually the same angle.
+        public string MeanAnomalyAtEpochText => meanAnomalyAtEpochDeg is double m ? $"{WrapSigned(m):F4}°" : "n/a";
+        public string MeanAnomalyNowText => meanAnomalyNowDeg is double m ? $"{WrapSigned(m):F4}°" : "n/a";
+        public string EccentricAnomalyNowText => eccentricAnomalyNowDeg is double e ? $"{WrapSigned(e):F4}°" : "n/a";
+        public string TrueAnomalyNowText => trueAnomalyNowDeg is double t ? $"{WrapSigned(t):F4}°" : "n/a";
         public string DistanceNowText => distanceNowAu is double d ? $"{d:F4} au" : "--";
-        public string EpochOrPerihelionLabel => epochOrPerihelionLabel;
-        public string EpochOrPerihelionText => epochOrPerihelionUtc is DateTime d ? d.ToString("yyyy-MM-dd HH:mm") + " UTC" : "--";
+        public string EpochText => epochUtc is DateTime d ? d.ToString("yyyy-MM-dd HH:mm") : "--";
+        public string EpochJulianText => epochUtc is DateTime d ? OrbitalMechanics.JulianDate(new AstroTime(d)).ToString("F4") : "--";
+        public string PeriapsisText => periapsisUtc is DateTime d ? d.ToString("yyyy-MM-dd HH:mm:ss") : "n/a";
+        public string PeriapsisJulianText => periapsisUtc is DateTime d ? OrbitalMechanics.JulianDate(new AstroTime(d)).ToString("F4") : "n/a";
+        public string SourceText => sourceText;
+
+        // Wraps to (-180, 180] -- the "+540" shifts any double-precision value (whatever sign or
+        // magnitude the underlying %360 in AsteroidOrbits/CometOrbits' own ComputeAnomalies left
+        // it in) into a single positive range before the final %360 and re-centering.
+        private static double WrapSigned(double degrees) => ((degrees % 360) + 540) % 360 - 180;
 
         private double offsetRaArcsec, offsetDecArcsec;
         public double OffsetRaArcsec {
@@ -276,14 +292,19 @@ namespace Perihelion.ViewModels {
         }
 
         /// <summary>One marker per night on the path, positioned in the same coordinate space
-        /// as PathPoints (Left/Top already centered, not top-left-anchored) -- IsTonight flags
-        /// day 0 (the same "now" instant Load's own position/rate came from) so the chart can
-        /// highlight it distinctly from the other nine nights.</summary>
+        /// as PathPoints (Left/Top already centered, not top-left-anchored). IsTonight flags day
+        /// 0 (the same "now" instant Load's own position/rate came from); IsEnd flags the last
+        /// of the 10 nights -- each renders distinctly so the chart reads start-to-end at a
+        /// glance, not just as an undifferentiated string of dots. Tooltip carries this point's
+        /// own date/RA/Dec so hovering (WPF's native equivalent of "click for info" for a custom
+        /// vector chart like this one) shows something real, not just an anonymous dot.</summary>
         public sealed class PathMarker {
             public required double Left { get; init; }
             public required double Top { get; init; }
             public required double Size { get; init; }
             public required bool IsTonight { get; init; }
+            public required bool IsEnd { get; init; }
+            public required string Tooltip { get; init; }
         }
 
         public PointCollection PathPoints { get; private set; }
@@ -294,43 +315,37 @@ namespace Perihelion.ViewModels {
         public string PathStartLabel => pathStartLabel;
         public string PathEndLabel => pathEndLabel;
 
-        // --- Tonight's altitude (transit curve) ---
-
-        public PointCollection TransitPoints { get; private set; } = new();
-        public double TransitViewBoxWidth => TransitViewWidth;
-        public double TransitViewBoxHeight => TransitViewHeight;
-        /// <summary>Y position of the Alt=0 horizon line, in the same canvas coordinate space
-        /// as TransitPoints -- a fixed altitude axis (not data-normalized, unlike the path
-        /// chart's own RA/Dec axes) is what makes the horizon line meaningful at all.</summary>
-        public double TransitHorizonY => AltitudeToY(0);
-        /// <summary>X position of "now" -- always the exact horizontal center, since the sampled
-        /// window is symmetric around it.</summary>
-        public double TransitNowX => TransitViewWidth / 2;
-        private string transitStartLabel = string.Empty, transitEndLabel = string.Empty;
-        public string TransitStartLabel => transitStartLabel;
-        public string TransitEndLabel => transitEndLabel;
-
-        private static double AltitudeToY(double altitudeDeg) {
-            var clamped = Math.Max(TransitMinAltitude, Math.Min(TransitMaxAltitude, altitudeDeg));
-            var frac = (clamped - TransitMinAltitude) / (TransitMaxAltitude - TransitMinAltitude);
-            return TransitViewHeight - frac * TransitViewHeight;
+        // --- Tonight's altitude ---
+        //
+        // Uses NINA's own real AltitudeChart control (NINA.WPF.Base.View.AltitudeChart) rather
+        // than a hand-rolled chart -- real user feedback on the hand-rolled version: it looked
+        // inferior to what Orbitals (and every other NINA panel) already gets from this control
+        // for free (proper twilight shading, a real "Now" line, transit annotation, moon
+        // position). The control binds its own DataContext (a real NINA.Astrometry.DeepSkyObject
+        // -- SkyObjectBase.Altitudes/Horizon/MaxAltitude compute themselves once
+        // SetDateAndPosition is called, no manual sampling needed) plus a NighttimeData for the
+        // twilight/moon background, exactly the same pattern NINA's own FramingAssistantView.xaml
+        // and SkyAtlasView.xaml use. NighttimeCalculator's ReferenceDate (not DateTime.Now
+        // directly) is what SkyAtlasVM.cs itself passes to SetDateAndPosition, so the target
+        // curve and the twilight background always agree on the same night window.
+        private NighttimeData? nighttimeData;
+        public NighttimeData? NighttimeData {
+            get => nighttimeData;
+            private set { nighttimeData = value; RaisePropertyChanged(); }
         }
 
-        private void BuildTransitCurve(double raHours, double decDeg, DateTime nowUtc) {
-            const int steps = 48;
-            var points = new PointCollection();
-            var observer = new Observer(profileService.ActiveProfile.AstrometrySettings.Latitude, profileService.ActiveProfile.AstrometrySettings.Longitude, profileService.ActiveProfile.AstrometrySettings.Elevation);
-            for (var i = 0; i <= steps; i++) {
-                var hoursOffset = -TransitHoursSpan + (2 * TransitHoursSpan) * i / steps;
-                var sampleTime = new AstroTime(nowUtc.AddHours(hoursOffset));
-                var horizontal = Astronomy.Horizon(sampleTime, observer, raHours, decDeg, Refraction.Normal);
-                var x = TransitViewWidth * i / steps;
-                var y = AltitudeToY(horizontal.altitude);
-                points.Add(new Point(x, y));
-            }
-            TransitPoints = points;
-            transitStartLabel = nowUtc.AddHours(-TransitHoursSpan).ToLocalTime().ToString("HH:mm");
-            transitEndLabel = nowUtc.AddHours(TransitHoursSpan).ToLocalTime().ToString("HH:mm");
+        private NINA.Astrometry.DeepSkyObject? loadedDso;
+        public NINA.Astrometry.DeepSkyObject? LoadedDso {
+            get => loadedDso;
+            private set { loadedDso = value; RaisePropertyChanged(); }
+        }
+
+        private void UpdateAltitudeChart(string name, Coordinates coordinates) {
+            NighttimeData = nighttimeCalculator.Calculate();
+            var site = profileService.ActiveProfile.AstrometrySettings;
+            var dso = new NINA.Astrometry.DeepSkyObject(name, coordinates, profileService.ActiveProfile.AstrometrySettings.Horizon);
+            dso.SetDateAndPosition(NighttimeData.ReferenceDate, site.Latitude, site.Longitude);
+            LoadedDso = dso;
         }
 
         // --- Add to Sequence ---
@@ -403,9 +418,8 @@ namespace Perihelion.ViewModels {
                 nameof(EccentricityText), nameof(InclinationText), nameof(ArgPeriText), nameof(NodeText),
                 nameof(PerihelionDistanceText), nameof(SemiMajorAxisText), nameof(MeanAnomalyAtEpochText),
                 nameof(MeanAnomalyNowText), nameof(EccentricAnomalyNowText), nameof(TrueAnomalyNowText),
-                nameof(DistanceNowText), nameof(EpochOrPerihelionLabel), nameof(EpochOrPerihelionText),
+                nameof(DistanceNowText), nameof(EpochText), nameof(EpochJulianText), nameof(PeriapsisText), nameof(PeriapsisJulianText), nameof(SourceText),
                 nameof(PathPoints), nameof(PathMarkers), nameof(PathStartLabel), nameof(PathEndLabel),
-                nameof(TransitPoints), nameof(TransitStartLabel), nameof(TransitEndLabel), nameof(TransitHorizonY), nameof(TransitNowX),
             }) {
                 RaisePropertyChanged(name);
             }
@@ -465,17 +479,22 @@ namespace Perihelion.ViewModels {
                         nodeDeg = comet.NodeDeg;
                         perihelionDistanceAu = comet.Q;
                         semiMajorAxisAu = comet.Eccentricity < 1 ? comet.Q / (1 - comet.Eccentricity) : (double?)null;
-                        // A comet has no separate "epoch" the way an asteroid does -- its own
-                        // perihelion passage time T is already the instant mean anomaly is zero,
-                        // by definition, so "Mean Anomaly at Epoch" genuinely doesn't apply here
-                        // the way it does for an asteroid's own stored epoch+M0.
-                        meanAnomalyAtEpochDeg = null;
+                        // A comet has no stored epoch the way an asteroid does -- MPC's own comet
+                        // elements are parameterized by perihelion passage time T instead. "Epoch"
+                        // here is today's date at 00:00 UTC, the same reference-date convention
+                        // confirmed against a real Orbitals screenshot for this same comet on the
+                        // same day (its own displayed Epoch matched exactly), used purely so Mean
+                        // Anomaly at Epoch has a concrete instant to be computed for.
+                        var cometEpoch = now.Date;
+                        epochUtc = cometEpoch;
+                        periapsisUtc = comet.PerihelionDate;
+                        sourceText = "MPC";
+                        var epochAnomalies = CometOrbits.ComputeAnomalies(comet, cometEpoch);
+                        meanAnomalyAtEpochDeg = epochAnomalies?.MeanAnomalyDeg;
                         var cometAnomalies = CometOrbits.ComputeAnomalies(comet, now);
                         meanAnomalyNowDeg = cometAnomalies?.MeanAnomalyDeg;
                         eccentricAnomalyNowDeg = cometAnomalies?.EccentricAnomalyDeg;
                         trueAnomalyNowDeg = cometAnomalies?.TrueAnomalyDeg;
-                        epochOrPerihelionLabel = "Perihelion Passage";
-                        epochOrPerihelionUtc = comet.PerihelionDate;
                         magnitudeNow = CometOrbits.PredictedMagnitude(comet, now, t);
                         var helio = CometOrbits.HeliocentricEcliptic(comet, now);
                         distanceNowAu = Math.Sqrt(helio.X * helio.X + helio.Y * helio.Y + helio.Z * helio.Z);
@@ -503,8 +522,9 @@ namespace Perihelion.ViewModels {
                         semiMajorAxisAu = asteroid.A;
                         perihelionDistanceAu = asteroid.A * (1 - asteroid.Eccentricity);
                         meanAnomalyAtEpochDeg = asteroid.MeanAnomalyDeg;
-                        epochOrPerihelionLabel = "Epoch";
-                        epochOrPerihelionUtc = JulianDateToUtc(asteroid.EpochJd);
+                        epochUtc = JulianDateToUtc(asteroid.EpochJd);
+                        periapsisUtc = null; // not natively available from these elements
+                        sourceText = "Curated list (JPL)";
                         var anomalies = AsteroidOrbits.ComputeAnomalies(asteroid, t);
                         meanAnomalyNowDeg = anomalies.MeanAnomalyDeg;
                         eccentricAnomalyNowDeg = anomalies.EccentricAnomalyDeg;
@@ -517,7 +537,7 @@ namespace Perihelion.ViewModels {
                 }
 
                 BuildPathPolyline(path);
-                BuildTransitCurve(raHours, decDeg, now);
+                UpdateAltitudeChart(target.Name, new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours));
 
                 Loaded = target;
                 StatusText = $"Loaded {target.Name}.";
@@ -573,8 +593,10 @@ namespace Perihelion.ViewModels {
                 points.Add(new Point(x, y));
 
                 var isTonight = i == 0;
-                var size = isTonight ? 9.0 : 5.0;
-                markers.Add(new PathMarker { Left = x - size / 2, Top = y - size / 2, Size = size, IsTonight = isTonight });
+                var isEnd = i == path.Count - 1;
+                var size = isTonight || isEnd ? 9.0 : 5.0;
+                var tooltip = $"{path[i].date:MMM d}\nRA {AstroUtil.HoursToHMS(path[i].raHours)}  Dec {AstroUtil.DegreesToDMS(path[i].decDeg)}";
+                markers.Add(new PathMarker { Left = x - size / 2, Top = y - size / 2, Size = size, IsTonight = isTonight, IsEnd = isEnd, Tooltip = tooltip });
             }
 
             PathMarkers.Clear();

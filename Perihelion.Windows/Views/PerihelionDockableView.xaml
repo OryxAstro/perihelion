@@ -1,6 +1,7 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-                    xmlns:local="clr-namespace:Perihelion.ViewModels">
+                    xmlns:local="clr-namespace:Perihelion.ViewModels"
+                    xmlns:alt="clr-namespace:NINA.WPF.Base.View;assembly=NINA.WPF.Base">
 
     <!--
       Perihelion's native dockable panel content — an implicit DataTemplate (no x:Key) keyed by
@@ -89,16 +90,36 @@
 
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="Orbital Elements" FontWeight="Bold" Margin="0,0,0,2" />
-                        <TextBlock Margin="0,2,0,0"><Run Text="Eccentricity: " /><Run Text="{Binding EccentricityText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Inclination: " /><Run Text="{Binding InclinationText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Arg of Perihelion: " /><Run Text="{Binding ArgPeriText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Node: " /><Run Text="{Binding NodeText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Perihelion Distance: " /><Run Text="{Binding PerihelionDistanceText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Semi-Major Axis: " /><Run Text="{Binding SemiMajorAxisText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="{Binding EpochOrPerihelionLabel, Mode=OneWay}" /><Run Text=": " /><Run Text="{Binding EpochOrPerihelionText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly (now): " /><Run Text="{Binding MeanAnomalyNowText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Eccentric Anomaly (now): " /><Run Text="{Binding EccentricAnomalyNowText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="True Anomaly (now): " /><Run Text="{Binding TrueAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                        <!-- Matches NINA.Joko.Plugin.Orbitals' own two-column elements layout:
+                             Epoch and Periapsis are two real, separate quantities (a comet's own
+                             perihelion passage time is not a substitute for its reference epoch),
+                             shown side by side rather than one-or-the-other. -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,6,0">
+                                <TextBlock Margin="0,2,0,0"><Run Text="Epoch: " /><Run Text="{Binding EpochText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Epoch (Julian): " /><Run Text="{Binding EpochJulianText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Perihelion Distance: " /><Run Text="{Binding PerihelionDistanceText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Eccentricity: " /><Run Text="{Binding EccentricityText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Inclination: " /><Run Text="{Binding InclinationText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Arg of Perihelion: " /><Run Text="{Binding ArgPeriText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Node: " /><Run Text="{Binding NodeText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Source: " /><Run Text="{Binding SourceText, Mode=OneWay}" /></TextBlock>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Margin="0,2,0,0"><Run Text="Periapsis: " /><Run Text="{Binding PeriapsisText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Periapsis (Julian): " /><Run Text="{Binding PeriapsisJulianText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly at Epoch: " /><Run Text="{Binding MeanAnomalyAtEpochText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Semi-Major Axis: " /><Run Text="{Binding SemiMajorAxisText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly: " /><Run Text="{Binding MeanAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Eccentric Anomaly: " /><Run Text="{Binding EccentricAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="True Anomaly: " /><Run Text="{Binding TrueAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                                <TextBlock Margin="0,2,0,0"><Run Text="Distance: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </Grid>
 
@@ -122,24 +143,25 @@
 
                     <StackPanel Grid.Column="0" Margin="0,0,8,0">
                         <TextBlock Text="Tonight's Altitude" FontWeight="Bold" Margin="0,0,0,4" />
-                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
-                            <StackPanel>
-                                <Canvas Width="{Binding TransitViewBoxWidth}" Height="{Binding TransitViewBoxHeight}">
-                                    <!-- Horizon (Alt=0) and "now" reference lines, drawn first so
-                                         the altitude curve itself renders on top. -->
-                                    <Line X1="0" Y1="{Binding TransitHorizonY}" X2="{Binding TransitViewBoxWidth}" Y2="{Binding TransitHorizonY}"
-                                          Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" StrokeDashArray="2,2" />
-                                    <Line X1="{Binding TransitNowX}" Y1="0" X2="{Binding TransitNowX}" Y2="{Binding TransitViewBoxHeight}"
-                                          Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" StrokeDashArray="2,2" />
-                                    <Polyline Points="{Binding TransitPoints}" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
-                                </Canvas>
-                                <Grid Margin="0,4,0,0">
-                                    <TextBlock Text="{Binding TransitStartLabel}" HorizontalAlignment="Left" FontSize="10" Opacity="0.7" />
-                                    <TextBlock Text="Now" HorizontalAlignment="Center" FontSize="10" Opacity="0.7" />
-                                    <TextBlock Text="{Binding TransitEndLabel}" HorizontalAlignment="Right" FontSize="10" Opacity="0.7" />
-                                </Grid>
-                            </StackPanel>
-                        </Border>
+                        <!-- NINA's own real AltitudeChart control (proper twilight shading, a
+                             real transit/meridian annotation, moon position, "Now" line) — not
+                             a hand-rolled chart. Its own DataContext is the target itself
+                             (LoadedDso, a real NINA.Astrometry.DeepSkyObject whose Altitudes/
+                             Horizon/MaxAltitude compute themselves once SetDateAndPosition is
+                             called), separate from NighttimeData which drives the twilight/moon
+                             background — exactly the same two-binding pattern NINA's own
+                             FramingAssistantView.xaml uses. -->
+                        <!-- NighttimeData must be bound via RelativeSource, not a plain
+                             {Binding} — DataContext="{Binding LoadedDso}" above overrides the
+                             ambient DataContext for this element to the DSO itself, so a plain
+                             {Binding NighttimeData} would look for that property on the DSO (and
+                             silently fail) rather than on this panel's own VM. Walking back up to
+                             the outer ScrollViewer (whose own DataContext is never overridden)
+                             is the same workaround NINA's own FramingAssistantView.xaml uses
+                             (there via a BindingProxy resource) for this exact situation. -->
+                        <alt:AltitudeChart DataContext="{Binding LoadedDso}"
+                                           NighttimeData="{Binding DataContext.NighttimeData, RelativeSource={RelativeSource AncestorType=ScrollViewer}}"
+                                           MinHeight="180" />
                     </StackPanel>
 
                     <StackPanel Grid.Column="1">
@@ -147,7 +169,9 @@
                         <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
                             <StackPanel>
                                 <Canvas Width="{Binding PathViewBoxWidth}" Height="{Binding PathViewBoxHeight}">
-                                    <Polyline Points="{Binding PathPoints}" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
+                                    <!-- Dashed, matching the Touch-N-Stars web panel's own path
+                                         chart convention rather than a plain solid line. -->
+                                    <Polyline Points="{Binding PathPoints}" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" StrokeDashArray="4,3" />
                                     <ItemsControl ItemsSource="{Binding PathMarkers}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -162,17 +186,29 @@
                                         </ItemsControl.ItemContainerStyle>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <!-- Day 0 (IsTonight) renders larger and in the
-                                                     app's selected-accent color so tonight's own
-                                                     position stands out from the other nine
-                                                     nights. -->
-                                                <Ellipse Width="{Binding Size}" Height="{Binding Size}">
+                                                <!-- Day 0 (IsTonight) fills solid in the app's
+                                                     selected-accent color; the last night (IsEnd)
+                                                     renders as a larger hollow ring instead of a
+                                                     filled dot, so the chart reads start-to-end
+                                                     at a glance rather than as an undifferentiated
+                                                     string of dots. ToolTip is WPF's native
+                                                     hover-for-detail equivalent of "click a point
+                                                     for info" on a custom vector chart like this
+                                                     one — each dot's own date/RA/Dec, not just
+                                                     an anonymous marker. -->
+                                                <Ellipse Width="{Binding Size}" Height="{Binding Size}" ToolTip="{Binding Tooltip}">
                                                     <Ellipse.Style>
                                                         <Style TargetType="Ellipse">
                                                             <Setter Property="Fill" Value="{DynamicResource ButtonForegroundBrush}" />
+                                                            <Setter Property="Stroke" Value="{x:Null}" />
                                                             <Style.Triggers>
                                                                 <DataTrigger Binding="{Binding IsTonight}" Value="True">
                                                                     <Setter Property="Fill" Value="{DynamicResource ButtonBackgroundSelectedBrush}" />
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding IsEnd}" Value="True">
+                                                                    <Setter Property="Fill" Value="Transparent" />
+                                                                    <Setter Property="Stroke" Value="{DynamicResource ButtonForegroundBrush}" />
+                                                                    <Setter Property="StrokeThickness" Value="1.5" />
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
