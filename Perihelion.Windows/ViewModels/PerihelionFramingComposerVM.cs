@@ -223,10 +223,14 @@ namespace Perihelion.ViewModels {
 
         /// <summary>Real user request (2026-09-05): the Slew and Center button's own label should
         /// reflect exactly what it's about to do, since Center and Rotate are now independently
-        /// toggleable via the Slew options popup rather than fixed.</summary>
+        /// toggleable via the Slew options popup rather than fixed. Checks RotatorConnected too,
+        /// not just UseRotation -- UseRotation can be true with no rotator present (it's no longer
+        /// gated on one, see its own doc comment and the XAML's), in which case SlewAndCenterAction
+        /// itself falls back to plain Center, so the label has to say that's what will actually
+        /// happen rather than promising a rotate that won't occur.</summary>
         public string SlewButtonLabel {
             get {
-                if (UseRotation) return "Slew, Center & Rotate";
+                if (UseRotation && RotatorConnected) return "Slew, Center & Rotate";
                 if (IncludeCenter) return "Slew & Center";
                 return "Slew";
             }
@@ -319,6 +323,17 @@ namespace Perihelion.ViewModels {
         public string StatusText {
             get => statusText;
             set { statusText = value; RaisePropertyChanged(); }
+        }
+
+        // Separate from StatusText -- that field sits right under Slew and Center/Determine
+        // Rotation and reports on THOSE hardware actions specifically; Reset isn't one of those
+        // (it touches no hardware), and showing its own confirmation there read as misplaced
+        // (real user feedback, 2026-09-05). This one is displayed right above the bottom button
+        // row instead, next to the action it actually confirms.
+        private string footerStatusText = string.Empty;
+        public string FooterStatusText {
+            get => footerStatusText;
+            private set { footerStatusText = value; RaisePropertyChanged(); }
         }
 
         // Arcsec internally (same convention as PerihelionDockableVM's own Offset fields) --
@@ -455,25 +470,32 @@ namespace Perihelion.ViewModels {
         /// state back into the caller or discard it, then closes the window either way.</summary>
         public bool? Confirmed { get; private set; }
 
-        /// <summary>Null means plain Center was used (no rotator involved) -- the caller should
-        /// treat that as "use plain Center" for Add to Sequence/Quick Track too, not default to
-        /// some other angle.</summary>
-        public double? CapturedRotationAngle => UseRotation ? RotationAngle : (double?)null;
+        /// <summary>Null means plain Center should be used for Add to Sequence/Quick Track too
+        /// (no other angle should be assumed) -- true either when Rotate was never checked, or
+        /// when it was checked but no rotator was connected here (UseRotation is no longer gated
+        /// on RotatorConnected, see its own doc comment), since there'd be nothing for a later
+        /// CenterAndRotate step to actually command either.</summary>
+        public double? CapturedRotationAngle => UseRotation && RotatorConnected ? RotationAngle : (double?)null;
 
         /// <summary>Three real, distinct outcomes depending on the Slew options popup's own
         /// IncludeCenter/UseRotation toggles -- SlewButtonLabel above always names exactly which
-        /// one is about to run. Plain Slew (no plate-solve) uses the same real
+        /// one is about to run. Checks RotatorConnected alongside UseRotation for the same reason
+        /// SlewButtonLabel and CapturedRotationAngle do -- UseRotation can be true with no rotator
+        /// present, and CenterAndRotate has nothing to command in that case, so this falls back to
+        /// plain Center instead of attempting (and failing) a rotate against hardware that isn't
+        /// there. Plain Slew (no plate-solve) uses the same real
         /// NINA.Sequencer.SequenceItem.Telescope.SlewScopeToRaDec item Add to Sequence's own
         /// "just point there" step would use -- a real, if less common, use case for a quick test
         /// frame before committing to a full plate-solved center.</summary>
         private async Task SlewAndCenterAction() {
             IsBusy = true;
-            StatusText = UseRotation
+            var rotating = UseRotation && RotatorConnected;
+            StatusText = rotating
                 ? $"Slewing, centering, and rotating to {RotationAngle}°..."
                 : IncludeCenter ? "Slewing and centering..." : "Slewing...";
             try {
                 var progress = new Progress<ApplicationStatus>(s => StatusText = s.Status ?? StatusText);
-                if (UseRotation) {
+                if (rotating) {
                     var rotate = factory.GetItem<CenterAndRotate>();
                     rotate.Inherited = false;
                     rotate.Coordinates = new InputCoordinates(trueCoordinates);
@@ -581,7 +603,7 @@ namespace Perihelion.ViewModels {
             IncludeCenter = true;
             OffsetRaArcsec = 0;
             OffsetDecArcsec = 0;
-            StatusText = "Reset -- framing adjustments cleared.";
+            FooterStatusText = "Reset -- framing adjustments cleared.";
         }
 
         /// <summary>Same math as PerihelionDockableVM's own SetOffsetFromMountAction -- captures

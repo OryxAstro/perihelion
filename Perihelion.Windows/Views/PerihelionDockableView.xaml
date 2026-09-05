@@ -32,12 +32,19 @@
                  Setter. In WPF's property-value-precedence order, a Style Setter always beats an
                  inherited value, so that Setter wins over whatever Foreground this Button itself
                  has, and every nested TextBlock rendered in PrimaryBrush (a dim/secondary color)
-                 no matter what was set here. Confirmed from the same real source file. Fixed by
-                 giving each TextBlock below its own explicit Foreground binding straight to its
-                 ancestor Button's own Foreground (a local value, the one thing nothing outranks) —
-                 not a hardcoded brush key, so it also correctly follows StandardButton's own
-                 IsMouseOver/IsPressed template triggers (which set Foreground directly) and its
-                 IsEnabled dimming (a separate Opacity trigger, unaffected either way). -->
+                 no matter what was set here. Confirmed from the same real source file. First fixed
+                 by giving each TextBlock its own explicit Foreground binding to its ancestor
+                 Button's own (mutable) Foreground property — reasoned at the time that this would
+                 "correctly follow" StandardButton's own IsMouseOver trigger. That reasoning was
+                 wrong: reading StandardButton's real ControlTemplate.Triggers (NINA.WPF.Base/
+                 Resources/Styles/Button.xaml) shows IsMouseOver sets BOTH Background AND
+                 Foreground to the exact same brush (ButtonBackgroundSelectedBrush) — so following
+                 the Button's own Foreground on hover made every button's text blend perfectly into
+                 its own highlighted background and disappear (real user report, 2026-09-05: "text
+                 disappears" on hover). Fixed for real by hardcoding each TextBlock's Foreground to
+                 the fixed ButtonForegroundBrush resource instead — never mutated by hover/pressed
+                 triggers, and confirmed as NINA's own designated hover-legible text color (its
+                 BackgroundButton style uses the exact same brush for this exact purpose). -->
             <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                 <Setter Property="Height" Value="30" />
                 <Setter Property="Foreground" Value="{DynamicResource ButtonForegroundBrush}" />
@@ -109,14 +116,14 @@
                             <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" Margin="0,0,6,6" />
                             <Button Grid.Row="0" Grid.Column="2" Command="{Binding RefreshBrowseListCommand}" Margin="0,0,0,6"
                                     ToolTip="Comets and asteroids load automatically when this panel opens (from cache if warm) -- use this to force a fresh pull right now.">
-                                <TextBlock Text="Refresh" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                                <TextBlock Text="Refresh" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                             </Button>
 
                             <TextBlock Grid.Row="1" Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
                             <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                                      Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0" />
                             <Button Grid.Row="1" Grid.Column="2" Command="{Binding SearchCommand}">
-                                <TextBlock Text="Search" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                                <TextBlock Text="Search" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                             </Button>
                         </Grid>
                         <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/
@@ -190,7 +197,7 @@
                             </ListView.View>
                         </ListView>
                         <Button Command="{Binding LoadCommand}" Width="90" HorizontalAlignment="Left">
-                            <TextBlock Text="Load" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                            <TextBlock Text="Load" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                         </Button>
                     </StackPanel>
 
@@ -232,7 +239,7 @@
                             <TextBlock Grid.Column="0" Text="{Binding CometsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Button Grid.Column="1" Command="{Binding UpdateCometsCommand}"
                                     ToolTip="Re-fetches the comet-elements feed from MPC now, bypassing its normal 6h cache.">
-                                <TextBlock Text="Update" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                                <TextBlock Text="Update" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                             </Button>
                             <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" TextWrapping="Wrap">
                                 <Run Text="Last Updated: " /><Run Text="{Binding CometsLastUpdatedText, Mode=OneWay}" />
@@ -247,7 +254,7 @@
                             <TextBlock Grid.Column="0" Text="COBS" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Button Grid.Column="1" Command="{Binding UpdateCobsCommand}"
                                     ToolTip="Refreshes real observed brightness from COBS for every comet in the browse list. Takes several seconds to tens of seconds -- a deliberate, explicit action, not something that runs automatically.">
-                                <TextBlock Text="Update" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                                <TextBlock Text="Update" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                             </Button>
                             <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" TextWrapping="Wrap">
                                 <Run Text="Last Updated: " /><Run Text="{Binding CobsLastUpdatedText, Mode=OneWay}" />
@@ -346,23 +353,23 @@
                 <UniformGrid Columns="3" Margin="0,4,0,0">
                     <Button Command="{Binding FrameCommand}" Margin="0,0,4,4"
                             ToolTip="Opens the Perihelion Framing Composer -- a real sky/FOV view, Slew and Center, rotation (if a rotator is connected), and offset capture, carried into Add to Sequence and Quick Track.">
-                        <TextBlock Text="Frame" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                        <TextBlock Text="Frame" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                     <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4">
-                        <TextBlock Text="Set Tracking Rate" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                        <TextBlock Text="Set Tracking Rate" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                     <Button Command="{Binding SetOffsetFromMountCommand}" Margin="4,0,0,4"
                             ToolTip="Captures the mount's current actual position minus this target's true position as the offset above -- manually frame first, then capture.">
-                        <TextBlock Text="Set Offset" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                        <TextBlock Text="Set Offset" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                     <Button Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0">
-                        <TextBlock Text="Slew and Track" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                        <TextBlock Text="Slew and Track" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                     <Button Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,4,0">
-                        <TextBlock Text="Set Guider Shift Rate" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                        <TextBlock Text="Set Guider Shift Rate" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                     <Button Command="{Binding ResetOffsetCommand}" Margin="4,0,0,0">
-                        <TextBlock Text="Clear Offset" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                        <TextBlock Text="Clear Offset" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                 </UniformGrid>
 
@@ -531,7 +538,7 @@
                         </StackPanel>
                         <Button Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left"
                                 ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer.">
-                            <TextBlock Text="Add to Sequence" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                            <TextBlock Text="Add to Sequence" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                         </Button>
                     </StackPanel>
 
@@ -550,10 +557,10 @@
                         </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <Button Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0">
-                                <TextBlock Text="Start Quick Track" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                                <TextBlock Text="Start Quick Track" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                             </Button>
                             <Button Command="{Binding StopQuickTrackCommand}">
-                                <TextBlock Text="Stop" Margin="14,0" Foreground="{Binding RelativeSource={RelativeSource AncestorType=Button}, Path=Foreground}" />
+                                <TextBlock Text="Stop" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                             </Button>
                         </StackPanel>
                         <TextBlock Text="{Binding QuickTrackStatusText}" TextWrapping="Wrap" Opacity="0.85" />
