@@ -68,6 +68,7 @@
                         <TextBlock Text="{Binding RateText}" Margin="0,2,0,0" />
                         <TextBlock Margin="0,2,0,0"><Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText, Mode=OneWay}" /></TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Observed (COBS): " /><Run Text="{Binding ObservedMagnitudeText, Mode=OneWay}" /></TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
 
                         <TextBlock Text="Offset" FontWeight="Bold" Margin="0,10,0,2" />
@@ -112,51 +113,83 @@
 
                 <Separator Margin="0,6,0,10" />
 
-                <!-- 10-night path -->
-                <TextBlock Text="10-Night Path" FontWeight="Bold" Margin="0,0,0,4" />
-                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
-                    <StackPanel>
-                        <Canvas Width="{Binding PathViewBoxWidth}" Height="{Binding PathViewBoxHeight}">
-                            <Polyline Points="{Binding PathPoints}" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
-                            <ItemsControl ItemsSource="{Binding PathMarkers}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <Canvas />
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
-                                <ItemsControl.ItemContainerStyle>
-                                    <Style>
-                                        <Setter Property="Canvas.Left" Value="{Binding Left}" />
-                                        <Setter Property="Canvas.Top" Value="{Binding Top}" />
-                                    </Style>
-                                </ItemsControl.ItemContainerStyle>
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <!-- Day 0 (IsTonight) renders larger and in the app's
-                                             selected-accent color so tonight's own position
-                                             stands out from the other nine nights. -->
-                                        <Ellipse Width="{Binding Size}" Height="{Binding Size}">
-                                            <Ellipse.Style>
-                                                <Style TargetType="Ellipse">
-                                                    <Setter Property="Fill" Value="{DynamicResource ButtonForegroundBrush}" />
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsTonight}" Value="True">
-                                                            <Setter Property="Fill" Value="{DynamicResource ButtonBackgroundSelectedBrush}" />
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Ellipse.Style>
-                                        </Ellipse>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Canvas>
-                        <Grid Margin="0,4,0,0">
-                            <TextBlock Text="{Binding PathStartLabel}" HorizontalAlignment="Left" FontSize="10" Opacity="0.7" />
-                            <TextBlock Text="{Binding PathEndLabel}" HorizontalAlignment="Right" FontSize="10" Opacity="0.7" />
-                        </Grid>
+                <!-- Tonight's altitude / 10-night path -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Tonight's Altitude" FontWeight="Bold" Margin="0,0,0,4" />
+                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
+                            <StackPanel>
+                                <Canvas Width="{Binding TransitViewBoxWidth}" Height="{Binding TransitViewBoxHeight}">
+                                    <!-- Horizon (Alt=0) and "now" reference lines, drawn first so
+                                         the altitude curve itself renders on top. -->
+                                    <Line X1="0" Y1="{Binding TransitHorizonY}" X2="{Binding TransitViewBoxWidth}" Y2="{Binding TransitHorizonY}"
+                                          Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" StrokeDashArray="2,2" />
+                                    <Line X1="{Binding TransitNowX}" Y1="0" X2="{Binding TransitNowX}" Y2="{Binding TransitViewBoxHeight}"
+                                          Stroke="{DynamicResource BorderBrush}" StrokeThickness="1" StrokeDashArray="2,2" />
+                                    <Polyline Points="{Binding TransitPoints}" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
+                                </Canvas>
+                                <Grid Margin="0,4,0,0">
+                                    <TextBlock Text="{Binding TransitStartLabel}" HorizontalAlignment="Left" FontSize="10" Opacity="0.7" />
+                                    <TextBlock Text="Now" HorizontalAlignment="Center" FontSize="10" Opacity="0.7" />
+                                    <TextBlock Text="{Binding TransitEndLabel}" HorizontalAlignment="Right" FontSize="10" Opacity="0.7" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
-                </Border>
+
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="10-Night Path" FontWeight="Bold" Margin="0,0,0,4" />
+                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
+                            <StackPanel>
+                                <Canvas Width="{Binding PathViewBoxWidth}" Height="{Binding PathViewBoxHeight}">
+                                    <Polyline Points="{Binding PathPoints}" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
+                                    <ItemsControl ItemsSource="{Binding PathMarkers}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <Canvas />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemContainerStyle>
+                                            <Style>
+                                                <Setter Property="Canvas.Left" Value="{Binding Left}" />
+                                                <Setter Property="Canvas.Top" Value="{Binding Top}" />
+                                            </Style>
+                                        </ItemsControl.ItemContainerStyle>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <!-- Day 0 (IsTonight) renders larger and in the
+                                                     app's selected-accent color so tonight's own
+                                                     position stands out from the other nine
+                                                     nights. -->
+                                                <Ellipse Width="{Binding Size}" Height="{Binding Size}">
+                                                    <Ellipse.Style>
+                                                        <Style TargetType="Ellipse">
+                                                            <Setter Property="Fill" Value="{DynamicResource ButtonForegroundBrush}" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsTonight}" Value="True">
+                                                                    <Setter Property="Fill" Value="{DynamicResource ButtonBackgroundSelectedBrush}" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Ellipse.Style>
+                                                </Ellipse>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Canvas>
+                                <Grid Margin="0,4,0,0">
+                                    <TextBlock Text="{Binding PathStartLabel}" HorizontalAlignment="Left" FontSize="10" Opacity="0.7" />
+                                    <TextBlock Text="{Binding PathEndLabel}" HorizontalAlignment="Right" FontSize="10" Opacity="0.7" />
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
 
                 <Separator Margin="0,10,0,10" />
 
@@ -178,11 +211,24 @@
                     <TextBlock Grid.Column="4" Text="Frames" VerticalAlignment="Center" Margin="0,0,4,0" />
                     <TextBox Grid.Column="5" Text="{Binding FrameCount, UpdateSourceTrigger=PropertyChanged}" />
                 </Grid>
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                    <CheckBox Content="Meridian flip" IsChecked="{Binding MeridianFlip}" Margin="0,0,16,0" VerticalAlignment="Center" />
-                    <CheckBox Content="Autofocus every" IsChecked="{Binding AutofocusEnabled}" Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <TextBox Text="{Binding AutofocusMinutes, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,6,0" />
-                    <TextBlock Text="min" VerticalAlignment="Center" Opacity="0.7" />
+                <!-- NINA's own global CheckBox style is a fixed ON/OFF toggle with no
+                     ContentPresenter at all — Content is silently ignored (confirmed from
+                     NINA.WPF.Base's own CheckBox.xaml), which is exactly why a real-hardware
+                     test showed these with no visible label at all. A separate TextBlock above
+                     each toggle is the only way to actually label one. -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <StackPanel Margin="0,0,24,0">
+                        <TextBlock Text="Meridian flip" Margin="0,0,0,3" />
+                        <CheckBox IsChecked="{Binding MeridianFlip}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Autofocus every" Margin="0,0,0,3" />
+                        <StackPanel Orientation="Horizontal">
+                            <CheckBox IsChecked="{Binding AutofocusEnabled}" Margin="0,0,10,0" />
+                            <TextBox Text="{Binding AutofocusMinutes, UpdateSourceTrigger=PropertyChanged}" Width="50" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <TextBlock Text="min" VerticalAlignment="Center" Opacity="0.7" />
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
                 <Button Content="Add to Sequence" Command="{Binding AddToSequenceCommand}" HorizontalAlignment="Left" Padding="10,3"
                         ToolTip="Adds this target (offset-adjusted centering, Perihelion's own tracking rate, optional guiding, and the exposure loop below) to whatever sequence is currently open in the Advanced Sequencer." />
@@ -191,9 +237,15 @@
 
                 <!-- Quick Track -->
                 <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
-                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
-                    <CheckBox Content="Include guiding" IsChecked="{Binding Guiding}" Margin="0,0,16,0" VerticalAlignment="Center" />
-                    <CheckBox Content="Auto re-apply every 15 min" IsChecked="{Binding AutoReapply}" VerticalAlignment="Center" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                    <StackPanel Margin="0,0,24,0">
+                        <TextBlock Text="Include guiding" Margin="0,0,0,3" />
+                        <CheckBox IsChecked="{Binding Guiding}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                    <StackPanel>
+                        <TextBlock Text="Auto re-apply every 15 min" Margin="0,0,0,3" />
+                        <CheckBox IsChecked="{Binding AutoReapply}" HorizontalAlignment="Left" />
+                    </StackPanel>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <Button Content="Start Quick Track" Command="{Binding StartQuickTrackCommand}" Padding="8,3" Margin="0,0,8,0" />

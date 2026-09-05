@@ -49,8 +49,13 @@ namespace Perihelion.ViewModels {
     public class PerihelionDockableVM : DockableVM {
         private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
         private const int PathDays = 10;
-        private const double PathViewWidth = 280;
+        private const double PathViewWidth = 260;
         private const double PathViewHeight = 140;
+        private const double TransitViewWidth = 260;
+        private const double TransitViewHeight = 140;
+        private const double TransitHoursSpan = 12; // +/- this many hours around "now"
+        private const double TransitMinAltitude = -20; // degrees -- chart's own Y range floor
+        private const double TransitMaxAltitude = 90;
 
         private readonly IProfileService profileService;
         private readonly IGuiderMediator guiderMediator;
@@ -230,6 +235,15 @@ namespace Perihelion.ViewModels {
         private double? magnitudeNow;
         public string MagnitudeText => magnitudeNow is double m ? m.ToString("F2") : "--";
 
+        // COBS-observed brightness -- comet-only, null for an asteroid or a comet COBS has no
+        // reports for. Shown alongside the predicted Magnitude above, not instead of it: the
+        // predicted (H/G model) value can be badly wrong during a real outburst, and that's only
+        // useful to notice when the real observed value sits right next to it.
+        private double? observedMagnitude, observedAverageMagnitude;
+        public string ObservedMagnitudeText => observedMagnitude is double m
+            ? observedAverageMagnitude is double avg ? $"{m:F2} (5-obs avg {avg:F2})" : m.ToString("F2")
+            : "n/a";
+
         // Elements card -- fields present depend on ObjectType (comets have no fixed epoch /
         // mean-anomaly-at-epoch; asteroids have no perihelion-passage date in these elements).
         private double? eccentricity, inclinationDeg, argPeriDeg, nodeDeg, perihelionDistanceAu, semiMajorAxisAu;
@@ -279,6 +293,45 @@ namespace Perihelion.ViewModels {
         private string pathStartLabel = string.Empty, pathEndLabel = string.Empty;
         public string PathStartLabel => pathStartLabel;
         public string PathEndLabel => pathEndLabel;
+
+        // --- Tonight's altitude (transit curve) ---
+
+        public PointCollection TransitPoints { get; private set; } = new();
+        public double TransitViewBoxWidth => TransitViewWidth;
+        public double TransitViewBoxHeight => TransitViewHeight;
+        /// <summary>Y position of the Alt=0 horizon line, in the same canvas coordinate space
+        /// as TransitPoints -- a fixed altitude axis (not data-normalized, unlike the path
+        /// chart's own RA/Dec axes) is what makes the horizon line meaningful at all.</summary>
+        public double TransitHorizonY => AltitudeToY(0);
+        /// <summary>X position of "now" -- always the exact horizontal center, since the sampled
+        /// window is symmetric around it.</summary>
+        public double TransitNowX => TransitViewWidth / 2;
+        private string transitStartLabel = string.Empty, transitEndLabel = string.Empty;
+        public string TransitStartLabel => transitStartLabel;
+        public string TransitEndLabel => transitEndLabel;
+
+        private static double AltitudeToY(double altitudeDeg) {
+            var clamped = Math.Max(TransitMinAltitude, Math.Min(TransitMaxAltitude, altitudeDeg));
+            var frac = (clamped - TransitMinAltitude) / (TransitMaxAltitude - TransitMinAltitude);
+            return TransitViewHeight - frac * TransitViewHeight;
+        }
+
+        private void BuildTransitCurve(double raHours, double decDeg, DateTime nowUtc) {
+            const int steps = 48;
+            var points = new PointCollection();
+            var observer = new Observer(profileService.ActiveProfile.AstrometrySettings.Latitude, profileService.ActiveProfile.AstrometrySettings.Longitude, profileService.ActiveProfile.AstrometrySettings.Elevation);
+            for (var i = 0; i <= steps; i++) {
+                var hoursOffset = -TransitHoursSpan + (2 * TransitHoursSpan) * i / steps;
+                var sampleTime = new AstroTime(nowUtc.AddHours(hoursOffset));
+                var horizontal = Astronomy.Horizon(sampleTime, observer, raHours, decDeg, Refraction.Normal);
+                var x = TransitViewWidth * i / steps;
+                var y = AltitudeToY(horizontal.altitude);
+                points.Add(new Point(x, y));
+            }
+            TransitPoints = points;
+            transitStartLabel = nowUtc.AddHours(-TransitHoursSpan).ToLocalTime().ToString("HH:mm");
+            transitEndLabel = nowUtc.AddHours(TransitHoursSpan).ToLocalTime().ToString("HH:mm");
+        }
 
         // --- Add to Sequence ---
 
@@ -346,12 +399,13 @@ namespace Perihelion.ViewModels {
 
         private void RaiseLoadedDataChanged() {
             foreach (var name in new[] {
-                nameof(PositionText), nameof(RateText), nameof(MaxExposureText), nameof(MagnitudeText),
+                nameof(PositionText), nameof(RateText), nameof(MaxExposureText), nameof(MagnitudeText), nameof(ObservedMagnitudeText),
                 nameof(EccentricityText), nameof(InclinationText), nameof(ArgPeriText), nameof(NodeText),
                 nameof(PerihelionDistanceText), nameof(SemiMajorAxisText), nameof(MeanAnomalyAtEpochText),
                 nameof(MeanAnomalyNowText), nameof(EccentricAnomalyNowText), nameof(TrueAnomalyNowText),
                 nameof(DistanceNowText), nameof(EpochOrPerihelionLabel), nameof(EpochOrPerihelionText),
                 nameof(PathPoints), nameof(PathMarkers), nameof(PathStartLabel), nameof(PathEndLabel),
+                nameof(TransitPoints), nameof(TransitStartLabel), nameof(TransitEndLabel), nameof(TransitHorizonY), nameof(TransitNowX),
             }) {
                 RaisePropertyChanged(name);
             }
@@ -411,14 +465,35 @@ namespace Perihelion.ViewModels {
                         nodeDeg = comet.NodeDeg;
                         perihelionDistanceAu = comet.Q;
                         semiMajorAxisAu = comet.Eccentricity < 1 ? comet.Q / (1 - comet.Eccentricity) : (double?)null;
-                        meanAnomalyAtEpochDeg = meanAnomalyNowDeg = eccentricAnomalyNowDeg = trueAnomalyNowDeg = null;
+                        // A comet has no separate "epoch" the way an asteroid does -- its own
+                        // perihelion passage time T is already the instant mean anomaly is zero,
+                        // by definition, so "Mean Anomaly at Epoch" genuinely doesn't apply here
+                        // the way it does for an asteroid's own stored epoch+M0.
+                        meanAnomalyAtEpochDeg = null;
+                        var cometAnomalies = CometOrbits.ComputeAnomalies(comet, now);
+                        meanAnomalyNowDeg = cometAnomalies?.MeanAnomalyDeg;
+                        eccentricAnomalyNowDeg = cometAnomalies?.EccentricAnomalyDeg;
+                        trueAnomalyNowDeg = cometAnomalies?.TrueAnomalyDeg;
                         epochOrPerihelionLabel = "Perihelion Passage";
                         epochOrPerihelionUtc = comet.PerihelionDate;
                         magnitudeNow = CometOrbits.PredictedMagnitude(comet, now, t);
                         var helio = CometOrbits.HeliocentricEcliptic(comet, now);
                         distanceNowAu = Math.Sqrt(helio.X * helio.X + helio.Y * helio.Y + helio.Z * helio.Z);
+
+                        // COBS (real observed brightness) -- fetched only for the loaded object,
+                        // not the whole browse list, unlike the Touch-N-Stars panel's own
+                        // includeCobs path: that one needs a non-blocking per-row background
+                        // sweep specifically because it covers the WHOLE list; loading a single
+                        // object doesn't have that problem, so a direct await here is simplest
+                        // and correct. Real value: predicted (H/G model) magnitude can be badly
+                        // wrong during an outburst -- 10P/Tempel and 220P/McNaught are verified
+                        // real cases several magnitudes off.
+                        var activity = await CometActivity.FetchAsync(HttpClient, target.Name, ct);
+                        observedMagnitude = activity?.MostRecent.Magnitude;
+                        observedAverageMagnitude = activity?.RecentAverageMagnitude;
                     }
                 } else {
+                    observedMagnitude = observedAverageMagnitude = null; // COBS is comet-only
                     var asteroid = AsteroidOrbits.FindByName(target.Name);
                     if (asteroid != null) {
                         eccentricity = asteroid.Eccentricity;
@@ -442,6 +517,7 @@ namespace Perihelion.ViewModels {
                 }
 
                 BuildPathPolyline(path);
+                BuildTransitCurve(raHours, decDeg, now);
 
                 Loaded = target;
                 StatusText = $"Loaded {target.Name}.";
