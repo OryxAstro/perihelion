@@ -31,7 +31,13 @@
             <TextBlock Text="Rotator" VerticalAlignment="Center" Margin="0,0,10,0" />
             <TextBlock VerticalAlignment="Center">
                 <TextBlock.Style>
-                    <Style TargetType="TextBlock">
+                    <!-- BasedOn is required here — same real bug already caught once in this
+                         project's main panel Button style: a bare inline Style with no BasedOn
+                         completely REPLACES NINA's own app-wide implicit TextBlock style (which
+                         sets Foreground to PrimaryBrush) rather than adding to it, so this
+                         TextBlock fell back to WPF's true framework default (plain black) instead
+                         — confirmed as the real cause of the black text in a real screenshot. -->
+                    <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                         <Setter Property="Text" Value="Not connected" />
                         <Setter Property="Opacity" Value="0.6" />
                         <Style.Triggers>
