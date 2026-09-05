@@ -16,6 +16,13 @@
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
+    <!-- Needed for Views/PerihelionOptionsView.xaml — the real Windows NINA-only settings page
+         under Options > Plugins (see PerihelionPlugin.RegisterOptionsTemplate's own comment for
+         the exact NINA mechanism this hooks into). Perihelion's own PINS build has no equivalent
+         and doesn't need UseWPF at all: PINS renders no WPF UI shell to begin with, so there's
+         nothing there to show this page in, and the .xaml file itself lives only in this
+         project, never compiled into Perihelion.csproj. -->
+    <UseWPF>true</UseWPF>
     <!-- Lets this build from the Linux/WSL dev machine too (the Windows targeting pack is
          fetched from NuGet rather than requiring an actual Windows SDK install) — standard,
          documented cross-targeting property, not a hack. Real execution/testing still needs an

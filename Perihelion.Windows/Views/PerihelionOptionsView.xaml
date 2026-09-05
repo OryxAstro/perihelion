@@ -1,0 +1,40 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:Perihelion">
+
+    <!--
+      Windows-only (real NINA) settings page for Perihelion, shown under Options > Plugins.
+      Looked up by NINA itself via NINA.ViewModel.Plugins.PluginOptionsDataTemplateSelector,
+      keyed "{plugin.Name}_Options" — see PerihelionPlugin.RegisterOptionsTemplate's own
+      comment for exactly how this gets registered, and why this same page can never appear on
+      PINS (no WPF shell renders there at all, so nothing ever looks this key up).
+
+      DataContext when NINA renders this is the PerihelionPlugin instance itself (the same
+      object registered as [Export(typeof(IPluginManifest))]) — Port binds directly to its own
+      Port property, which persists via PluginOptionsAccessor exactly like the profile-XML
+      hand-edit already did.
+    -->
+    <DataTemplate x:Key="Perihelion_Options" DataType="{x:Type local:PerihelionPlugin}">
+        <StackPanel Margin="10" MaxWidth="400" HorizontalAlignment="Left">
+            <TextBlock Text="Perihelion" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+            <TextBlock TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,12">
+                Perihelion hosts its own small HTTP server for the Touch-N-Stars panel
+                (Quick Track, Add to Sequence), independent of Advanced API.
+            </TextBlock>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Port" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Text="{Binding Port, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,0">
+                Takes effect on the next restart -- the server is already running on its current
+                port for this session. If the configured port is unavailable at startup,
+                Perihelion automatically uses the nearest free one instead of failing to start.
+            </TextBlock>
+        </StackPanel>
+    </DataTemplate>
+</ResourceDictionary>
