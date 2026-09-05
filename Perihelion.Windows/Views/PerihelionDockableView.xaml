@@ -55,9 +55,9 @@
                         <TextBlock Text="Position" FontWeight="Bold" Margin="0,0,0,2" />
                         <TextBlock Text="{Binding PositionText}" />
                         <TextBlock Text="{Binding RateText}" Margin="0,2,0,0" />
-                        <TextBlock Margin="0,2,0,0"><Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
 
                         <TextBlock Text="Offset" FontWeight="Bold" Margin="0,10,0,2" />
                         <Grid>
@@ -77,16 +77,16 @@
 
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="Orbital Elements" FontWeight="Bold" Margin="0,0,0,2" />
-                        <TextBlock Margin="0,2,0,0"><Run Text="Eccentricity: " /><Run Text="{Binding EccentricityText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Inclination: " /><Run Text="{Binding InclinationText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Arg of Perihelion: " /><Run Text="{Binding ArgPeriText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Node: " /><Run Text="{Binding NodeText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Perihelion Distance: " /><Run Text="{Binding PerihelionDistanceText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Semi-Major Axis: " /><Run Text="{Binding SemiMajorAxisText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="{Binding EpochOrPerihelionLabel}" /><Run Text=": " /><Run Text="{Binding EpochOrPerihelionText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly (now): " /><Run Text="{Binding MeanAnomalyNowText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Eccentric Anomaly (now): " /><Run Text="{Binding EccentricAnomalyNowText}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="True Anomaly (now): " /><Run Text="{Binding TrueAnomalyNowText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Eccentricity: " /><Run Text="{Binding EccentricityText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Inclination: " /><Run Text="{Binding InclinationText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Arg of Perihelion: " /><Run Text="{Binding ArgPeriText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Node: " /><Run Text="{Binding NodeText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Perihelion Distance: " /><Run Text="{Binding PerihelionDistanceText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Semi-Major Axis: " /><Run Text="{Binding SemiMajorAxisText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="{Binding EpochOrPerihelionLabel, Mode=OneWay}" /><Run Text=": " /><Run Text="{Binding EpochOrPerihelionText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly (now): " /><Run Text="{Binding MeanAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Eccentric Anomaly (now): " /><Run Text="{Binding EccentricAnomalyNowText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="True Anomaly (now): " /><Run Text="{Binding TrueAnomalyNowText, Mode=OneWay}" /></TextBlock>
                     </StackPanel>
                 </Grid>
 
