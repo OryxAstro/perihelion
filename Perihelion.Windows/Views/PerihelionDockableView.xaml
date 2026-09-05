@@ -228,8 +228,8 @@
                                     </ItemsControl>
                                 </Canvas>
                                 <Grid Margin="0,4,0,0">
-                                    <TextBlock Text="{Binding PathStartLabel}" HorizontalAlignment="Left" FontSize="10" Opacity="0.7" />
-                                    <TextBlock Text="{Binding PathEndLabel}" HorizontalAlignment="Right" FontSize="10" Opacity="0.7" />
+                                    <TextBlock Text="{Binding PathLeftLabel}" HorizontalAlignment="Left" FontSize="10" Opacity="0.7" />
+                                    <TextBlock Text="{Binding PathRightLabel}" HorizontalAlignment="Right" FontSize="10" Opacity="0.7" />
                                 </Grid>
                             </StackPanel>
                         </Border>

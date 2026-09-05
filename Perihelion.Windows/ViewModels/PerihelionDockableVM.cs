@@ -315,9 +315,16 @@ namespace Perihelion.ViewModels {
         public ObservableCollection<PathMarker> PathMarkers { get; } = new();
         public double PathViewBoxWidth => PathViewWidth;
         public double PathViewBoxHeight => PathViewHeight;
-        private string pathStartLabel = string.Empty, pathEndLabel = string.Empty;
-        public string PathStartLabel => pathStartLabel;
-        public string PathEndLabel => pathEndLabel;
+        // Named by screen position (Left/Right), not chronology (Start/End) -- a comet's path is
+        // an RA/Dec trajectory, not a strict left-to-right timeline, so night 0 does not always
+        // plot to the left of night 9 (e.g. a comet whose RA decreases night over night runs the
+        // other way). A real user-reported bug: the previous Start=Left/End=Right assumption put
+        // the wrong date under each dot whenever a comet's own path happened to run right-to-left.
+        // Touch-N-Stars' own web chart (OrbitalPathChart.vue) already gets this right by anchoring
+        // each label to that point's own actual x-coordinate; this mirrors the same fix.
+        private string pathLeftLabel = string.Empty, pathRightLabel = string.Empty;
+        public string PathLeftLabel => pathLeftLabel;
+        public string PathRightLabel => pathRightLabel;
 
         // --- Tonight's altitude ---
         //
@@ -439,7 +446,7 @@ namespace Perihelion.ViewModels {
                 nameof(PerihelionDistanceText), nameof(SemiMajorAxisText), nameof(MeanAnomalyAtEpochText),
                 nameof(MeanAnomalyNowText), nameof(EccentricAnomalyNowText), nameof(TrueAnomalyNowText),
                 nameof(DistanceNowText), nameof(EpochText), nameof(EpochJulianText), nameof(PeriapsisText), nameof(PeriapsisJulianText), nameof(SourceText),
-                nameof(PathPoints), nameof(PathMarkers), nameof(PathStartLabel), nameof(PathEndLabel),
+                nameof(PathPoints), nameof(PathMarkers), nameof(PathLeftLabel), nameof(PathRightLabel),
             }) {
                 RaisePropertyChanged(name);
             }
@@ -579,7 +586,7 @@ namespace Perihelion.ViewModels {
         private void BuildPathPolyline(IReadOnlyList<(DateTime date, double raHours, double decDeg)>? path) {
             var points = new PointCollection();
             var markers = new List<PathMarker>();
-            pathStartLabel = pathEndLabel = string.Empty;
+            pathLeftLabel = pathRightLabel = string.Empty;
             if (path == null || path.Count == 0) {
                 PathPoints = points;
                 PathMarkers.Clear();
@@ -625,8 +632,15 @@ namespace Perihelion.ViewModels {
             // Labels sit in their own row below the plot (see the view), not overlaid on the
             // canvas -- a real-hardware test found the overlaid version colliding with the line
             // and dots whenever the path's first/last point happened to land near a top corner.
-            pathStartLabel = path[0].date.ToString("MMM d");
-            pathEndLabel = path[^1].date.ToString("MMM d");
+            // Which date goes on which SIDE is decided by comparing the two points' own x
+            // coordinates, not assumed from chronology -- see PathLeftLabel's own doc comment.
+            if (points[0].X <= points[^1].X) {
+                pathLeftLabel = path[0].date.ToString("MMM d");
+                pathRightLabel = path[^1].date.ToString("MMM d");
+            } else {
+                pathLeftLabel = path[^1].date.ToString("MMM d");
+                pathRightLabel = path[0].date.ToString("MMM d");
+            }
             PathPoints = points;
         }
 
