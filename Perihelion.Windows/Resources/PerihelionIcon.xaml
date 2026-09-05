@@ -1,0 +1,25 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+      DockableVM.ImageGeometry (NINA.WPF.Base) is a filled GeometryGroup, not a stroked icon —
+      it defaults to a "PuzzlePieceSVG" resource when a plugin doesn't set one, which is exactly
+      the generic jigsaw-piece look already replaced for the plugin-list icon (docs/icon.png,
+      the real Lucide "orbit" glyph rendered as a stroked PNG). That PNG's own path data can't be
+      reused verbatim here: Lucide's "orbit" is a stroke-only icon (2px outlines, no fill), and
+      filling its raw path/circle data directly would render mostly invisible (a zero-area
+      outline has nothing for FillRule to fill). Producing a proper filled outline of that stroke
+      would need a real "stroke to path" vector operation (e.g. Inkscape), not available on this
+      headless dev machine — so this is a deliberate approximation, not the exact glyph: two
+      concentric circles combined with EvenOdd fill produce a filled ring (an annulus, the same
+      2px-thick band the stroke would have made), plus a small filled dot standing in for the
+      "orbiting body" that the real icon's small circles suggest. Same visual idea, different
+      construction. Worth swapping for the real glyph's traced outline later if a vector tool
+      becomes available.
+    -->
+    <GeometryGroup x:Key="PerihelionOrbitSVG" FillRule="EvenOdd">
+        <EllipseGeometry Center="12,12" RadiusX="9" RadiusY="9" />
+        <EllipseGeometry Center="12,12" RadiusX="7" RadiusY="7" />
+        <EllipseGeometry Center="19,5" RadiusX="2.5" RadiusY="2.5" />
+    </GeometryGroup>
+</ResourceDictionary>

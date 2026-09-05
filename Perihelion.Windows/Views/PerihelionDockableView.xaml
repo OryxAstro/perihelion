@@ -1,0 +1,132 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:Perihelion.ViewModels">
+
+    <!--
+      Perihelion's native dockable panel content — an implicit DataTemplate (no x:Key) keyed by
+      DataType, the standard WPF mechanism NINA's own imaging-tab dock host uses to resolve a
+      ContentPresenter's content for a given IDockableVM instance. Merged into
+      Application.Current.Resources.MergedDictionaries from PerihelionPlugin's own constructor,
+      the same proven mechanism already used for PerihelionOptionsView.xaml — see that file's
+      own comment, and PerihelionPlugin.RegisterWindowsResources, for why.
+    -->
+    <DataTemplate DataType="{x:Type local:PerihelionDockableVM}">
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="8">
+
+                <!-- Browse -->
+                <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <ComboBox Grid.Column="0" Width="90" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" />
+                    <Button Grid.Column="2" Content="Refresh" Command="{Binding RefreshBrowseListCommand}" Padding="8,2" />
+                </Grid>
+                <ListBox ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="{Binding Name}" />
+                                <TextBlock Grid.Column="1" Text="{Binding Magnitude, StringFormat='mag {0:F1}'}" Opacity="0.7" Margin="8,0,0,0" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <Button Content="Load" Command="{Binding LoadCommand}" HorizontalAlignment="Left" Padding="10,3" Margin="0,0,0,10" />
+
+                <Separator Margin="0,0,0,10" />
+
+                <!-- Position / rate / elements -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                        <TextBlock Text="Position" FontWeight="Bold" Margin="0,0,0,2" />
+                        <TextBlock Text="{Binding PositionText}" />
+                        <TextBlock Text="{Binding RateText}" Margin="0,2,0,0" />
+                        <TextBlock Margin="0,2,0,0"><Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText}" /></TextBlock>
+
+                        <TextBlock Text="Offset" FontWeight="Bold" Margin="0,10,0,2" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="70" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="70" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="RA (arcsec)" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBox Grid.Column="1" Text="{Binding OffsetRaArcsec, UpdateSourceTrigger=PropertyChanged}" Margin="0,0,10,0" />
+                            <TextBlock Grid.Column="2" Text="Dec (arcsec)" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBox Grid.Column="3" Text="{Binding OffsetDecArcsec, UpdateSourceTrigger=PropertyChanged}" />
+                        </Grid>
+                        <Button Content="Clear Offset" Command="{Binding ResetOffsetCommand}" HorizontalAlignment="Left" Padding="6,1" Margin="0,4,0,0" />
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1">
+                        <TextBlock Text="Orbital Elements" FontWeight="Bold" Margin="0,0,0,2" />
+                        <TextBlock Margin="0,2,0,0"><Run Text="Eccentricity: " /><Run Text="{Binding EccentricityText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Inclination: " /><Run Text="{Binding InclinationText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Arg of Perihelion: " /><Run Text="{Binding ArgPeriText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Node: " /><Run Text="{Binding NodeText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Perihelion Distance: " /><Run Text="{Binding PerihelionDistanceText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Semi-Major Axis: " /><Run Text="{Binding SemiMajorAxisText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="{Binding EpochOrPerihelionLabel}" /><Run Text=": " /><Run Text="{Binding EpochOrPerihelionText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Mean Anomaly (now): " /><Run Text="{Binding MeanAnomalyNowText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Eccentric Anomaly (now): " /><Run Text="{Binding EccentricAnomalyNowText}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="True Anomaly (now): " /><Run Text="{Binding TrueAnomalyNowText}" /></TextBlock>
+                    </StackPanel>
+                </Grid>
+
+                <!-- Action buttons -->
+                <UniformGrid Columns="2" Margin="0,10,0,0">
+                    <Button Content="Frame" Command="{Binding FrameCommand}" Margin="0,0,4,4" Padding="0,4" />
+                    <Button Content="Slew and Track" Command="{Binding SlewAndTrackCommand}" Margin="4,0,0,4" Padding="0,4" />
+                    <Button Content="Set Tracking Rate" Command="{Binding SetTrackingRateCommand}" Margin="0,0,4,4" Padding="0,4" />
+                    <Button Content="Set Guider Shift Rate" Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,0,4" Padding="0,4" />
+                </UniformGrid>
+
+                <Separator Margin="0,6,0,10" />
+
+                <!-- 10-night path -->
+                <TextBlock Text="10-Night Path" FontWeight="Bold" Margin="0,0,0,4" />
+                <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
+                    <Grid>
+                        <Canvas Width="{Binding PathViewBoxWidth}" Height="{Binding PathViewBoxHeight}">
+                            <Polyline Points="{Binding PathPoints}" Stroke="{DynamicResource ButtonForegroundBrush}" StrokeThickness="1.5" />
+                            <TextBlock Text="{Binding PathStartLabel}" Canvas.Left="0" Canvas.Top="0" FontSize="10" Opacity="0.7" />
+                            <TextBlock Text="{Binding PathEndLabel}" Canvas.Right="0" Canvas.Top="0" FontSize="10" Opacity="0.7" />
+                        </Canvas>
+                    </Grid>
+                </Border>
+
+                <Separator Margin="0,10,0,10" />
+
+                <!-- Quick Track -->
+                <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <CheckBox Content="Include guiding" IsChecked="{Binding Guiding}" Margin="0,0,16,0" VerticalAlignment="Center" />
+                    <CheckBox Content="Auto re-apply every 15 min" IsChecked="{Binding AutoReapply}" VerticalAlignment="Center" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                    <Button Content="Start Quick Track" Command="{Binding StartQuickTrackCommand}" Padding="8,3" Margin="0,0,8,0" />
+                    <Button Content="Stop" Command="{Binding StopQuickTrackCommand}" Padding="8,3" />
+                </StackPanel>
+                <TextBlock Text="{Binding QuickTrackStatusText}" TextWrapping="Wrap" Opacity="0.85" />
+
+            </StackPanel>
+        </ScrollViewer>
+    </DataTemplate>
+</ResourceDictionary>
