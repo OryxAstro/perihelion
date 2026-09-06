@@ -1061,10 +1061,26 @@ namespace Perihelion.ViewModels {
             }
         }
 
+        /// <summary>Real bug found from real hardware use, 2026-09-06: NINA's own
+        /// TelescopeVM.SlewAsyncInternal checks AtPark itself and just returns false ("Slew
+        /// requested while mount is parked") rather than unparking -- it does NOT auto-unpark the
+        /// way SetPerihelionTrackingRate.cs already does for the tracking-rate step alone (real
+        /// NINA sequences always run an explicit UnparkScope item first; this VM's own direct
+        /// mediator call has no such item ahead of it). Confirmed the exact same class of bug
+        /// already caught and fixed on the Touch-N-Stars side (PerihelionView.vue's own
+        /// unparkMountIfNeeded(), added for an OnStep mount that silently did nothing) -- same
+        /// fix here, just via the real in-process mediator instead of an HTTP round-trip.</summary>
         private async Task SlewAndTrackAction() {
             if (Loaded == null) return;
             IsBusy = true;
             try {
+                if (telescopeMediator.GetInfo().AtPark) {
+                    var progress = new Progress<NINA.Core.Model.ApplicationStatus>();
+                    if (!await telescopeMediator.UnparkTelescope(progress, CancellationToken.None)) {
+                        Notification.ShowError("Perihelion: mount is parked and could not be unparked");
+                        return;
+                    }
+                }
                 var success = await telescopeMediator.SlewToCoordinatesAsync(LoadedCoordinatesWithOffset(), CancellationToken.None);
                 if (!success) {
                     Notification.ShowWarning("Slew failed or was rejected by the mount");
@@ -1095,7 +1111,7 @@ namespace Perihelion.ViewModels {
         private async Task SetGuiderShiftRateAction() {
             if (Loaded == null) return;
             try {
-                var item = new SetPerihelionGuiderShiftRate(guiderMediator, profileService) {
+                var item = new SetPerihelionGuiderShiftRate(telescopeMediator, guiderMediator, profileService) {
                     ObjectType = Loaded.ObjectType,
                     TargetName = Loaded.Name,
                 };

@@ -69,7 +69,7 @@ namespace Perihelion.Api {
                 bool guidingOnlyFallback = false;
                 if (guiding && guiderMediator != null) {
                     try {
-                        var guiderItem = new SetPerihelionGuiderShiftRate(guiderMediator, profileService) {
+                        var guiderItem = new SetPerihelionGuiderShiftRate(telescopeMediator, guiderMediator, profileService) {
                             ObjectType = objectType,
                             TargetName = targetName,
                         };

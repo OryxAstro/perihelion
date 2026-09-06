@@ -668,6 +668,21 @@ namespace Perihelion.ViewModels {
                 : IncludeCenter ? "Slewing and centering..." : "Slewing...";
             try {
                 var progress = new Progress<ApplicationStatus>(s => StatusText = s.Status ?? StatusText);
+                // Real bug found from real hardware use, 2026-09-06: NINA's own Center/
+                // CenterAndRotate/SlewScopeToRaDec.Execute() all check AtPark themselves and
+                // THROW ("Telescope Parked") rather than unparking -- real NINA sequences always
+                // run an explicit UnparkScope item first, which none of these three branches have
+                // ahead of them here (they're executed standalone, not inside a real sequence).
+                // Same class of bug already caught and fixed for Add to Sequence's own use of
+                // these same items (that container DOES start with a real Unpark step) and for
+                // Touch-N-Stars' own Slew and Center (PerihelionView.vue's unparkMountIfNeeded()).
+                if (telescopeMediator.GetInfo().AtPark) {
+                    if (!await telescopeMediator.UnparkTelescope(progress, CancellationToken.None)) {
+                        StatusText = "Slew/center failed: mount is parked and could not be unparked.";
+                        Notification.ShowError("Perihelion: mount is parked and could not be unparked");
+                        return;
+                    }
+                }
                 if (rotating) {
                     var rotate = factory.GetItem<CenterAndRotate>();
                     rotate.Inherited = false;

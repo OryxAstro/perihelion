@@ -171,7 +171,7 @@ namespace Perihelion.Api {
             bool guidingOnlyFallback = false;
             if (guiding && guiderMediator != null) {
                 try {
-                    var guiderItem = new SetPerihelionGuiderShiftRate(guiderMediator, profileService) { ObjectType = objectType, TargetName = targetName };
+                    var guiderItem = new SetPerihelionGuiderShiftRate(telescopeMediator, guiderMediator, profileService) { ObjectType = objectType, TargetName = targetName };
                     await guiderItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
                     QuickTrackStatus.GuidingSucceeded();
                     // Same guiding-only fallback as Track() -- see its own doc comment. The

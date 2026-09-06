@@ -35,16 +35,18 @@ namespace Perihelion.SequenceItems {
         // One shared HttpClient across the whole plugin (PerihelionHttpClient.cs).
         private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
 
+        private readonly ITelescopeMediator telescopeMediator;
         private readonly IGuiderMediator guiderMediator;
         private readonly IProfileService profileService;
 
         [ImportingConstructor]
-        public SetPerihelionGuiderShiftRate(IGuiderMediator guiderMediator, IProfileService profileService) {
+        public SetPerihelionGuiderShiftRate(ITelescopeMediator telescopeMediator, IGuiderMediator guiderMediator, IProfileService profileService) {
+            this.telescopeMediator = telescopeMediator;
             this.guiderMediator = guiderMediator;
             this.profileService = profileService;
         }
 
-        private SetPerihelionGuiderShiftRate(SetPerihelionGuiderShiftRate cloneMe) : this(cloneMe.guiderMediator, cloneMe.profileService) {
+        private SetPerihelionGuiderShiftRate(SetPerihelionGuiderShiftRate cloneMe) : this(cloneMe.telescopeMediator, cloneMe.guiderMediator, cloneMe.profileService) {
             CopyMetaData(cloneMe);
             ObjectType = cloneMe.ObjectType;
             TargetName = cloneMe.TargetName;
@@ -76,6 +78,22 @@ namespace Perihelion.SequenceItems {
         public OrbitalRate? LastAppliedRate { get; private set; }
 
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
+            // Real gap found from a real hardware review, 2026-09-06: SetPerihelionTrackingRate's
+            // own AtPark/Unpark check (see its own doc comment) only runs when the mount CAN take
+            // a custom base rate directly -- QuickTrackEngine's own canSetBaseRate branch skips
+            // constructing that item entirely otherwise, relying purely on this guider-shift item
+            // as the whole tracking mechanism (the "guiding-only fallback" case). A parked mount
+            // in exactly that situation would never get unparked by either item. Same check,
+            // duplicated rather than shared, for the same reason SetPerihelionTrackingRate's own
+            // doc comment gives -- this needs to work identically whether run inside a real
+            // sequence (which normally has its own explicit UnparkScope item first) or directly
+            // via Quick Track (which has none).
+            if (telescopeMediator.GetInfo().AtPark) {
+                if (!await telescopeMediator.UnparkTelescope(progress, token)) {
+                    throw new SequenceEntityFailedException("Mount is parked and could not be unparked");
+                }
+            }
+
             // A shift rate with nothing actively guiding is a no-op at best (PHD2 has no lock
             // position yet to shift) -- calling StartGuiding here rather than just checking some
             // "is guiding" flag is deliberate: NINA/PHD2 doesn't expose one via GuiderInfo at
