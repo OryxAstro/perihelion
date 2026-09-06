@@ -319,6 +319,7 @@ namespace Perihelion.ViewModels {
             set {
                 imagePanX = value;
                 RaisePropertyChanged();
+                RaisePropertyChanged(nameof(TargetLabelScreenX));
                 if (pixelsPerArcmin > 0) OffsetRaArcsec = Math.Round((imagePanX / pixelsPerArcmin) * 60.0, 1);
             }
         }
@@ -331,6 +332,7 @@ namespace Perihelion.ViewModels {
             set {
                 imagePanY = value;
                 RaisePropertyChanged();
+                RaisePropertyChanged(nameof(TargetLabelScreenY));
                 if (pixelsPerArcmin > 0) OffsetDecArcsec = Math.Round((-imagePanY / pixelsPerArcmin) * 60.0, 1);
             }
         }
@@ -474,17 +476,26 @@ namespace Perihelion.ViewModels {
             public string Tooltip { get; set; } = string.Empty;
         }
 
-        // Fixed canvas center -- the target marker sits exactly here by construction (see
-        // FramingPathPoint's own doc comment on day 0), so the name label's own anchor X/Y never
-        // need to be computed per-load like TargetLabelOnRight does. Y is nudged up ~7px (half a
+        // Real bug found from a real screenshot (2026-09-06): the label was first placed INSIDE
+        // the same pan/zoom-transformed Grid as the image/marker/path, so at the default 2.5x
+        // zoom its font rendered 2.5x too -- FramingOffsetView.vue's own canvas-drawn label uses
+        // a font size fixed in screen pixels regardless of the view's own zoom/FOV, so it should
+        // stay constant here too, not scale. Fixed by moving the label to the OUTER, untransformed
+        // Grid instead (sibling of the FOV rectangle) and computing its own screen position
+        // directly from ImagePanX/Y rather than inheriting the shared RenderTransform. This is
+        // mathematically exact, not an approximation: the marker/label sit exactly at the inner
+        // Grid's own RenderTransformOrigin (0.5,0.5 = dead center), and WPF scales a
+        // RenderTransform around that origin point -- a point exactly AT the scale origin is
+        // invariant under scaling, so ImageZoom drops out of the position entirely and only the
+        // TranslateTransform (ImagePanX/Y) actually moves it. Y is nudged up ~7px (half a
         // typical single-line 11pt run's own height) so the label reads vertically centered on
         // the marker, matching FramingOffsetView.vue's own boxY centering -- a fixed constant,
-        // not measured, since WPF has no clean way to bind a TextBlock's own rendered height
-        // back into a Canvas.Top the way ActualWidth already gets used for TargetLabelLeftConverter
+        // not measured, since WPF has no clean way to bind a TextBlock's own rendered height back
+        // into a Canvas.Top the way ActualWidth already gets used for TargetLabelLeftConverter
         // (that one has real user-visible payoff -- text overlapping the wrong side of the path
         // -- worth a MultiBinding; a few px of vertical centering doesn't).
-        public double TargetLabelAnchorX => SkyMapDisplaySize / 2.0;
-        public double TargetLabelAnchorY => SkyMapDisplaySize / 2.0 - 7;
+        public double TargetLabelScreenX => SkyMapDisplaySize / 2.0 + ImagePanX;
+        public double TargetLabelScreenY => SkyMapDisplaySize / 2.0 - 7 + ImagePanY;
 
         private bool targetLabelOnRight = true;
         /// <summary>Real user request (2026-09-06), matching FramingOffsetView.vue's own name-tag

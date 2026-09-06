@@ -132,27 +132,35 @@
                         <Ellipse Width="{Binding TargetMarkerSize}" Height="{Binding TargetMarkerSize}"
                                  Fill="{DynamicResource ButtonBackgroundSelectedBrush}"
                                  Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        <!-- Target name — real user request (2026-09-06), matching
-                             FramingOffsetView.vue's own name-tag placement exactly: sits on the
-                             OPPOSITE side from wherever the path continues from the marker (see
-                             TargetLabelOnRight's own doc comment), so it never runs alongside/
-                             through the path line. Canvas.Left needs the label's own rendered
-                             width (WPF has no SVG-style text-anchor), hence the MultiBinding
-                             pulling in ActualWidth via a self-reference rather than something
-                             precomputed in the VM. -->
-                        <Canvas IsHitTestVisible="False">
-                            <TextBlock Text="{Binding TargetName}" Foreground="White" FontSize="11"
-                                       Canvas.Top="{Binding TargetLabelAnchorY}">
-                                <Canvas.Left>
-                                    <MultiBinding Converter="{StaticResource TargetLabelLeftConverter}">
-                                        <Binding Path="TargetLabelAnchorX" />
-                                        <Binding Path="TargetLabelOnRight" />
-                                        <Binding RelativeSource="{RelativeSource Self}" Path="ActualWidth" />
-                                    </MultiBinding>
-                                </Canvas.Left>
-                            </TextBlock>
-                        </Canvas>
                     </Grid>
+                    <!-- Target name — real user request (2026-09-06), matching
+                         FramingOffsetView.vue's own name-tag placement exactly: sits on the
+                         OPPOSITE side from wherever the path continues from the marker (see
+                         TargetLabelOnRight's own doc comment), so it never runs alongside/
+                         through the path line. Lives in this OUTER, untransformed Grid (not the
+                         image/marker/path's own transformed one above) and computes its own
+                         screen position directly from ImagePanX/Y instead — a real bug found
+                         from a real screenshot: living inside the zoom-scaled Grid made the font
+                         render at ImageZoom times its real size (2.5x too big at the default
+                         zoom), where FramingOffsetView.vue's own canvas-drawn label stays a fixed
+                         screen size regardless of the view's own zoom. See TargetLabelScreenX/Y's
+                         own doc comment for why dropping ImageZoom from the position is exact,
+                         not an approximation. Canvas.Left still needs the label's own rendered
+                         width (WPF has no SVG-style text-anchor), hence the MultiBinding pulling
+                         in ActualWidth via a self-reference rather than something precomputed in
+                         the VM. -->
+                    <Canvas IsHitTestVisible="False">
+                        <TextBlock Text="{Binding TargetName}" Foreground="White" FontSize="11"
+                                   Canvas.Top="{Binding TargetLabelScreenY}">
+                            <Canvas.Left>
+                                <MultiBinding Converter="{StaticResource TargetLabelLeftConverter}">
+                                    <Binding Path="TargetLabelScreenX" />
+                                    <Binding Path="TargetLabelOnRight" />
+                                    <Binding RelativeSource="{RelativeSource Self}" Path="ActualWidth" />
+                                </MultiBinding>
+                            </Canvas.Left>
+                        </TextBlock>
+                    </Canvas>
                     <!-- FOV rectangle — always screen-centered (never part of the pan/zoom
                          TranslateTransform above, matching TNS's own fixed FOV overlay), but it
                          DOES need its own ScaleTransform tied to ImageZoom: FovRectWidth/Height
