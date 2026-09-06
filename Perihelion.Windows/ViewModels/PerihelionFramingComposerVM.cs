@@ -474,6 +474,33 @@ namespace Perihelion.ViewModels {
             public string Tooltip { get; set; } = string.Empty;
         }
 
+        // Fixed canvas center -- the target marker sits exactly here by construction (see
+        // FramingPathPoint's own doc comment on day 0), so the name label's own anchor X/Y never
+        // need to be computed per-load like TargetLabelOnRight does. Y is nudged up ~7px (half a
+        // typical single-line 11pt run's own height) so the label reads vertically centered on
+        // the marker, matching FramingOffsetView.vue's own boxY centering -- a fixed constant,
+        // not measured, since WPF has no clean way to bind a TextBlock's own rendered height
+        // back into a Canvas.Top the way ActualWidth already gets used for TargetLabelLeftConverter
+        // (that one has real user-visible payoff -- text overlapping the wrong side of the path
+        // -- worth a MultiBinding; a few px of vertical centering doesn't).
+        public double TargetLabelAnchorX => SkyMapDisplaySize / 2.0;
+        public double TargetLabelAnchorY => SkyMapDisplaySize / 2.0 - 7;
+
+        private bool targetLabelOnRight = true;
+        /// <summary>Real user request (2026-09-06), matching FramingOffsetView.vue's own name-tag
+        /// placement exactly: the target's name sits on the OPPOSITE side from wherever the path
+        /// continues from "tonight" (day 0), so the label never runs alongside/through the path
+        /// line itself. True (right) until path data loads or there's fewer than 2 points to
+        /// judge a direction from. Doesn't need FramingOffsetView.vue's own canvas-edge safety
+        /// fallback -- the target marker sits at the sky map's own exact center by construction
+        /// here (unlike that component's own pannable view center), so there's always at least
+        /// SkyMapDisplaySize/2 of clearance on either side, comfortably more than any real target
+        /// name's rendered width.</summary>
+        public bool TargetLabelOnRight {
+            get => targetLabelOnRight;
+            private set { targetLabelOnRight = value; RaisePropertyChanged(); }
+        }
+
         /// <summary>Fetches the object's own real 10-night path and projects it into the sky
         /// map's fixed pixel space -- called from LoadSkyMapAsync AFTER pixelsPerArcmin is set
         /// (projection needs it), not in parallel with the sky-map fetch itself. Failure here
@@ -504,6 +531,10 @@ namespace Perihelion.ViewModels {
                 }
                 PathPolylinePoints = polyline;
                 PathMarkers = markers;
+                if (polyline.Count >= 2) {
+                    var pathGoesRight = polyline[1].X > polyline[0].X;
+                    TargetLabelOnRight = !pathGoesRight;
+                }
             } catch (Exception ex) {
                 PathPolylinePoints = null;
                 PathMarkers = null;
