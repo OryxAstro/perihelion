@@ -157,6 +157,7 @@
                                     <Binding Path="TargetLabelScreenX" />
                                     <Binding Path="TargetLabelOnRight" />
                                     <Binding RelativeSource="{RelativeSource Self}" Path="ActualWidth" />
+                                    <Binding Path="TargetLabelGap" />
                                 </MultiBinding>
                             </Canvas.Left>
                         </TextBlock>

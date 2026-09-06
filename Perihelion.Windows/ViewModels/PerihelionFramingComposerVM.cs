@@ -304,7 +304,7 @@ namespace Perihelion.ViewModels {
         private double imageZoom = 2.5;
         public double ImageZoom {
             get => imageZoom;
-            set { imageZoom = value; RaisePropertyChanged(); }
+            set { imageZoom = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetLabelGap)); }
         }
 
         private double imagePanX;
@@ -413,8 +413,8 @@ namespace Perihelion.ViewModels {
         // (no independently-draggable FOV box there). Only its size is real state, computed from
         // the user's own gear.
         private double fovRectWidth, fovRectHeight;
-        public double FovRectWidth { get => fovRectWidth; private set { fovRectWidth = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetMarkerSize)); } }
-        public double FovRectHeight { get => fovRectHeight; private set { fovRectHeight = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetMarkerSize)); } }
+        public double FovRectWidth { get => fovRectWidth; private set { fovRectWidth = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetMarkerSize)); RaisePropertyChanged(nameof(TargetLabelGap)); } }
+        public double FovRectHeight { get => fovRectHeight; private set { fovRectHeight = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetMarkerSize)); RaisePropertyChanged(nameof(TargetLabelGap)); } }
 
         /// <summary>Target marker's on-screen diameter, sized relative to the FOV rectangle
         /// rather than a fixed pixel size -- a comet/asteroid has no real angular size worth
@@ -422,6 +422,17 @@ namespace Perihelion.ViewModels {
         /// camera FOVs (a speck against a huge FOV rectangle, or nearly filling a tiny one).
         /// Clamped so it stays visible at a small FOV and doesn't dominate a large one.</summary>
         public double TargetMarkerSize => Math.Clamp(Math.Min(FovRectWidth, FovRectHeight) * 0.12, 6.0, 24.0);
+
+        /// <summary>Real bug found from a real screenshot: the name label used a fixed 8px gap
+        /// from the marker's own center, but the marker itself lives inside the zoom-scaled Grid
+        /// (its real on-screen diameter is TargetMarkerSize * ImageZoom, not TargetMarkerSize
+        /// alone -- unlike the label, which was just fixed to render at a constant size, see
+        /// TargetLabelScreenX/Y's own doc comment), so at higher zoom the marker visibly grew
+        /// past that fixed gap and covered the first letters of the label. This is the marker's
+        /// own real on-screen radius plus a small constant clearance, not a fixed number, so the
+        /// label's gap always starts just outside the marker's actual rendered edge regardless of
+        /// zoom.</summary>
+        public double TargetLabelGap => TargetMarkerSize * ImageZoom / 2.0 + 4.0;
 
         // Set once per LoadSkyMapAsync call -- how many on-screen pixels correspond to one arcmin
         // on the sky, used by ImagePanX/Y's own setters to convert a drag distance to a real
