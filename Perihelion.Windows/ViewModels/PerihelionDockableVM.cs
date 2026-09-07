@@ -14,6 +14,7 @@ using NINA.Sequencer;
 using NINA.Sequencer.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.Mediator;
 using NINA.WPF.Base.Interfaces.ViewModel;
+using NINA.WPF.Base.SkySurvey;
 using NINA.WPF.Base.ViewModel;
 using Perihelion;
 using Perihelion.Api;
@@ -68,6 +69,26 @@ namespace Perihelion.ViewModels {
         private readonly DispatcherTimer statusTimer;
         private CancellationTokenSource? loadCts;
 
+        /// <summary>Owned here, at the dockable panel's own (whole-NINA-session) lifetime, and
+        /// handed into every PerihelionFramingComposerVM the Frame button creates -- NOT
+        /// constructed fresh per Composer window as an earlier version of this code did. Real bug
+        /// found and confirmed via a real-hardware A/B test, 2026-09-07: a brand-new
+        /// SkyMapAnnotator/DatabaseInteraction pairing works exactly once per NINA process (first
+        /// Offline Sky Map load after a fresh NINA start renders correctly; every subsequent one,
+        /// regardless of target, silently renders nothing -- no exception anywhere, confirmed via
+        /// TRACE-level logging showing GetCacheImagesForViewport completing normally each time
+        /// while the actual tile-image compositing pass simply never fires again). Real NINA's own
+        /// Framing Assistant, by contrast, keeps exactly ONE SkyMapAnnotator alive for its own
+        /// whole session and just re-Initializes it repeatedly -- confirmed reliable across four
+        /// consecutive loads in the same test, no degradation. Matching that same one-instance-
+        /// per-session pattern here, rather than continuing to construct a fresh instance per
+        /// Composer open, is the fix -- something in NINA's own underlying DB/native-image
+        /// pipeline (Entity Framework 6 and/or GDI+ tile decoding are the leading suspects, per
+        /// this project's own pre-existing dependency-conflict notes in this exact area) is
+        /// evidently not safe to initialize more than once per process, even though nothing here
+        /// requires it to be.</summary>
+        private readonly SkyMapAnnotator skyMapAnnotator;
+
         // ISequencerFactory/ISequenceMediator are NOT imported here directly -- confirmed the
         // hard way that doing so silently breaks this VM's own MEF composition entirely (the
         // whole panel vanishes from the Imaging tab, no error, no log signal). See
@@ -109,6 +130,17 @@ namespace Perihelion.ViewModels {
             this.filterWheelMediator = filterWheelMediator;
             this.imageDataFactory = imageDataFactory;
             this.nighttimeCalculator = nighttimeCalculator;
+
+            // Same real, persisted FramingAssistantSettings the Composer itself used to read --
+            // see the SkyMapAnnotator field's own doc comment for why this is constructed once
+            // here rather than fresh per Composer window.
+            var framingDefaults = profileService.ActiveProfile.FramingAssistantSettings;
+            skyMapAnnotator = new SkyMapAnnotator(telescopeMediator, profileService) {
+                AnnotateConstellations = framingDefaults.AnnotateConstellations,
+                AnnotateConstellationBoundaries = framingDefaults.AnnotateConstellationBoundaries,
+                AnnotateGrid = framingDefaults.AnnotateGrid,
+                AnnotateDSO = framingDefaults.AnnotateDSO,
+            };
 
             Title = "Perihelion";
             // MEF composition order between this VM and PerihelionPlugin's own resource-merging
@@ -1045,7 +1077,7 @@ namespace Perihelion.ViewModels {
 
             var trueCoordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
             var composerVm = new PerihelionFramingComposerVM(Loaded.Name, Loaded.ObjectType, trueCoordinates, telescopeMediator, rotatorMediator,
-                cameraMediator, imagingMediator, filterWheelMediator, profileService, imageDataFactory, factory);
+                cameraMediator, imagingMediator, filterWheelMediator, profileService, imageDataFactory, factory, skyMapAnnotator);
             var window = new Perihelion.Views.PerihelionFramingComposerWindow(composerVm) {
                 Owner = System.Windows.Application.Current?.MainWindow,
             };
@@ -1150,6 +1182,43 @@ namespace Perihelion.ViewModels {
             private set { quickTrackStatusText = value; RaisePropertyChanged(); }
         }
 
+        // The five fields below mirror Touch-N-Stars' own Track tab "Live Status" card
+        // (PerihelionView.vue, backed by the same GET /perihelion/api/status shape as
+        // QuickTrackStatus.Current here) -- same underlying data on both sides, this panel just
+        // hadn't been reading the rest of the snapshot beyond target/rate/fallback. Each is null
+        // (not empty string) when there's nothing to show, so the view's own visibility bindings
+        // can collapse the line entirely rather than rendering blank space.
+
+        private string? quickTrackElapsedText;
+        public string? QuickTrackElapsedText {
+            get => quickTrackElapsedText;
+            private set { quickTrackElapsedText = value; RaisePropertyChanged(); }
+        }
+
+        private string? quickTrackAppliedAgoText;
+        public string? QuickTrackAppliedAgoText {
+            get => quickTrackAppliedAgoText;
+            private set { quickTrackAppliedAgoText = value; RaisePropertyChanged(); }
+        }
+
+        private string? quickTrackNextReapplyText;
+        public string? QuickTrackNextReapplyText {
+            get => quickTrackNextReapplyText;
+            private set { quickTrackNextReapplyText = value; RaisePropertyChanged(); }
+        }
+
+        private string? quickTrackLastErrorText;
+        public string? QuickTrackLastErrorText {
+            get => quickTrackLastErrorText;
+            private set { quickTrackLastErrorText = value; RaisePropertyChanged(); }
+        }
+
+        private string? quickTrackGuidingErrorText;
+        public string? QuickTrackGuidingErrorText {
+            get => quickTrackGuidingErrorText;
+            private set { quickTrackGuidingErrorText = value; RaisePropertyChanged(); }
+        }
+
         public AsyncRelayCommand StartQuickTrackCommand { get; }
         public AsyncRelayCommand StopQuickTrackCommand { get; }
 
@@ -1194,9 +1263,63 @@ namespace Perihelion.ViewModels {
                     ? $" -- last applied RA {ra:F4}, Dec {dec:F4} arcsec/s"
                     : "";
                 QuickTrackStatusText = $"Tracking {s.TargetName}{fallback}{applied}";
-            } else if (!string.IsNullOrEmpty(quickTrackStatusText) && s.StopReason != null) {
-                QuickTrackStatusText = $"Stopped: {s.StopReason}";
+
+                QuickTrackElapsedText = s.StartedUtc is DateTime started
+                    ? $"Tracking for {FormatDuration(DateTime.UtcNow - started)}"
+                    : null;
+                QuickTrackAppliedAgoText = s.LastAppliedUtc is DateTime lastApplied
+                    ? $"Applied {FormatRelativeTime(lastApplied)}"
+                    : null;
+                QuickTrackNextReapplyText = s.AutoReapplyMinutes is int mins && s.LastAppliedUtc is DateTime lastAppliedForReapply
+                    ? FormatNextReapply(lastAppliedForReapply, mins)
+                    : null;
+                // Deliberately independent of each other, same as the Touch-N-Stars card --
+                // LastError describes only the mount's own tracking-rate application, GuidingError
+                // only the guider shift, and a Quick Track session where the mount succeeded but
+                // guiding hiccuped should show the guiding line without implying tracking failed.
+                QuickTrackLastErrorText = !s.LastApplySucceeded && s.LastError != null
+                    ? $"Last attempt failed: {s.LastError}"
+                    : null;
+                QuickTrackGuidingErrorText = s.GuidingError != null
+                    ? $"Guiding failed: {s.GuidingError}"
+                    : null;
+            } else {
+                if (!string.IsNullOrEmpty(quickTrackStatusText) && s.StopReason != null) {
+                    QuickTrackStatusText = $"Stopped: {s.StopReason}";
+                }
+                QuickTrackElapsedText = null;
+                QuickTrackAppliedAgoText = null;
+                QuickTrackNextReapplyText = null;
+                QuickTrackLastErrorText = null;
+                QuickTrackGuidingErrorText = null;
             }
+        }
+
+        /// <summary>Mirrors Touch-N-Stars' own formatDuration (PerihelionView.vue) exactly, so a
+        /// given elapsed time reads the same on both frontends.</summary>
+        private static string FormatDuration(TimeSpan span) {
+            var seconds = Math.Max(0, span.TotalSeconds);
+            if (seconds < 60) return "under a minute";
+            if (seconds < 3600) return $"{(int)(seconds / 60)}m";
+            var hours = (int)(seconds / 3600);
+            var minutes = (int)(seconds % 3600 / 60);
+            return $"{hours}h {minutes:00}m";
+        }
+
+        /// <summary>Mirrors Touch-N-Stars' own relativeTime (PerihelionView.vue) exactly.</summary>
+        private static string FormatRelativeTime(DateTime utc) {
+            var seconds = Math.Max(0, (DateTime.UtcNow - utc).TotalSeconds);
+            if (seconds < 60) return "just now";
+            if (seconds < 3600) return $"{(int)(seconds / 60)}m ago";
+            if (seconds < 86400) return $"{(int)(seconds / 3600)}h ago";
+            return $"{(int)(seconds / 86400)}d ago";
+        }
+
+        private static string? FormatNextReapply(DateTime lastAppliedUtc, int autoReapplyMinutes) {
+            var nextAt = lastAppliedUtc.AddMinutes(autoReapplyMinutes);
+            var remaining = nextAt - DateTime.UtcNow;
+            if (remaining <= TimeSpan.Zero) return null;
+            return $"Next re-apply in {FormatDuration(remaining)}";
         }
 
         public override void Hide(object o) {

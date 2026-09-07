@@ -29,6 +29,11 @@ namespace Perihelion.Views {
         public PerihelionFramingComposerWindow(PerihelionFramingComposerVM vm) {
             InitializeComponent();
             DataContext = vm;
+            // Closed, not just Confirm/Cancel's own Close() calls above -- the OS close button
+            // (or Alt+F4) bypasses both of those entirely, and ViewModel.Dispose() (stopping
+            // SkyMapAnnotator's own telescope-position subscription) needs to run regardless of
+            // how this window actually closes.
+            Closed += (_, _) => ViewModel.Dispose();
         }
 
         private void ConfirmButton_Click(object sender, RoutedEventArgs e) {

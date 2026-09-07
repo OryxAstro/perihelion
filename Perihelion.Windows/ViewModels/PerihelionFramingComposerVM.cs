@@ -51,7 +51,7 @@ namespace Perihelion.ViewModels {
     /// real rotation angle if a rotator was used) back into the main panel, for Add to Sequence/
     /// Quick Track to pick up -- rather than a number someone guessed.
     /// </summary>
-    public class PerihelionFramingComposerVM : INotifyPropertyChanged {
+    public class PerihelionFramingComposerVM : INotifyPropertyChanged, IDisposable {
         // Fixed on-screen size of the sky map display -- deliberately independent of whatever
         // pixel resolution the fetched SkySurveyImage actually comes back at (confirmed from
         // NINA.WPF.Base's own NASASkySurvey.cs that this varies with the requested field of view,
@@ -78,6 +78,25 @@ namespace Perihelion.ViewModels {
         // it.
         private const double SkyMapZoomOutFactor = 6.0;
 
+        // Offline Sky Map specifically needs a raster rendered at much higher resolution than the
+        // 600x600 display canvas -- unlike the five live photographic sources (which are fetched
+        // pre-sized to exactly what's displayed), SkyMapAnnotator bakes its whole scene into a
+        // fixed-size bitmap ONE TIME per Initialize call, and WPF's own ImageZoom afterward is a
+        // pure visual stretch of that already-rendered bitmap, not a re-render. Requesting the
+        // annotator's own raster at only SkyMapDisplaySize (matching real NINA's own Framing
+        // Assistant's default ~3 deg FOV filling its whole display 1:1) while ALSO fetching
+        // SkyMapZoomOutFactor times more sky area than that meant the same fixed pixel count was
+        // spread across ~6x the angular area -- real user comparison, 2026-09-07 (UGC 5601, same
+        // target, native NINA vs. here): native NINA's tighter native-resolution render showed
+        // dense real detail (dust, dozens of labeled DSOs); this showed the same underlying tiles
+        // genuinely present, just rendered at a fraction of the angular resolution and then
+        // blurrily stretched on zoom. Rendering at SkyMapDisplaySize * SkyMapZoomOutFactor instead
+        // keeps the SAME angular resolution (pixels per degree) as a native ~3 deg-filling render,
+        // all the way out to the wider fetched FOV -- zooming in via ImageZoom then reveals real
+        // tile detail instead of upscaled blur. Only applies to SKYATLAS -- the five live sources
+        // already fetch pre-sized to the display, so they have no equivalent resolution deficit.
+        private const double SkyMapOfflineRasterSize = SkyMapDisplaySize * SkyMapZoomOutFactor;
+
         // Same 10 nights PerihelionDockableVM's own Position tab path chart uses (PathDays
         // there) -- no reason for the Composer's own overlay to show a different span.
         private const int PathDays = 10;
@@ -95,6 +114,21 @@ namespace Perihelion.ViewModels {
         private readonly OrbitalObjectType objectType;
         private readonly Coordinates trueCoordinates;
 
+        /// <summary>Real, public NINA.WPF.Base API (NINA.WPF.Base/SkySurvey/SkyMapAnnotator.cs) --
+        /// same class real NINA's own Framing Assistant uses to render Offline Sky Map, not a
+        /// custom rendering. Owned and constructed by PerihelionDockableVM, not here -- see that
+        /// field's own doc comment for the real-hardware-confirmed bug (works exactly once per
+        /// NINA process if constructed fresh per Composer window) that made a shared, one-per-
+        /// session instance necessary instead.</summary>
+        private readonly SkyMapAnnotator skyMapAnnotator;
+
+        /// <summary>Named, not a lambda passed straight to +=, specifically so it can be
+        /// unsubscribed in Dispose -- skyMapAnnotator now outlives any single Composer window, so
+        /// without this every past Composer session's own handler (each closing over that
+        /// session's own SkyImage/selectedImageSource) would keep firing and accumulating for the
+        /// rest of the NINA process.</summary>
+        private readonly PropertyChangedEventHandler skyMapAnnotatorHandler;
+
         public event PropertyChangedEventHandler? PropertyChanged;
         private void RaisePropertyChanged([CallerMemberName] string? name = null) =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
@@ -110,7 +144,8 @@ namespace Perihelion.ViewModels {
             IFilterWheelMediator filterWheelMediator,
             IProfileService profileService,
             IImageDataFactory imageDataFactory,
-            ISequencerFactory factory) {
+            ISequencerFactory factory,
+            SkyMapAnnotator skyMapAnnotator) {
             TargetName = targetName;
             this.objectType = objectType;
             this.trueCoordinates = trueCoordinates;
@@ -122,6 +157,35 @@ namespace Perihelion.ViewModels {
             this.profileService = profileService;
             this.imageDataFactory = imageDataFactory;
             this.factory = factory;
+            this.skyMapAnnotator = skyMapAnnotator;
+
+            // SkyMapAnnotator.Initialize renders TWICE, not once: an immediate first pass using
+            // only the catalog overlay (before any real cached tile bitmaps are even decoded from
+            // disk), then a second pass, asynchronously, once UseCachedImages' own background
+            // image-load task finishes (SkyMapAnnotator.QueueMissingImages/LoadMissingImages) --
+            // arriving well after Initialize's own await has already completed. A one-time read of
+            // SkyMapOverlay right after awaiting Initialize (an earlier version of this code)
+            // permanently captured that first, tile-less pass and never saw the real, later update
+            // -- confirmed as the actual cause of "sometimes a bare grid, usually nothing at all"
+            // real user reports, not (as first suspected) the catalog overlay being inherently too
+            // sparse to show anything on its own. Subscribing here means every later render --
+            // including that second async pass -- reaches SkyImage, same as it would for real
+            // NINA's own directly-bound SkyMapOverlay. Guarded on SelectedImageSource so a render
+            // that finishes after the user has since switched to a live photographic source
+            // doesn't stomp back over it.
+            skyMapAnnotatorHandler = (_, e) => {
+                // Temporary diagnostic (2026-09-07) -- logs every property change on the shared
+                // annotator, not just SkyMapOverlay, to see whether something is re-triggering
+                // UpdateSkyMap (and so cancelling/restarting the tile decode via
+                // QueueMissingImages' own CancelImageLoad) faster than a single decode pass can
+                // finish. Remove once the "reopen gets permanently stuck partial" bug is
+                // understood.
+                Logger.Info($"Perihelion: [diag] skyMapAnnotator.{e.PropertyName} changed at {DateTime.UtcNow:HH:mm:ss.fff}, selectedImageSource={selectedImageSource}");
+                if (e.PropertyName == nameof(SkyMapAnnotator.SkyMapOverlay) && selectedImageSource == SkySurveySource.SKYATLAS) {
+                    SkyImage = skyMapAnnotator.SkyMapOverlay;
+                }
+            };
+            skyMapAnnotator.PropertyChanged += skyMapAnnotatorHandler;
 
             PositionText = $"RA {AstroUtil.HoursToHMS(trueCoordinates.RA)}  Dec {AstroUtil.DegreesToDMS(trueCoordinates.Dec)}";
             RotatorConnected = rotatorMediator.GetInfo().Connected;
@@ -138,9 +202,8 @@ namespace Perihelion.ViewModels {
             // changes the dropdown; LoadSkyMapAsync below already runs once regardless, so
             // running it a second time here too would just be a redundant fetch on open.
             // Falls back to NASA if the persisted preference isn't one of ImageSources' own
-            // entries (e.g. real NINA's own default of Offline/SKYATLAS, deliberately excluded
-            // from that list -- see its own doc comment) -- otherwise the ComboBox would come up
-            // with nothing selected at all.
+            // entries (e.g. FILE, the one source still excluded -- see ImageSources' own doc
+            // comment) -- otherwise the ComboBox would come up with nothing selected at all.
             var lastSource = profileService.ActiveProfile.FramingAssistantSettings.LastSelectedImageSource;
             selectedImageSource = ImageSources.Contains(lastSource) ? lastSource : SkySurveySource.NASA;
 
@@ -173,17 +236,31 @@ namespace Perihelion.ViewModels {
 
         // --- Image source ---
 
-        /// <summary>File/Cache/Offline all deliberately excluded -- File needs a local file
-        /// picker (not built here), Cache only has content once something else has already
-        /// populated it, and Offline (SkyAtlasSkySurvey) turned out, on reading its own real
-        /// source, to be a flat mid-grey placeholder with no actual imagery at all (confirmed:
-        /// it fills every pixel with the literal byte value 30, nothing else) -- real, even in
-        /// stock NINA, but genuinely useless for this feature specifically ("see real objects to
-        /// frame against"), so it was actively misleading to list it as if it were a real choice.
-        /// The remaining five are all live, no-setup sky-survey sources with real imagery.</summary>
+        /// <summary>Only File is excluded -- it needs a local file picker, a genuinely different
+        /// interaction model from "fetch and render," not built here. Cache and Offline
+        /// (SkyAtlasSkySurvey) are both included despite each having a real caveat: Cache only
+        /// has content once something else has already populated it for that field (fetched via
+        /// one of the five live sources below, in this Composer or real NINA's own Framing
+        /// Assistant, since both read/write the same on-disk cache), and Offline renders as a
+        /// flat mid-grey placeholder with no actual imagery at all (confirmed: it fills every
+        /// pixel with the literal byte value 30) -- real, even in stock NINA. Neither caveat is a
+        /// reason to hide the option entirely, though: real NINA lists both unfiltered, and Cache
+        /// specifically is exactly the kind of no-network-required source this whole project
+        /// cares about -- once a target's imagery has been fetched once while online, Cache keeps
+        /// working for that same field with no signal at all.</summary>
         public IReadOnlyList<SkySurveySource> ImageSources { get; } = new[] {
             SkySurveySource.NASA, SkySurveySource.HIPS2FITS, SkySurveySource.STSCI,
-            SkySurveySource.ESO, SkySurveySource.SKYSERVER,
+            SkySurveySource.ESO, SkySurveySource.SKYSERVER, SkySurveySource.CACHE,
+            SkySurveySource.SKYATLAS,
+        };
+
+        /// <summary>The real cache-index key each live source's own images are saved under
+        /// (SkySurveySourceExtension.GetCacheSourceString() in NINA.WPF.Base.SkySurvey --
+        /// literally that source class's own type name, e.g. "NASASkySurvey") -- tried in turn
+        /// by the CACHE branch of LoadSkyMapAsync below, since a cached entry is filed under
+        /// whichever source originally fetched it, not under "Cache" itself.</summary>
+        private static readonly string[] CacheSourceKeys = {
+            "NASASkySurvey", "Hips2FitsSurvey", "StsciSkySurvey", "ESOSkySurvey", "SkyServerSkySurvey",
         };
 
         private SkySurveySource selectedImageSource;
@@ -390,8 +467,11 @@ namespace Perihelion.ViewModels {
 
         // --- Sky map ---
 
-        private BitmapSource? skyImage;
-        public BitmapSource? SkyImage {
+        // ImageSource, not the narrower BitmapSource -- SkyMapAnnotator.SkyMapOverlay (the
+        // Offline Sky Map's own rendered star chart) is typed ImageSource, and both it and every
+        // fetched photographic BitmapSource bind into the same <Image Source="..."> either way.
+        private ImageSource? skyImage;
+        public ImageSource? SkyImage {
             get => skyImage;
             private set { skyImage = value; RaisePropertyChanged(); }
         }
@@ -599,11 +679,98 @@ namespace Perihelion.ViewModels {
                     cameraFovWidthArcmin = cameraFovHeightArcmin = 0;
                 }
 
-                var survey = new SkySurveyFactory(imageDataFactory).Create(selectedImageSource);
-                var image = await survey.GetImage(TargetName, trueCoordinates, requestedFovArcmin,
-                    (int)SkyMapDisplaySize, (int)SkyMapDisplaySize, CancellationToken.None, new Progress<int>());
+                // Offline Sky Map has no real photographic image to fetch -- SkySurveyFactory
+                // would just hand back a flat placeholder for it (see ImageSources' own doc
+                // comment). Real NINA's own Framing Assistant doesn't display that placeholder
+                // either for this source; the actual viewable content is SkyMapAnnotator's own
+                // rendered scene, which is TWO things composited together, not one: the
+                // catalog-based star/constellation/grid overlay (always present, computed live),
+                // and -- the part that was missing here until now -- whatever real photographic
+                // tiles already happen to be sitting in the user's own Sky Survey Cache folder
+                // near these coordinates, drawn as a background layer underneath it. Real NINA
+                // enables this second part specifically for SKYATLAS via
+                // "SkyMapAnnotator.UseCachedImages = IsX64" (effectively always true on any modern
+                // system) -- a fast-moving target like a comet will still often show mostly bare
+                // overlay, since nothing's likely been cached for its exact, constantly-shifting
+                // field before, but a popular fixed DSO target (M31, say) that's been framed
+                // before through NINA or Perihelion looks genuinely photographic here, exactly
+                // matching real NINA's own behavior rather than a plain catalog chart.
+                if (selectedImageSource == SkySurveySource.SKYATLAS) {
+                    var vFoVDegrees = AstroUtil.ArcminToDegree(requestedFovArcmin);
+                    var offlineCache = new CacheSkySurvey(profileService.ActiveProfile.ApplicationSettings.SkySurveyCacheDirectory);
+                    Logger.Info($"Perihelion: [diag] Initialize starting at {DateTime.UtcNow:HH:mm:ss.fff}, UseCachedImages currently {skyMapAnnotator.UseCachedImages}");
+                    skyMapAnnotator.UseCachedImages = true;
+                    await skyMapAnnotator.Initialize(trueCoordinates, vFoVDegrees,
+                        SkyMapOfflineRasterSize, SkyMapOfflineRasterSize, 0.0, offlineCache, CancellationToken.None);
+                    SkyImage = skyMapAnnotator.SkyMapOverlay;
+                    Logger.Info($"Perihelion: [diag] Initialize returned at {DateTime.UtcNow:HH:mm:ss.fff}");
+                    pixelsPerArcmin = SkyMapDisplaySize / requestedFovArcmin;
+                } else if (selectedImageSource == SkySurveySource.CACHE) {
+                    // Real, working NINA API (NINA.WPF.Base.SkySurvey.CacheSkySurvey, confirmed
+                    // via reflection against the exact NINA.Plugin 3.2.0.9001 assembly this
+                    // project builds against -- its own source isn't present in the PINS tree
+                    // this project otherwise reads from, so its real constructor/method shapes
+                    // were confirmed directly against the compiled DLL rather than guessed).
+                    // ApplicationSettings.SkySurveyCacheDirectory is the exact same persisted
+                    // setting behind NINA's own Options > Imaging > "Sky Survey Cache folder"
+                    // field, so this reads from wherever the user has that configured, not a
+                    // hardcoded path. GetImage(sourceKey, ra, dec, rotation, fovArcmin) is real
+                    // NINA's own "find an already-cached image near these coordinates" lookup
+                    // (used internally by FramingAssistantVM as an opportunistic cache-first check
+                    // for every source, not just Cache itself) -- there's no separate "pick one
+                    // from a list" UI here, unlike real NINA's own Cache option, since this same
+                    // method already does location-based matching on its own; tried across every
+                    // live source's own cache key in turn since a user picking "Cache" here almost
+                    // certainly means "whatever's already been fetched for this field," not
+                    // "only what NASA specifically cached."
+                    var cache = new CacheSkySurvey(profileService.ActiveProfile.ApplicationSettings.SkySurveyCacheDirectory);
+                    SkySurveyImage cachedImage = null;
+                    foreach (var sourceKey in CacheSourceKeys) {
+                        try {
+                            cachedImage = await cache.GetImage(sourceKey, trueCoordinates.RA, trueCoordinates.Dec, 0.0, requestedFovArcmin);
+                        } catch (Exception ex) {
+                            Logger.Warning($"Perihelion: cache lookup for {sourceKey} failed: {ex.Message}");
+                        }
+                        if (cachedImage != null) break;
+                    }
 
-                SkyImage = image.Image;
+                    if (cachedImage == null) {
+                        SkyImage = null;
+                        SkyMapStatusText = "No cached image found near this target yet. Fetch it once from a live source with " +
+                            "\"Save image in offline cache\" enabled in NINA's own Options, then Cache will work offline afterward.";
+                        ImagePanX = 0;
+                        ImagePanY = 0;
+                        ImageZoom = 2.5;
+                        FovRectWidth = Math.Min(SkyMapDisplaySize, cameraFovWidthArcmin * pixelsPerArcmin);
+                        FovRectHeight = Math.Min(SkyMapDisplaySize, cameraFovHeightArcmin * pixelsPerArcmin);
+                        await LoadPathAsync();
+                        return;
+                    }
+
+                    SkyImage = cachedImage.Image;
+                    pixelsPerArcmin = SkyMapDisplaySize / cachedImage.FoVWidth;
+                } else {
+                    var survey = new SkySurveyFactory(imageDataFactory).Create(selectedImageSource);
+                    var image = await survey.GetImage(TargetName, trueCoordinates, requestedFovArcmin,
+                        (int)SkyMapDisplaySize, (int)SkyMapDisplaySize, CancellationToken.None, new Progress<int>());
+
+                    SkyImage = image.Image;
+                    pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
+
+                    // Mirrors real NINA's own FramingAssistantVM: only when the user has this on
+                    // in their own Options does a live fetch also get persisted to the same real
+                    // cache folder, building up genuine offline coverage over repeated use --
+                    // exactly the "no internet dependency in the field" principle this whole
+                    // project already leans on elsewhere, extended to this Composer's own fetches.
+                    if (framingSettings.SaveImageInOfflineCache) {
+                        try {
+                            var cache = new CacheSkySurvey(profileService.ActiveProfile.ApplicationSettings.SkySurveyCacheDirectory);
+                            cache.SaveImageToCache(image);
+                        } catch (Exception ex) {
+                            Logger.Warning($"Perihelion: saving fetched image to offline cache failed: {ex.Message}");
+                        }
+                    }
+                }
                 // Reset -- a freshly (re)loaded sky map has no pan applied to it yet, and
                 // switching image source mid-session shouldn't leave a stale offset from the
                 // previous image's own pixel scale. Zoom resets to the same >1.0 default
@@ -613,7 +780,6 @@ namespace Perihelion.ViewModels {
                 ImagePanY = 0;
                 ImageZoom = 2.5;
 
-                pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
                 FovRectWidth = Math.Min(SkyMapDisplaySize, cameraFovWidthArcmin * pixelsPerArcmin);
                 FovRectHeight = Math.Min(SkyMapDisplaySize, cameraFovHeightArcmin * pixelsPerArcmin);
 
@@ -819,6 +985,20 @@ namespace Perihelion.ViewModels {
                 OffsetDecArcsec = decArcsec;
             }
             StatusText = "Offset captured from the mount's current position.";
+        }
+
+        /// <summary>Called from PerihelionFramingComposerWindow's own Closed handler, regardless
+        /// of whether the window closed via Confirm, Cancel, or the OS close button -- without
+        /// this, SkyMapAnnotator's own RegisterConsumer(this) call (made from inside its
+        /// Initialize, when telescopeMediator is supplied) would keep it alive and receiving
+        /// telescope-position updates indefinitely after this window is gone.</summary>
+        /// <summary>Unsubscribes only -- skyMapAnnotator itself is owned by PerihelionDockableVM
+        /// and shared across every Composer window opened for the whole NINA session, so this
+        /// must NOT dispose it (that would break every future "Frame" click for the rest of the
+        /// session, not just this window).</summary>
+        public void Dispose() {
+            Logger.Info($"Perihelion: [diag] Composer window closing at {DateTime.UtcNow:HH:mm:ss.fff} for {TargetName}");
+            skyMapAnnotator.PropertyChanged -= skyMapAnnotatorHandler;
         }
     }
 }

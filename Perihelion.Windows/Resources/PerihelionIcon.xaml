@@ -2,24 +2,28 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!--
-      DockableVM.ImageGeometry (NINA.WPF.Base) is a filled GeometryGroup, not a stroked icon —
-      it defaults to a "PuzzlePieceSVG" resource when a plugin doesn't set one, which is exactly
-      the generic jigsaw-piece look already replaced for the plugin-list icon (docs/icon.png,
-      the real Lucide "orbit" glyph rendered as a stroked PNG). That PNG's own path data can't be
-      reused verbatim here: Lucide's "orbit" is a stroke-only icon (2px outlines, no fill), and
-      filling its raw path/circle data directly would render mostly invisible (a zero-area
-      outline has nothing for FillRule to fill). Producing a proper filled outline of that stroke
-      would need a real "stroke to path" vector operation (e.g. Inkscape), not available on this
-      headless dev machine — so this is a deliberate approximation, not the exact glyph: two
-      concentric circles combined with EvenOdd fill produce a filled ring (an annulus, the same
-      2px-thick band the stroke would have made), plus a small filled dot standing in for the
-      "orbiting body" that the real icon's small circles suggest. Same visual idea, different
-      construction. Worth swapping for the real glyph's traced outline later if a vector tool
-      becomes available.
+      DockableVM.ImageGeometry (NINA.WPF.Base) is a filled GeometryGroup, not a stroked icon — it
+      defaults to a "PuzzlePieceSVG" resource when a plugin doesn't set one, which is exactly the
+      generic jigsaw-piece look already replaced for the plugin-list icon (docs/icon.png, a
+      stroked PNG).
+
+      Redesigned 2026-09-07, real user report from a side-by-side screenshot: the original icon
+      here (two concentric circles + a small orbiting dot, an annulus standing in for a stroked
+      "orbit ring" glyph) read as near-identical to Orbitals' own dockable-panel tab icon at the
+      small, monochrome size NINA actually renders tab icons at — unsurprising in hindsight, since
+      "a ring with a dot orbiting it" is the single most generic way to draw "orbit," and Orbitals
+      already owns that exact visual space by name. Rather than trying to make a subtly-different
+      ring (still liable to read the same at 16-20px), this is a genuinely different silhouette —
+      a comet, a filled nucleus with a curved, tapering tail — which is both more specific to
+      this plugin's actual subject (comet/asteroid tracking, not orbital mechanics generally) and
+      has nothing in common with a closed ring shape even at a glance. EvenOdd is harmless here
+      (the tail path and the nucleus circle barely overlap, no real holes to worry about) but kept
+      for consistency with how this resource was structured before.
     -->
     <GeometryGroup x:Key="PerihelionOrbitSVG" FillRule="EvenOdd">
-        <EllipseGeometry Center="12,12" RadiusX="9" RadiusY="9" />
-        <EllipseGeometry Center="12,12" RadiusX="7" RadiusY="7" />
-        <EllipseGeometry Center="19,5" RadiusX="2.5" RadiusY="2.5" />
+        <!-- Nucleus -->
+        <EllipseGeometry Center="16.5,7.5" RadiusX="3.2" RadiusY="3.2" />
+        <!-- Tapering tail, swept down and to the left away from the nucleus -->
+        <PathGeometry Figures="M 14.3,9.2 C 11,10.5 7.5,13.5 3,21 C 8,17.5 12,14.5 16.8,10.4 Z" />
     </GeometryGroup>
 </ResourceDictionary>
