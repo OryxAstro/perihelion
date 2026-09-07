@@ -3,6 +3,10 @@ using System.Runtime.InteropServices;
 
 [assembly: AssemblyTitle("Perihelion")]
 [assembly: AssemblyDescription("Standalone comet/asteroid non-sidereal tracking for PiNStars/Touch-N-Stars.")]
+// Kept in sync with Perihelion.Windows' own AssemblyInfo.cs for consistency -- see its own
+// comment for why this exists separately from AssemblyDescription above (the real, official
+// NINA plugin template lists it as a required, distinct field).
+[assembly: AssemblyMetadata("ShortDescription", "Standalone comet/asteroid non-sidereal tracking for PiNStars/Touch-N-Stars.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("OryxAstro")]
 [assembly: AssemblyProduct("Perihelion")]

@@ -14,6 +14,12 @@ using System.Runtime.InteropServices;
 // platforms already keys off this exact value).
 [assembly: AssemblyTitle("Perihelion")]
 [assembly: AssemblyDescription("Comet and asteroid non-sidereal tracking, natively in NINA's Imaging tab -- live orbital tracking, Quick Track, and a real Framing Composer.")]
+// The real, official plugin template (isbeorn/nina.plugin.template) lists
+// AssemblyMetadata("ShortDescription") as a REQUIRED field, distinct from the standard
+// AssemblyDescription above -- CreateManifest.ps1 reads assembly metadata to auto-populate the
+// manifest, so without this the manifest's own required ShortDescription could end up empty
+// even with AssemblyDescription set. Same text as AssemblyDescription, kept in sync deliberately.
+[assembly: AssemblyMetadata("ShortDescription", "Comet and asteroid non-sidereal tracking, natively in NINA's Imaging tab -- live orbital tracking, Quick Track, and a real Framing Composer.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("OryxAstro")]
 [assembly: AssemblyProduct("Perihelion")]
