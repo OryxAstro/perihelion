@@ -55,9 +55,9 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="8">
 
-                <!-- Page title — same idea as Orbitals' own large heading at the top of its
-                     panel, deliberately different wording ("Orbital Elements" is specifically
-                     Orbitals' own panel name, not a generic label to reuse). -->
+                <!-- Page title — a large heading at the top of the panel, deliberately worded
+                     as "Comet & Asteroid Tracking" rather than a generic "Orbital Elements"
+                     label. -->
                 <TextBlock Text="Comet &amp; Asteroid Tracking" FontSize="18" Margin="0,0,0,4" />
                 <!-- Real user feedback (2026-09-05): kept the two-column Add to Sequence/Quick
                      Track layout and decided against a mode-select toggle, but still wanted to
@@ -205,10 +205,10 @@
 
                     <!-- "Update Sources", not "Update Databases" — these are live JSON feeds
                          (MPC's comet-elements file, COBS's observation API), not a database, and
-                         the previous wording implied otherwise. Same idea as Orbitals' own
-                         per-object-type Update/Last Updated rows (its own real category/count
-                         labels, e.g. "Comets (4108)", are the model followed here), and this
-                         project's existing PINS-side sync status — explicit, deliberate refresh
+                         the previous wording implied otherwise. Per-object-type Update/Last
+                         Updated rows with their own real category/count labels (e.g.
+                         "Comets (4108)"), matching this project's existing PINS-side sync
+                         status — explicit, deliberate refresh
                          actions with their own real "when" (CometOrbits.LastSyncedUtc /
                          CometActivity.LastFullRefreshUtc, both disk-persisted — see
                          RefreshLastUpdatedText's own doc comment for how that was verified).
@@ -230,6 +230,7 @@
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
                         </Grid.RowDefinitions>
                         <TextBlock Grid.Row="0" Text="Update Sources" FontWeight="Bold" Margin="0,0,0,4" />
                         <Grid Grid.Row="1" Margin="0,0,0,6">
@@ -247,7 +248,27 @@
                                 <Run Text="Last Updated: " /><Run Text="{Binding CometsLastUpdatedText, Mode=OneWay}" />
                             </TextBlock>
                         </Grid>
-                        <Grid Grid.Row="2">
+                        <!-- Asteroids used to be a hardcoded table with no refresh at all — now
+                             live-fetched from JPL SBDB the same way comets are live-fetched from
+                             MPC, just on a much longer 24h cache window (main-belt elements barely
+                             move day to day). This button is the same "do it now" bypass as
+                             Update Comets above. -->
+                        <Grid Grid.Row="2" Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="130" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Asteroids" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <Button Grid.Column="1" Command="{Binding UpdateAsteroidsCommand}"
+                                    ToolTip="Re-fetches current orbital elements for every tracked asteroid from JPL's Small-Body Database now, bypassing the normal 24h cache.">
+                                <TextBlock Text="Update" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                            </Button>
+                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" TextWrapping="Wrap">
+                                <Run Text="Last Updated: " /><Run Text="{Binding AsteroidsLastUpdatedText, Mode=OneWay}" />
+                            </TextBlock>
+                        </Grid>
+                        <Grid Grid.Row="3">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="130" />
                                 <ColumnDefinition Width="90" />
@@ -267,7 +288,7 @@
                              looked like a Browse-list status rather than what it actually was —
                              moved to its own property (UpdateSourcesStatusText) and displayed
                              here instead, directly under the actions it actually reports on. -->
-                        <TextBlock Grid.Row="3" Text="{Binding UpdateSourcesStatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,0" />
+                        <TextBlock Grid.Row="4" Text="{Binding UpdateSourcesStatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,0" />
                     </Grid>
                 </Grid>
 
@@ -445,10 +466,10 @@
 
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="Orbital Elements" FontWeight="Bold" Margin="0,0,0,2" />
-                        <!-- Matches NINA.Joko.Plugin.Orbitals' own two-column elements layout:
-                             Epoch and Periapsis are two real, separate quantities (a comet's own
-                             perihelion passage time is not a substitute for its reference epoch),
-                             shown side by side rather than one-or-the-other. -->
+                        <!-- Two-column elements layout: Epoch and Periapsis are two real,
+                             separate quantities (a comet's own perihelion passage time is not a
+                             substitute for its reference epoch), shown side by side rather than
+                             one-or-the-other. -->
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -475,6 +496,13 @@
                                 <TextBlock Margin="0,2,0,0"><Run Text="Distance: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
                             </StackPanel>
                         </Grid>
+                        <!-- Epoch-staleness warning — see AsteroidOrbits/CometOrbits' own
+                             EpochAgeDays doc comment. Empty text collapses via the same
+                             NullOrEmptyToVisibility convention as the Quick Track status lines
+                             below, rather than a plain always-visible line. -->
+                        <TextBlock Text="{Binding EpochStaleWarningText}" TextWrapping="Wrap"
+                                   Visibility="{Binding EpochStaleWarningText, Converter={StaticResource NullOrEmptyToVisibility}}"
+                                   Foreground="{DynamicResource NotificationWarningBrush}" FontSize="11" Margin="0,6,0,0" />
                     </StackPanel>
                 </Grid>
 
@@ -484,8 +512,7 @@
                      to duplicate that same math directly from this page was removed, 2026-09-05,
                      real user feedback that it had become redundant now the Composer covers the
                      same capture with better context (a real sky map, tied into Slew/Rotate).
-                     Read-only, HH:MM:SS/DMS — matches Orbitals' own displayed format for
-                     RAOffset/DecOffset exactly, not a raw arcsec number. -->
+                     Read-only, shown as HH:MM:SS/DMS rather than a raw arcsec number. -->
                 <Grid Margin="0,8,0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto" />

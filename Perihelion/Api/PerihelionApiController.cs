@@ -127,6 +127,9 @@ namespace Perihelion.Api {
         public DateTime? CometsLastSyncedUtc { get; set; }
 
         [JsonProperty]
+        public DateTime? AsteroidsLastSyncedUtc { get; set; }
+
+        [JsonProperty]
         public DateTime? CobsLastRefreshedUtc { get; set; }
     }
 
@@ -139,6 +142,9 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public DateTime? CometsLastSyncedUtc { get; set; }
+
+        [JsonProperty]
+        public DateTime? AsteroidsLastSyncedUtc { get; set; }
     }
 
     internal class CometActivityResponse {
@@ -198,6 +204,12 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public DateTime? PerihelionDateUtc { get; set; }
+
+        [JsonProperty]
+        public double EpochAgeDays { get; set; }
+
+        [JsonProperty]
+        public bool IsEpochStale { get; set; }
     }
 
     /// <summary>
@@ -254,6 +266,8 @@ namespace Perihelion.Api {
                     SolarElongationDeg = o.SolarElongationDeg,
                     ConstellationName = o.ConstellationName,
                     PerihelionDateUtc = o.PerihelionDateUtc,
+                    EpochAgeDays = o.EpochAgeDays,
+                    IsEpochStale = o.IsEpochStale,
                 });
             }
             return response;
@@ -284,12 +298,13 @@ namespace Perihelion.Api {
         /// <summary>
         /// When comet data was last actually fetched from MPC (on this run or a previous one, via
         /// the on-disk cache) -- null if never synced at all. Backs the panel's "last synced: X
-        /// ago" indicator, matching NINA Orbitals' own per-object-type download screen.
+        /// ago" indicator.
         /// </summary>
         [Route(HttpVerbs.Get, "/sync/status")]
         public async Task SyncStatus() {
             var json = JsonConvert.SerializeObject(new SyncStatusResponse {
                 CometsLastSyncedUtc = CometOrbits.LastSyncedUtc,
+                AsteroidsLastSyncedUtc = AsteroidOrbits.LastSyncedUtc,
                 CobsLastRefreshedUtc = CometActivity.LastFullRefreshUtc,
             });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
@@ -308,6 +323,23 @@ namespace Perihelion.Api {
                 Success = success,
                 Message = success ? "Comet elements synced" : "Sync failed -- check the connection and try again",
                 CometsLastSyncedUtc = CometOrbits.LastSyncedUtc,
+            };
+            var json = JsonConvert.SerializeObject(response);
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Same explicit-sync contract as /sync/comets, for the (much smaller, much slower to
+        /// change) curated asteroid list -- fetches current elements for every tracked asteroid
+        /// from JPL's Small-Body Database right now, regardless of the passive 24h cache window.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/sync/asteroids")]
+        public async Task SyncAsteroids() {
+            var success = await AsteroidOrbits.SyncNowAsync(HttpClient, HttpContext.CancellationToken);
+            var response = new SyncResponse {
+                Success = success,
+                Message = success ? "Asteroid elements synced" : "Sync failed -- check the connection and try again",
+                AsteroidsLastSyncedUtc = AsteroidOrbits.LastSyncedUtc,
             };
             var json = JsonConvert.SerializeObject(response);
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);

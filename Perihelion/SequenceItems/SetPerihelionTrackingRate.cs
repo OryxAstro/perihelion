@@ -24,10 +24,8 @@ namespace Perihelion.SequenceItems {
     /// <summary>
     /// Sets the mount's custom RA/Dec tracking rate for a comet or asteroid, computed
     /// in-process (see Perihelion.Astrometry.OrbitalTracking) rather than read from a parent
-    /// container's coordinates -- unlike NINA.Joko.Plugin.Orbitals' SetTelescopeShiftRate (which
-    /// this item is functionally similar to but was independently designed from, not copied
-    /// from; see CLAUDE.md's IP hygiene section), this item is self-contained: it takes the
-    /// target's identity directly rather than depending on a specific parent container shape.
+    /// container's coordinates -- this item is self-contained: it takes the target's identity
+    /// directly rather than depending on a specific parent container shape.
     /// </summary>
     [ExportMetadata("Name", "Set Perihelion Tracking Rate")]
     [ExportMetadata("Description", "Sets the mount's custom RA/Dec tracking rate for a comet or asteroid, computed live from its current orbital elements.")]
@@ -69,7 +67,8 @@ namespace Perihelion.SequenceItems {
 
         /// <summary>
         /// Must match a name in the live MPC comet feed (e.g. "1P/Halley") or in
-        /// Perihelion.Astrometry.AsteroidOrbits.BrightAsteroids (e.g. "4 Vesta").
+        /// Perihelion's own curated asteroid list (Perihelion.Astrometry.AsteroidOrbits, e.g.
+        /// "4 Vesta").
         /// </summary>
         [JsonProperty]
         public string TargetName { get; set; } = string.Empty;

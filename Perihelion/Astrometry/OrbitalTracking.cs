@@ -16,11 +16,12 @@ namespace Perihelion.Astrometry {
 
     /// <summary>
     /// True on-sky linear rate: RA is already cos(dec)-compensated (ΔRA·cos(dec), not raw ΔRA)
-    /// -- matches NINA Orbitals' own ShiftTrackingRate convention (SetGuiderShiftRate /
-    /// SetTelescopeShiftRate combine RA/Dec via sqrt(RA² + Dec²) directly, which only makes
-    /// sense if RA is already linear). By a unit coincidence (3600 arcsec/deg ÷ 3600 sec/hour
-    /// = 1), these arcsec/sec values are numerically identical to degrees/hour, so they plug
-    /// directly into NINA.Astrometry.SiderealShiftTrackingRate.Create(raDegPerHour, decDegPerHour)
+    /// -- needed because NINA's own shift-rate mediator calls combine RA/Dec via
+    /// sqrt(RA² + Dec²) directly (SetTelescopeShiftRate/SetGuiderShiftRate on both sequence
+    /// items here), which only makes sense if RA is already linear. By a unit coincidence
+    /// (3600 arcsec/deg ÷ 3600 sec/hour = 1), these arcsec/sec values are numerically identical
+    /// to degrees/hour, so they plug directly into
+    /// NINA.Astrometry.SiderealShiftTrackingRate.Create(raDegPerHour, decDegPerHour)
     /// with no conversion.
     /// </summary>
     public readonly struct OrbitalRate {
@@ -90,6 +91,18 @@ namespace Perihelion.Astrometry {
         /// itself. Null for an asteroid (parameterized by Mean Anomaly at Epoch instead, no
         /// direct equivalent field).</summary>
         public DateTime? PerihelionDateUtc { get; init; }
+
+        /// <summary>Days between "now" and this object's own reference epoch (a comet's
+        /// perihelion passage time T, or an asteroid's stored EpochJd) -- see CometOrbits/
+        /// AsteroidOrbits' own EpochAgeDays for why this matters: a large value means positions
+        /// computed here rely on pure two-body propagation over a long span with no perturbation
+        /// modeling.</summary>
+        public required double EpochAgeDays { get; init; }
+
+        /// <summary>True when EpochAgeDays exceeds the type-specific staleness threshold --
+        /// worth surfacing to the user as "this object's data may be less accurate than usual",
+        /// not a hard error.</summary>
+        public required bool IsEpochStale { get; init; }
     }
 
     /// <summary>
@@ -183,10 +196,10 @@ namespace Perihelion.Astrometry {
 
         /// <summary>
         /// Instantaneous angular rate at <paramref name="atDateUtc"/>, via a 60-second finite
-        /// difference -- matches Orbitals' own MaxExposureSeconds formula exactly
-        /// (pixelScale / sqrt(RA² + Dec²)) so the two numbers mean the same thing. Returns null
+        /// difference. Max exposure is derived from this as pixelScale / sqrt(RA² + Dec²).
+        /// Returns null
         /// if <paramref name="name"/> isn't found (comet not in the current MPC feed, or
-        /// asteroid not in AsteroidOrbits.BrightAsteroids).
+        /// asteroid not in Perihelion's own curated asteroid list).
         /// </summary>
         /// <param name="atDateUtc">Must have DateTime.Kind == Utc.</param>
         private static async Task<Func<DateTime, EclipticVector>?> ResolveHeliocentricAtAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, CancellationToken ct) {
@@ -195,7 +208,7 @@ namespace Perihelion.Astrometry {
                 if (comet == null) return null;
                 return d => CometOrbits.HeliocentricEcliptic(comet, d);
             } else {
-                var asteroid = AsteroidOrbits.FindByName(name);
+                var asteroid = await AsteroidOrbits.FindByNameAsync(httpClient, name, ct).ConfigureAwait(false);
                 if (asteroid == null) return null;
                 return d => AsteroidOrbits.HeliocentricEcliptic(asteroid, new AstroTime(d));
             }
@@ -247,7 +260,7 @@ namespace Perihelion.Astrometry {
                 var comet = await CometOrbits.FindByNameAsync(httpClient, name, ct).ConfigureAwait(false);
                 return comet == null ? null : CometOrbits.PredictedMagnitude(comet, atDateUtc, t);
             } else {
-                var asteroid = AsteroidOrbits.FindByName(name);
+                var asteroid = await AsteroidOrbits.FindByNameAsync(httpClient, name, ct).ConfigureAwait(false);
                 if (asteroid == null) return null;
                 var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
                 var earth = OrbitalMechanics.EarthHeliocentricEcliptic(t);
@@ -281,23 +294,33 @@ namespace Perihelion.Astrometry {
             var earth = OrbitalMechanics.EarthHeliocentricEcliptic(t);
             var results = new List<BrowseObject>();
 
-            foreach (var asteroid in AsteroidOrbits.BrightAsteroids) {
-                var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
-                var geo = helio - earth;
-                var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
-                var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
-                results.Add(new BrowseObject {
-                    Id = asteroid.Id,
-                    Name = asteroid.Name,
-                    ObjectType = OrbitalObjectType.Asteroid,
-                    Magnitude = AsteroidOrbits.ApparentMagnitude(asteroid, helio, earth),
-                    RaHours = raHours,
-                    DecDeg = decDeg,
-                    SunDistanceAu = helio.Length(),
-                    EarthDistanceAu = geo.Length(),
-                    SolarElongationDeg = SolarElongationDeg(earth, geo),
-                    ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
-                });
+            // Isolated the same way the comet fetch below is -- a JPL outage shouldn't blank the
+            // whole Browse tab when FetchAsteroidElementsAsync still has nothing to fall back on
+            // (never synced on this install, and the live fetch also failed).
+            try {
+                var asteroids = await AsteroidOrbits.FetchAsteroidElementsAsync(httpClient, ct).ConfigureAwait(false);
+                foreach (var asteroid in asteroids) {
+                    var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
+                    var geo = helio - earth;
+                    var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
+                    var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
+                    results.Add(new BrowseObject {
+                        Id = asteroid.Id,
+                        Name = asteroid.Name,
+                        ObjectType = OrbitalObjectType.Asteroid,
+                        Magnitude = AsteroidOrbits.ApparentMagnitude(asteroid, helio, earth),
+                        RaHours = raHours,
+                        DecDeg = decDeg,
+                        SunDistanceAu = helio.Length(),
+                        EarthDistanceAu = geo.Length(),
+                        SolarElongationDeg = SolarElongationDeg(earth, geo),
+                        ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
+                        EpochAgeDays = AsteroidOrbits.EpochAgeDays(asteroid, atDateUtc),
+                        IsEpochStale = AsteroidOrbits.IsEpochStale(asteroid, atDateUtc),
+                    });
+                }
+            } catch (Exception ex) {
+                NINA.Core.Utility.Logger.Warning($"Perihelion: could not list asteroids, continuing with comets only: {ex.Message}");
             }
 
             // Isolated from the asteroid loop above on purpose -- FetchCometElementsAsync only
@@ -337,6 +360,8 @@ namespace Perihelion.Astrometry {
                         SolarElongationDeg = SolarElongationDeg(earth, geo),
                         ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
                         PerihelionDateUtc = comet.PerihelionDate,
+                        EpochAgeDays = CometOrbits.EpochAgeDays(comet, atDateUtc),
+                        IsEpochStale = CometOrbits.IsEpochStale(comet, atDateUtc),
                     });
                 }
                 cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
@@ -375,6 +400,8 @@ namespace Perihelion.Astrometry {
                                 SolarElongationDeg = comet.SolarElongationDeg,
                                 ConstellationName = comet.ConstellationName,
                                 PerihelionDateUtc = comet.PerihelionDateUtc,
+                                EpochAgeDays = comet.EpochAgeDays,
+                                IsEpochStale = comet.IsEpochStale,
                             };
                         } finally {
                             cobsThrottle.Release();
@@ -389,7 +416,7 @@ namespace Perihelion.Astrometry {
                 NINA.Core.Utility.Logger.Warning($"Perihelion: comet list unavailable, showing asteroids only: {ex.Message}");
             }
 
-            // The asteroid loop above adds entries in BrightAsteroids' own hardcoded order, not
+            // The asteroid loop above adds entries in the curated target list's own order, not
             // by brightness -- only cometResults got sorted, so without this the combined list
             // is really "asteroids in list-definition order, then comets sorted", not a single
             // brightest-first ranking across both (the sort must run after both halves are in

@@ -42,13 +42,10 @@ namespace Perihelion.ViewModels {
     /// Perihelion's own native dockable panel for real Windows NINA -- the Windows-only
     /// counterpart to the Touch-N-Stars web panel, but running in-process rather than as an HTTP
     /// client of Perihelion's own API server (Quick Track start/stop calls QuickTrackEngine
-    /// directly, same call NINA's own advanced sequencer path would end up making). Modeled after
-    /// NINA.Joko.Plugin.Orbitals' own dockable "Orbital Elements" panel (same IDockableVM export
-    /// shape, same Frame/Set Tracking Rate/Set Guider Shift Rate/Slew and Track/Offset actions --
-    /// independently implemented from reading its panel in screenshots and its public interface
-    /// usage, not from its source; see CLAUDE.md's IP hygiene section), plus everything the
-    /// Touch-N-Stars panel already does that Orbitals' own panel doesn't: live-brightness
-    /// browsing, a 10-night path preview, and Quick Track's auto-reapply.
+    /// directly, same call NINA's own advanced sequencer path would end up making). A dockable
+    /// panel (standard IDockableVM export shape) with a Browse/Load list, a details area, and a
+    /// Frame/Set Tracking Rate/Set Guider Shift Rate/Slew and Track action set, plus live-
+    /// brightness browsing, a 10-night path preview, and Quick Track's auto-reapply.
     /// </summary>
     [Export(typeof(NINA.Equipment.Interfaces.ViewModel.IDockableVM))]
     public class PerihelionDockableVM : DockableVM {
@@ -94,21 +91,21 @@ namespace Perihelion.ViewModels {
         // whole panel vanishes from the Imaging tab, no error, no log signal). See
         // PerihelionPlugin's own static SequencerFactory/SequenceMediator fields for the full
         // explanation and the working alternative used instead. INighttimeCalculator below is a
-        // different case -- confirmed safe because Orbitals' own real, working dockable VM
-        // (OrbitalsVM) imports this exact type directly into its own constructor. IRotatorMediator
-        // (added 2026-09-05, for the Framing Composer's own rotator-aware framing),
-        // IImageDataFactory (added the same day, for the Composer's own real sky-map fetch via
-        // SkySurveyFactory), and ICameraMediator/IImagingMediator/IFilterWheelMediator (added the
-        // same day, for the Composer's own real "Determine Rotation from Camera" plate-solve --
-        // confirmed safely MEF-importable since nitr57/ninaAPI's own AdvancedAPI.cs imports all
-        // three directly too) are the same kind of standard, non-special interfaces as
-        // ITelescopeMediator/IGuiderMediator above, not the ISequencerFactory/ISequenceMediator
-        // special case.
+        // different case -- confirmed safe because another real, working NINA dockable VM
+        // elsewhere in the plugin ecosystem imports this exact type directly into its own
+        // constructor. IRotatorMediator (added 2026-09-05, for the Framing Composer's own
+        // rotator-aware framing), IImageDataFactory (added the same day, for the Composer's own
+        // real sky-map fetch via SkySurveyFactory), and ICameraMediator/IImagingMediator/
+        // IFilterWheelMediator (added the same day, for the Composer's own real "Determine
+        // Rotation from Camera" plate-solve -- confirmed safely MEF-importable since
+        // nitr57/ninaAPI's own AdvancedAPI.cs imports all three directly too) are the same kind
+        // of standard, non-special interfaces as ITelescopeMediator/IGuiderMediator above, not
+        // the ISequencerFactory/ISequenceMediator special case.
         // IFramingAssistantVM/IApplicationMediator are deliberately NOT imported -- "Frame" opens
         // Perihelion's own popup Framing Composer, not NINA's own Framing Assistant tab. (An
-        // earlier same-day attempt to jump to that tab instead, reasoned from reading
-        // NINA.Joko.Plugin.Orbitals' own OrbitalsVM.cs, was explicitly rejected -- Perihelion
-        // needs its own real popup with a real sky-map/FOV view, not a redirect elsewhere.)
+        // earlier same-day attempt to jump to that tab instead was explicitly rejected --
+        // Perihelion needs its own real popup with a real sky-map/FOV view, not a redirect
+        // elsewhere.)
 
         [ImportingConstructor]
         public PerihelionDockableVM(
@@ -164,6 +161,7 @@ namespace Perihelion.ViewModels {
 
             UpdateCometsCommand = new AsyncRelayCommand(UpdateCometsAction);
             UpdateCobsCommand = new AsyncRelayCommand(UpdateCobsAction);
+            UpdateAsteroidsCommand = new AsyncRelayCommand(UpdateAsteroidsAction);
             RefreshLastUpdatedText();
 
             PathPoints = new PointCollection();
@@ -280,23 +278,29 @@ namespace Perihelion.ViewModels {
         // constant for its own UserExtensionsFolder), not a volatile OS temp directory despite
         // the confusing name. CometOrbits' own comet-elements cache has a 6-hour TTL and is used
         // automatically by Load/Refresh; these two buttons are the explicit "do it now, bypass
-        // the TTL" actions, matching Orbitals' own per-object-type Update button and this
-        // project's existing PINS-side /objects/refresh-cobs route (mirrored exactly, not
-        // reinvented) for the same real reason -- a full COBS sweep across every comet takes
-        // several seconds to tens of seconds, so it stays a deliberate, explicit action rather
+        // the TTL" actions, matching this project's own existing PINS-side /objects/refresh-cobs
+        // route (mirrored exactly, not reinvented) for the same real reason -- a full COBS sweep
+        // across every comet takes several seconds to tens of seconds, so it stays a deliberate,
+        // explicit action rather
         // than something that runs silently on every Load.
         private string cometsLastUpdatedText = "Never";
         public string CometsLastUpdatedText => cometsLastUpdatedText;
         private string cobsLastUpdatedText = "Never";
         public string CobsLastUpdatedText => cobsLastUpdatedText;
+        // Asteroids don't need their own count label the way comets do -- the curated list is a
+        // small, fixed 13 objects (unlike the live MPC comet feed's variable, much larger count),
+        // so "Asteroids" alone is unambiguous without a number alongside it.
+        private string asteroidsLastUpdatedText = "Never";
+        public string AsteroidsLastUpdatedText => asteroidsLastUpdatedText;
 
-        /// <summary>"Comets (4108)" -- same idea as Orbitals' own per-category count label.
-        /// CometOrbits.CachedCount is a cheap synchronous read of whatever's already in memory/on
-        /// disk, not a live fetch.</summary>
+        /// <summary>"Comets (4108)" -- a per-category count label. CometOrbits.CachedCount is a
+        /// cheap synchronous read of whatever's already in memory/on disk, not a live
+        /// fetch.</summary>
         public string CometsCountText => $"Comets ({CometOrbits.CachedCount})";
 
         public AsyncRelayCommand UpdateCometsCommand { get; }
         public AsyncRelayCommand UpdateCobsCommand { get; }
+        public AsyncRelayCommand UpdateAsteroidsCommand { get; }
 
         /// <summary>Status for the Update Sources actions specifically (Update Comets/Update
         /// COBS) -- kept separate from StatusText, which is Browse/Load-only, per real user
@@ -312,9 +316,11 @@ namespace Perihelion.ViewModels {
         private void RefreshLastUpdatedText() {
             cometsLastUpdatedText = CometOrbits.LastSyncedUtc is DateTime c ? c.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never";
             cobsLastUpdatedText = CometActivity.LastFullRefreshUtc is DateTime o ? o.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never";
+            asteroidsLastUpdatedText = AsteroidOrbits.LastSyncedUtc is DateTime a ? a.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never";
             RaisePropertyChanged(nameof(CometsLastUpdatedText));
             RaisePropertyChanged(nameof(CobsLastUpdatedText));
             RaisePropertyChanged(nameof(CometsCountText));
+            RaisePropertyChanged(nameof(AsteroidsLastUpdatedText));
         }
 
         private async Task UpdateCometsAction() {
@@ -326,6 +332,21 @@ namespace Perihelion.ViewModels {
             } catch (Exception ex) {
                 UpdateSourcesStatusText = $"Comet elements update failed: {ex.Message}";
                 Notification.ShowError($"Perihelion: comet elements update failed: {ex.Message}");
+            } finally {
+                RefreshLastUpdatedText();
+                IsBusy = false;
+            }
+        }
+
+        private async Task UpdateAsteroidsAction() {
+            IsBusy = true;
+            UpdateSourcesStatusText = "Updating asteroid elements from JPL...";
+            try {
+                var ok = await AsteroidOrbits.SyncNowAsync(HttpClient, CancellationToken.None);
+                UpdateSourcesStatusText = ok ? "Asteroid elements updated." : "Asteroid elements update failed -- see log.";
+            } catch (Exception ex) {
+                UpdateSourcesStatusText = $"Asteroid elements update failed: {ex.Message}";
+                Notification.ShowError($"Perihelion: asteroid elements update failed: {ex.Message}");
             } finally {
                 RefreshLastUpdatedText();
                 IsBusy = false;
@@ -454,15 +475,17 @@ namespace Perihelion.ViewModels {
             ? observedAverageMagnitude is double avg ? $"{m:F2} (5-obs avg {avg:F2})" : m.ToString("F2")
             : "n/a";
 
-        // Elements card -- matches NINA.Joko.Plugin.Orbitals' own layout (Epoch AND Periapsis
-        // shown side by side, not one-or-the-other): a comet's own perihelion passage time T is
-        // a real, separate quantity from "Epoch" (the reference date its Mean Anomaly at Epoch
-        // is computed for -- today's date at 00:00 UTC, same convention confirmed against a real
-        // Orbitals screenshot for the same comet on the same day), not a substitute for it.
+        // Elements card -- Epoch and Periapsis are shown side by side, not one-or-the-other: a
+        // comet's own perihelion passage time T is a real, separate quantity from "Epoch" (the
+        // reference date its Mean Anomaly at Epoch is computed for -- today's date at 00:00 UTC,
+        // a convention cross-checked against another real tool's displayed value for the same
+        // comet on the same day), not a substitute for it.
         private double? eccentricity, inclinationDeg, argPeriDeg, nodeDeg, perihelionDistanceAu, semiMajorAxisAu;
         private double? meanAnomalyAtEpochDeg, meanAnomalyNowDeg, eccentricAnomalyNowDeg, trueAnomalyNowDeg, distanceNowAu;
         private DateTime? epochUtc, periapsisUtc;
         private string sourceText = "--";
+        private double? epochAgeDays;
+        private bool epochIsStale;
 
         public string EccentricityText => eccentricity is double e ? e.ToString("F4") : "--";
         public string InclinationText => inclinationDeg is double i ? $"{i:F4}°" : "--";
@@ -470,10 +493,10 @@ namespace Perihelion.ViewModels {
         public string NodeText => nodeDeg is double n ? $"{n:F4}°" : "--";
         public string PerihelionDistanceText => perihelionDistanceAu is double q ? $"{q:F4} au" : "--";
         public string SemiMajorAxisText => semiMajorAxisAu is double a ? $"{a:F4} au" : "n/a (non-elliptical)";
-        // Wrapped to (-180, 180], matching Orbitals' own sign convention -- real user feedback
-        // comparing the two side by side for the same comet found the raw [0, 360) values (this
-        // panel's own original convention) confusingly "dramatically different" at a glance
-        // (e.g. 356.25° here vs. -3.75° there) when they were actually the same angle.
+        // Wrapped to (-180, 180] -- real user feedback comparing this panel's values side by
+        // side with another reference display for the same comet found the raw [0, 360) values
+        // (this panel's own original convention) confusingly "dramatically different" at a
+        // glance (e.g. 356.25° here vs. -3.75° there) when they were actually the same angle.
         public string MeanAnomalyAtEpochText => meanAnomalyAtEpochDeg is double m ? $"{WrapSigned(m):F4}°" : "n/a";
         public string MeanAnomalyNowText => meanAnomalyNowDeg is double m ? $"{WrapSigned(m):F4}°" : "n/a";
         public string EccentricAnomalyNowText => eccentricAnomalyNowDeg is double e ? $"{WrapSigned(e):F4}°" : "n/a";
@@ -485,20 +508,28 @@ namespace Perihelion.ViewModels {
         public string PeriapsisJulianText => periapsisUtc is DateTime d ? OrbitalMechanics.JulianDate(new AstroTime(d)).ToString("F4") : "n/a";
         public string SourceText => sourceText;
 
+        // Epoch-staleness warning -- see CometOrbits/AsteroidOrbits' own EpochAgeDays doc
+        // comment for why this matters (propagating pure two-body elements far from their own
+        // reference epoch with no perturbation model). Empty string when not stale, same "drives
+        // its own Visibility via NullOrEmptyToVisibility" convention already used for the Quick
+        // Track status lines below, rather than a separate bool + Visibility property pair.
+        public string EpochStaleWarningText => epochIsStale && epochAgeDays is double d
+            ? $"This object's orbital elements are {d:F0} days from their own reference epoch -- positions may be less accurate than usual for a target this far from its data's own anchor date."
+            : string.Empty;
+
         // Wraps to (-180, 180] -- the "+540" shifts any double-precision value (whatever sign or
         // magnitude the underlying %360 in AsteroidOrbits/CometOrbits' own ComputeAnomalies left
         // it in) into a single positive range before the final %360 and re-centering.
         private static double WrapSigned(double degrees) => ((degrees % 360) + 540) % 360 - 180;
 
         // Arcsec remains the internal storage (what LoadedCoordinatesWithOffset actually adds),
-        // but real user feedback: don't display it as a raw arcsec number -- show it the same
-        // way NINA.Joko.Plugin.Orbitals displays its own RAOffset/DecOffset, HH:MM:SS for RA and
-        // DMS for Dec (both AstroUtil.HoursToHMS/DegreesToDMS correctly handle negative offsets
-        // with a leading "-", confirmed from NINA's own source, unlike a plain position which
-        // never goes negative). Read-only display, not an editable sexagesimal text box -- Set
-        // Offset (capture from the mount) and Clear Offset are the only ways to change this,
-        // matching Orbitals' own apparent interaction model (no manual offset typing there
-        // either), and avoids needing a bespoke bidirectional HH:MM:SS/DMS parser.
+        // but real user feedback: don't display it as a raw arcsec number -- show it as
+        // HH:MM:SS for RA and DMS for Dec instead (both AstroUtil.HoursToHMS/DegreesToDMS
+        // correctly handle negative offsets with a leading "-", confirmed from NINA's own
+        // source, unlike a plain position which never goes negative). Read-only display, not an
+        // editable sexagesimal text box -- Set Offset (capture from the mount) and Clear Offset
+        // are the only ways to change this (no manual offset typing), which avoids needing a
+        // bespoke bidirectional HH:MM:SS/DMS parser.
         private double offsetRaArcsec, offsetDecArcsec;
         public double OffsetRaArcsec {
             get => offsetRaArcsec;
@@ -607,7 +638,7 @@ namespace Perihelion.ViewModels {
         //
         // Uses NINA's own real AltitudeChart control (NINA.WPF.Base.View.AltitudeChart) rather
         // than a hand-rolled chart -- real user feedback on the hand-rolled version: it looked
-        // inferior to what Orbitals (and every other NINA panel) already gets from this control
+        // inferior to what every other real NINA panel already gets from this control
         // for free (proper twilight shading, a real "Now" line, transit annotation, moon
         // position). The control binds its own DataContext (a real NINA.Astrometry.DeepSkyObject
         // -- SkyObjectBase.Altitudes/Horizon/MaxAltitude compute themselves once
@@ -759,6 +790,7 @@ namespace Perihelion.ViewModels {
                 nameof(PerihelionDistanceText), nameof(SemiMajorAxisText), nameof(MeanAnomalyAtEpochText),
                 nameof(MeanAnomalyNowText), nameof(EccentricAnomalyNowText), nameof(TrueAnomalyNowText),
                 nameof(DistanceNowText), nameof(EpochText), nameof(EpochJulianText), nameof(PeriapsisText), nameof(PeriapsisJulianText), nameof(SourceText),
+                nameof(EpochStaleWarningText),
                 nameof(PathPoints), nameof(PathMarkers), nameof(PathLeftLabel), nameof(PathRightLabel),
                 nameof(PathGridLines), nameof(PathDriftSummaryText), nameof(PathScaleBarInfo), nameof(PathScaleBarVisibility),
             }) {
@@ -811,6 +843,9 @@ namespace Perihelion.ViewModels {
                     raRateArcsecPerSec = decRateArcsecPerSec = maxExposureSeconds = null;
                 }
 
+                epochAgeDays = null;
+                epochIsStale = false;
+
                 if (target.ObjectType == OrbitalObjectType.Comet) {
                     var comet = await CometOrbits.FindByNameAsync(HttpClient, target.Name, ct);
                     if (comet != null) {
@@ -820,12 +855,14 @@ namespace Perihelion.ViewModels {
                         nodeDeg = comet.NodeDeg;
                         perihelionDistanceAu = comet.Q;
                         semiMajorAxisAu = comet.Eccentricity < 1 ? comet.Q / (1 - comet.Eccentricity) : (double?)null;
+                        epochAgeDays = CometOrbits.EpochAgeDays(comet, now);
+                        epochIsStale = CometOrbits.IsEpochStale(comet, now);
                         // A comet has no stored epoch the way an asteroid does -- MPC's own comet
                         // elements are parameterized by perihelion passage time T instead. "Epoch"
-                        // here is today's date at 00:00 UTC, the same reference-date convention
-                        // confirmed against a real Orbitals screenshot for this same comet on the
-                        // same day (its own displayed Epoch matched exactly), used purely so Mean
-                        // Anomaly at Epoch has a concrete instant to be computed for.
+                        // here is today's date at 00:00 UTC, a reference-date convention
+                        // cross-checked against another real tool's displayed Epoch for this same
+                        // comet on the same day (matched exactly), used purely so Mean Anomaly at
+                        // Epoch has a concrete instant to be computed for.
                         var cometEpoch = now.Date;
                         epochUtc = cometEpoch;
                         periapsisUtc = comet.PerihelionDate;
@@ -854,7 +891,7 @@ namespace Perihelion.ViewModels {
                     }
                 } else {
                     observedMagnitude = observedAverageMagnitude = null; // COBS is comet-only
-                    var asteroid = AsteroidOrbits.FindByName(target.Name);
+                    var asteroid = await AsteroidOrbits.FindByNameAsync(HttpClient, target.Name, ct);
                     if (asteroid != null) {
                         eccentricity = asteroid.Eccentricity;
                         inclinationDeg = asteroid.InclinationDeg;
@@ -865,7 +902,9 @@ namespace Perihelion.ViewModels {
                         meanAnomalyAtEpochDeg = asteroid.MeanAnomalyDeg;
                         epochUtc = JulianDateToUtc(asteroid.EpochJd);
                         periapsisUtc = null; // not natively available from these elements
-                        sourceText = "Curated list (JPL)";
+                        sourceText = "JPL SBDB (live)";
+                        epochAgeDays = AsteroidOrbits.EpochAgeDays(asteroid, now);
+                        epochIsStale = AsteroidOrbits.IsEpochStale(asteroid, now);
                         var anomalies = AsteroidOrbits.ComputeAnomalies(asteroid, t);
                         meanAnomalyNowDeg = anomalies.MeanAnomalyDeg;
                         eccentricAnomalyNowDeg = anomalies.EccentricAnomalyDeg;

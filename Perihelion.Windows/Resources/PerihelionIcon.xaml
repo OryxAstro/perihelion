@@ -6,12 +6,12 @@
       defaults to a "PuzzlePieceSVG" resource when a plugin doesn't set one.
 
       Redesigned twice now, 2026-09-07. First pass swapped the original ring+dot glyph for a
-      comet shape specifically because it read as near-identical to Orbitals' own tab icon at
-      small size. Real user decision, same day: go back to the orbit-ring look after all,
-      specifically Lucide's own "orbit" icon (https://lucide.dev, ISC License — verified directly
-      against lucide-icons/lucide's own LICENSE file; "orbit" isn't one of the few icons under
-      Lucide's separate MIT-licensed Feather-derived subset, so ISC applies here) — deliberately
-      chosen despite the Orbitals-similarity concern already raised, not an oversight.
+      comet shape specifically because it read as near-identical to another plugin's own tab
+      icon at small size. Real user decision, same day: go back to the orbit-ring look after
+      all, specifically Lucide's own "orbit" icon (https://lucide.dev, ISC License — verified
+      directly against lucide-icons/lucide's own LICENSE file; "orbit" isn't one of the few
+      icons under Lucide's separate MIT-licensed Feather-derived subset, so ISC applies here) —
+      deliberately chosen despite the icon-similarity concern already raised, not an oversight.
 
       This is a REAL, precise conversion of Lucide's actual stroked SVG source (two circular
       arcs plus three circles, stroke-width 2, round caps/joins), not a hand-approximated shape —

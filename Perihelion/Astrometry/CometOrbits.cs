@@ -221,8 +221,8 @@ namespace Perihelion.Astrometry {
         }
 
         /// <summary>
-        /// Explicit "Sync Now" action for the panel's own sync button (matching NINA Orbitals'
-        /// own per-object-type "download" screen) -- unlike FetchCometElementsAsync, this always
+        /// Explicit "Sync Now" action for the panel's own sync button -- unlike
+        /// FetchCometElementsAsync, this always
         /// attempts a live fetch regardless of cache age, and reports success/failure directly
         /// rather than silently falling back, since an explicit user action deserves a real
         /// answer about whether it worked. Leaves the existing cache (disk and in-memory) alone
@@ -249,6 +249,28 @@ namespace Perihelion.Astrometry {
             var comets = await FetchCometElementsAsync(httpClient, ct).ConfigureAwait(false);
             return comets.FirstOrDefault(c => c.Name == name);
         }
+
+        /// <summary>
+        /// Epoch-staleness guardrail -- pure two-body Keplerian propagation far in time from an
+        /// object's own reference epoch (here, the perihelion passage time T -- see
+        /// ComputeAnomalies' own doc comment for why a comet has no separate epoch field)
+        /// accumulates real error, because the model doesn't account for ongoing planetary
+        /// perturbation. This plugin already lives on MPC's live feed rather than a fixed
+        /// snapshot, but that alone doesn't guarantee any GIVEN comet's own T is recent -- an
+        /// object not being actively re-observed can sit in the feed with an old T regardless of
+        /// how often the file itself is refetched. This is a direct, per-object check so that's
+        /// visible somewhere rather than staying silent. One year is a deliberately generous
+        /// threshold -- most tracked comets are within a year of T during their observable
+        /// apparition, so this should rarely fire for a normal target; it's meant to catch the
+        /// genuinely stale case, not nag on ordinary use.
+        /// </summary>
+        public const double StaleEpochThresholdDays = 365;
+
+        public static double EpochAgeDays(CometElements comet, DateTime atUtc) =>
+            Math.Abs((atUtc - comet.PerihelionDate).TotalDays);
+
+        public static bool IsEpochStale(CometElements comet, DateTime atUtc) =>
+            EpochAgeDays(comet, atUtc) > StaleEpochThresholdDays;
 
         // --- Universal-variable two-body propagation from perihelion ---
 
