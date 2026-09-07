@@ -48,7 +48,6 @@
     <!-- Shared deliberately, not just the source — same GUID, name, description, license
          metadata as the PINS build, so this presents as the same plugin regardless of which
          host loads it, not two differently-branded products that happen to share code. -->
-    <Compile Include="..\Perihelion\Properties\AssemblyInfo.cs" />
   </ItemGroup>
 
   <!--
