@@ -3,27 +3,37 @@
 
     <!--
       DockableVM.ImageGeometry (NINA.WPF.Base) is a filled GeometryGroup, not a stroked icon — it
-      defaults to a "PuzzlePieceSVG" resource when a plugin doesn't set one, which is exactly the
-      generic jigsaw-piece look already replaced for the plugin-list icon (docs/icon.png, a
-      stroked PNG).
+      defaults to a "PuzzlePieceSVG" resource when a plugin doesn't set one.
 
-      Redesigned 2026-09-07, real user report from a side-by-side screenshot: the original icon
-      here (two concentric circles + a small orbiting dot, an annulus standing in for a stroked
-      "orbit ring" glyph) read as near-identical to Orbitals' own dockable-panel tab icon at the
-      small, monochrome size NINA actually renders tab icons at — unsurprising in hindsight, since
-      "a ring with a dot orbiting it" is the single most generic way to draw "orbit," and Orbitals
-      already owns that exact visual space by name. Rather than trying to make a subtly-different
-      ring (still liable to read the same at 16-20px), this is a genuinely different silhouette —
-      a comet, a filled nucleus with a curved, tapering tail — which is both more specific to
-      this plugin's actual subject (comet/asteroid tracking, not orbital mechanics generally) and
-      has nothing in common with a closed ring shape even at a glance. EvenOdd is harmless here
-      (the tail path and the nucleus circle barely overlap, no real holes to worry about) but kept
-      for consistency with how this resource was structured before.
+      Redesigned twice now, 2026-09-07. First pass swapped the original ring+dot glyph for a
+      comet shape specifically because it read as near-identical to Orbitals' own tab icon at
+      small size. Real user decision, same day: go back to the orbit-ring look after all,
+      specifically Lucide's own "orbit" icon (https://lucide.dev, ISC License — verified directly
+      against lucide-icons/lucide's own LICENSE file; "orbit" isn't one of the few icons under
+      Lucide's separate MIT-licensed Feather-derived subset, so ISC applies here) — deliberately
+      chosen despite the Orbitals-similarity concern already raised, not an oversight.
+
+      This is a REAL, precise conversion of Lucide's actual stroked SVG source (two circular
+      arcs plus three circles, stroke-width 2, round caps/joins), not a hand-approximated shape —
+      converted with Inkscape's own "object-stroke-to-path" operation (real vector tooling doing
+      real stroke-to-fill math, the exact gap called out in this file's own history as blocking a
+      precise conversion before) and the resulting SVG path data carried over into WPF's Path
+      markup syntax essentially verbatim, since WPF and SVG path mini-languages accept the same
+      command letters (M/A/C/Z, relative lowercase forms included). FillRule is Nonzero, not
+      EvenOdd this time — Inkscape's own output for each circle is two subpaths with opposite
+      winding to produce the ring hole, which needs winding-based fill to render correctly, not
+      even-odd.
     -->
-    <GeometryGroup x:Key="PerihelionOrbitSVG" FillRule="EvenOdd">
-        <!-- Nucleus -->
-        <EllipseGeometry Center="16.5,7.5" RadiusX="3.2" RadiusY="3.2" />
-        <!-- Tapering tail, swept down and to the left away from the nucleus -->
-        <PathGeometry Figures="M 14.3,9.2 C 11,10.5 7.5,13.5 3,21 C 8,17.5 12,14.5 16.8,10.4 Z" />
+    <GeometryGroup x:Key="PerihelionOrbitSVG" FillRule="Nonzero">
+        <!-- Outer arc (top-right sweep) -->
+        <PathGeometry Figures="m 19.789062,5.6503906 a 1,1 0 0 0 -0.28125,1.3847656 c 2.202622,3.3292778 1.865054,7.0856718 0.01953,9.9003908 -1.845523,2.814719 -5.156488,4.622295 -9.087891,3.929687 a 1,1 0 0 0 -1.158203,0.810547 1,1 0 0 0 0.810547,1.158203 c 4.717088,0.831025 8.866209,-1.382569 11.107422,-4.800781 2.241213,-3.418212 2.619375,-8.1069325 -0.02344,-12.1015624 a 1,1 0 0 0 -1.386719,-0.28125 z" />
+        <!-- Outer arc (bottom-left sweep) -->
+        <PathGeometry Figures="M 10.503906,1.0839844 C 7.2410656,1.5149637 4.4847756,3.4013202 2.8027344,5.9648437 0.56001281,9.3828751 0.18134091,14.072521 2.8242188,18.068359 a 1,1 0 0 0 1.3867187,0.28125 1,1 0 0 0 0.28125,-1.384765 C 2.2894862,13.634521 2.6278362,9.8770841 4.4746094,7.0625 6.3213825,4.2479159 9.6344746,2.4418379 13.566406,3.1367188 A 1,1 0 0 0 14.724609,2.3261719 1,1 0 0 0 13.914063,1.1679687 C 12.734645,0.95953319 11.59152,0.9403246 10.503906,1.0839844 Z" />
+        <!-- Nucleus ring (center, r=3) -->
+        <PathGeometry Figures="m 12,8 c -2.1972944,0 -4,1.8027056 -4,4 0,2.197294 1.8027056,4 4,4 2.197294,0 4,-1.802706 4,-4 0,-2.1972944 -1.802706,-4 -4,-4 z m 0,2 c 1.116414,0 2,0.883586 2,2 0,1.116414 -0.883586,2 -2,2 -1.116414,0 -2,-0.883586 -2,-2 0,-1.116414 0.883586,-2 2,-2 z" />
+        <!-- Top-right small ring (r=2) -->
+        <PathGeometry Figures="m 19,2 c -1.64501,0 -3,1.3549904 -3,3 0,1.6450096 1.35499,3 3,3 1.64501,0 3,-1.3549904 3,-3 0,-1.6450096 -1.35499,-3 -3,-3 z m 0,2 c 0.564129,0 1,0.4358706 1,1 0,0.5641294 -0.435871,1 -1,1 -0.564129,0 -1,-0.4358706 -1,-1 0,-0.5641294 0.435871,-1 1,-1 z" />
+        <!-- Bottom-left small ring (r=2) -->
+        <PathGeometry Figures="m 5,16 c -1.6450096,0 -3,1.35499 -3,3 0,1.64501 1.3549904,3 3,3 1.6450096,0 3,-1.35499 3,-3 0,-1.64501 -1.3549904,-3 -3,-3 z m 0,2 c 0.5641294,0 1,0.435871 1,1 0,0.564129 -0.4358706,1 -1,1 -0.5641294,0 -1,-0.435871 -1,-1 0,-0.564129 0.4358706,-1 1,-1 z" />
     </GeometryGroup>
 </ResourceDictionary>
