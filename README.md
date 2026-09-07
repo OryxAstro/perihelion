@@ -85,7 +85,15 @@ flowchart TB
     tns -->|Quick Track, Sync Now,<br/>Add to Sequence| api
 
     subgraph win["Real Windows NINA (separate machine)"]
-        winplugin["Perihelion.Windows<br/>(same core, native WPF UI,<br/>in-process, no HTTP)"]
+        subgraph winproc["NINA process"]
+            winplugin["Perihelion.Windows<br/>(dockable panel +<br/>Framing Composer)"]
+            winmediator["Telescope / Guider /<br/>Camera / Rotator mediators"]
+            winplugin -->|SetCustomTrackingRate<br/>SetShiftRate, plate-solve| winmediator
+        end
+        winapi["Same standalone HTTP server<br/>(runs unconditionally --<br/>no client targets it yet)"]
+        wincache[("On-disk cache<br/>(NINA's own AppData folder)")]
+        winplugin --- winapi
+        winplugin --- wincache
     end
 
     mpc[("MPC comet elements")]
