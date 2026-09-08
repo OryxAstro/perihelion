@@ -122,6 +122,14 @@ namespace Perihelion.Api {
         public double? MaxExposureSeconds { get; set; }
     }
 
+    internal class SettingsResponse {
+        [JsonProperty]
+        public bool EqmodRaRateCorrection { get; set; }
+
+        [JsonProperty]
+        public int QuickTrackReapplyIntervalSeconds { get; set; }
+    }
+
     internal class SyncStatusResponse {
         [JsonProperty]
         public DateTime? CometsLastSyncedUtc { get; set; }
@@ -500,6 +508,40 @@ namespace Perihelion.Api {
             var response = new TrackResponse { Success = result.Success, Message = result.Message };
             var json = JsonConvert.SerializeObject(response);
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// EqmodRaRateCorrection and QuickTrackReapplyIntervalSeconds, both persisted via
+        /// PerihelionPlugin's own PluginOptionsAccessor -- PINS has no reachable settings UI of
+        /// its own (no WPF shell renders there at all), so the Touch-N-Stars panel reads and
+        /// writes these through this route instead of the Windows-only Options page. Unlike
+        /// Port, both settings are read fresh on every use (not baked into a fixed binding at
+        /// startup), so a change here takes effect on the very next Quick Track start or
+        /// tracking-rate application -- no restart needed.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/settings")]
+        public Task GetSettings() {
+            var response = new SettingsResponse {
+                EqmodRaRateCorrection = PerihelionPlugin.Instance?.EqmodRaRateCorrection ?? false,
+                QuickTrackReapplyIntervalSeconds = PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds ?? 900,
+            };
+            return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
+        }
+
+        [Route(HttpVerbs.Post, "/settings")]
+        public async Task PostSettings() {
+            try {
+                var body = await HttpContext.GetRequestBodyAsStringAsync();
+                var request = JsonConvert.DeserializeObject<SettingsResponse>(body) ?? new SettingsResponse();
+                if (PerihelionPlugin.Instance != null) {
+                    PerihelionPlugin.Instance.EqmodRaRateCorrection = request.EqmodRaRateCorrection;
+                    PerihelionPlugin.Instance.QuickTrackReapplyIntervalSeconds = request.QuickTrackReapplyIntervalSeconds;
+                }
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = true }), "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = false, Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
         }
 
         /// <summary>

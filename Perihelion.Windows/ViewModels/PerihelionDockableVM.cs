@@ -165,7 +165,10 @@ namespace Perihelion.ViewModels {
             RefreshLastUpdatedText();
 
             PathPoints = new PointCollection();
-            AutoReapplyMinutes = 15;
+            // Reads the configured global default (Options page, seconds) and converts to
+            // whole minutes -- Quick Track's own reapply timer only works in minutes. Default
+            // 900s / 60 = 15, identical to the previous hardcoded value.
+            AutoReapplyMinutes = Math.Max(1, PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds / 60 ?? 15);
             StatusText = "Loading live comet and asteroid data...";
 
             // "(Don't switch)" first, then every filter actually configured on this profile --

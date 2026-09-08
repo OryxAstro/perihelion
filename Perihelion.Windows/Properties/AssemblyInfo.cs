@@ -13,13 +13,13 @@ using System.Runtime.InteropServices;
 // so sharing it causes no real conflict, and NINA's own per-plugin settings storage on both
 // platforms already keys off this exact value).
 [assembly: AssemblyTitle("Perihelion")]
-[assembly: AssemblyDescription("Comet and asteroid non-sidereal tracking, natively in NINA's Imaging tab -- live orbital tracking, Quick Track, and a real Framing Composer.")]
+[assembly: AssemblyDescription("Comet and asteroid non-sidereal tracking, natively in NINA's Imaging tab -- live orbital tracking, Quick Track, and a Framing Composer.")]
 // The real, official plugin template (isbeorn/nina.plugin.template) lists
 // AssemblyMetadata("ShortDescription") as a REQUIRED field, distinct from the standard
 // AssemblyDescription above -- CreateManifest.ps1 reads assembly metadata to auto-populate the
 // manifest, so without this the manifest's own required ShortDescription could end up empty
 // even with AssemblyDescription set. Same text as AssemblyDescription, kept in sync deliberately.
-[assembly: AssemblyMetadata("ShortDescription", "Comet and asteroid non-sidereal tracking, natively in NINA's Imaging tab -- live orbital tracking, Quick Track, and a real Framing Composer.")]
+[assembly: AssemblyMetadata("ShortDescription", "Comet and asteroid non-sidereal tracking, natively in NINA's Imaging tab -- live orbital tracking, Quick Track, and a Framing Composer.")]
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("OryxAstro")]
 [assembly: AssemblyProduct("Perihelion")]
@@ -62,7 +62,7 @@ Features
   brightness, preview tonight's altitude, a 10-night path, rate and orbital elements,
   then Frame, Slew and Track, Set Tracking Rate, Set Guider Shift Rate, or start an
   ad-hoc Quick Track — all in one place.
-* A real popup Framing Composer — a genuine sky map (live photographic sources, plus
+* A popup Framing Composer — a real sky map (live photographic sources, plus
   NINA's own Offline Sky Map and Cache), pan/zoom, rotation, and offset capture for
   framing off-center targets like a comet's tail.
 * Quick Track's own optional auto re-apply, recomputing and resending the rate on an

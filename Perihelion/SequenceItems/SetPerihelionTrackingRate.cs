@@ -131,7 +131,15 @@ namespace Perihelion.SequenceItems {
             // see OrbitalRate's doc comment -- so these plug straight into Create() with no
             // conversion. SiderealShiftTrackingRate itself then applies the ASCOM RA/sidereal-
             // rate conversion internally when TelescopeVM hands it to the driver.
-            var shiftRate = SiderealShiftTrackingRate.Create(rate.Value.RaArcsecPerSec, rate.Value.DecArcsecPerSec);
+            var raArcsecPerSec = rate.Value.RaArcsecPerSec;
+            if (PerihelionPlugin.Instance?.EqmodRaRateCorrection == true) {
+                // EQMOD's own driver reads RightAscensionRate as raw arcsec/sec rather than the
+                // ASCOM-standard seconds-of-RA-per-sidereal-second NINA converts to before
+                // calling it -- pre-multiplying by the sidereal rate here cancels that out, same
+                // reasoning independently confirmed against NINA's own AstroUtil constant.
+                raArcsecPerSec *= NINA.Astrometry.AstroUtil.SIDEREAL_RATE_ARCSECONDS_PER_SECOND;
+            }
+            var shiftRate = SiderealShiftTrackingRate.Create(raArcsecPerSec, rate.Value.DecArcsecPerSec);
             if (!telescopeMediator.SetCustomTrackingRate(shiftRate)) {
                 throw new SequenceEntityFailedException($"Setting tracking rate to {shiftRate} failed");
             }

@@ -51,6 +51,42 @@
                 Perihelion automatically uses the nearest free one instead of failing to start.
             </TextBlock>
 
+            <Separator Margin="0,0,0,10" />
+            <TextBlock Text="Mount Compatibility" FontWeight="Bold" Margin="0,0,0,6" />
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                <TextBlock Text="EQMOD RA Rate Correction" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <CheckBox IsChecked="{Binding EqmodRaRateCorrection}" />
+            </StackPanel>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,0,0,12">
+                EQMOD -- both the Windows ASCOM driver and INDI's own separate EQMod driver,
+                confirmed independently -- reads the RA tracking rate in raw arcsec/sec rather
+                than the seconds-of-RA-per-sidereal-second NINA itself sends. Without this,
+                a mount driven through EQMOD tracks in RA at roughly 1/15th the intended rate.
+                Enable only if your mount is actually driven through EQMOD.
+            </TextBlock>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Quick Track Reapply Interval" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <Grid Grid.Column="1">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBox Grid.Column="0" Text="{Binding QuickTrackReapplyIntervalSeconds, UpdateSourceTrigger=PropertyChanged}" />
+                    <TextBlock Grid.Column="1" Text="secs" VerticalAlignment="Center" Margin="6,0,0,0" Opacity="0.7" />
+                </Grid>
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
+                How often Quick Track recomputes and resends the tracking rate while running.
+                Default 900s (15 minutes) suits comets and asteroids, whose true rate drifts on
+                a timescale of minutes to hours -- shorten this for an object moving unusually
+                fast. Takes effect the next time Quick Track starts.
+            </TextBlock>
+
             <!-- Same idea as Advanced API's own "Network adresses" section — shows ActualPort
                  (the port really bound this session), not the Port setting above (which may be
                  a pending change for next restart, or may not match if a conflict pushed the

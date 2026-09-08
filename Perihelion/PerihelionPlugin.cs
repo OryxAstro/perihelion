@@ -41,6 +41,13 @@ namespace Perihelion {
         /// from here, since that one genuinely has no direct import path.</summary>
         public static ISequenceMediator? SequenceMediator { get; private set; }
 
+        /// <summary>Static self-reference, same pattern as SequenceMediator above -- lets
+        /// classes that don't have their own constructor-injected access to this plugin's
+        /// settings (SetPerihelionTrackingRate, QuickTrackReapply, PerihelionApiController) read
+        /// EqmodRaRateCorrection/QuickTrackReapplyIntervalSeconds without each constructing its
+        /// own separate PluginOptionsAccessor.</summary>
+        public static PerihelionPlugin? Instance { get; private set; }
+
         [ImportingConstructor]
         public PerihelionPlugin(
             ITelescopeMediator telescopeMediator,
@@ -48,6 +55,7 @@ namespace Perihelion {
             IProfileService profileService,
             ISequenceMediator sequenceMediator) {
 
+            Instance = this;
             SequenceMediator = sequenceMediator;
 
             // Same PluginOptionsAccessor mechanism nitr57/ninaAPI and the Touch-N-Stars PINS
@@ -97,6 +105,38 @@ namespace Perihelion {
             set {
                 pluginSettings.SetValueBoolean("ApiEnabled", value);
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ApiEnabled)));
+            }
+        }
+
+        /// <summary>EQMOD's own ASCOM driver doesn't follow the standard RA tracking-rate
+        /// convention -- it interprets the RightAscensionRate value it receives as raw
+        /// arcsec/sec, when NINA's own TelescopeVM.SetCustomTrackingRate has already converted
+        /// it to seconds-of-RA-per-sidereal-second per the ASCOM spec (confirmed directly
+        /// against NINA's own source, see CLAUDE.md's earlier RA/sidereal-rate audit). Without
+        /// this, a mount driven through EQMOD tracks in RA at roughly 1/15th the intended rate.
+        /// Off by default so nothing changes for a mount that isn't EQMOD-driven.</summary>
+        public bool EqmodRaRateCorrection {
+            get => pluginSettings.GetValueBoolean("EqmodRaRateCorrection", false);
+            set {
+                pluginSettings.SetValueBoolean("EqmodRaRateCorrection", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(EqmodRaRateCorrection)));
+            }
+        }
+
+        /// <summary>How often Quick Track's auto-reapply timer recomputes and resends the
+        /// tracking rate, in seconds -- default 900 (15 minutes) preserves the exact previous
+        /// hardcoded behavior. Seconds, not minutes, to match the granularity real-world use
+        /// might need (a comet close to Earth moving fast enough to want a much shorter
+        /// interval) and to match the unit convention NINA.Joko.Plugin.Orbitals' own analogous
+        /// "Orbital Position Refresh Time" setting uses -- though that plugin's own default is
+        /// far shorter (20s) because it also has to cover fast-moving TLE-tracked satellites,
+        /// which Perihelion doesn't (yet) support; comets/asteroids alone drift on a timescale
+        /// of minutes to hours, not seconds, so 900s stays a physically reasonable default here.</summary>
+        public int QuickTrackReapplyIntervalSeconds {
+            get => pluginSettings.GetValueInt32("QuickTrackReapplyIntervalSeconds", 900);
+            set {
+                pluginSettings.SetValueInt32("QuickTrackReapplyIntervalSeconds", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QuickTrackReapplyIntervalSeconds)));
             }
         }
 
