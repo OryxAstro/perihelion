@@ -76,7 +76,19 @@ namespace Perihelion.SequenceItems {
         }
 
         public override bool ShouldTrigger(ISequenceItem previousItem, ISequenceItem nextItem) {
-            if (FindTrackingItem() == null) return false;
+            var trackingItem = FindTrackingItem();
+            if (trackingItem == null) return false;
+
+            // LastAppliedRate is only ever set at the end of a successful
+            // SetPerihelionTrackingRate.Execute() -- staying null until then means the sequence
+            // hasn't reached its own natural first application of the rate yet (still unparking,
+            // still slewing/centering/settling). Without this gate, a short user-configured
+            // interval (the Options page explicitly invites shortening it "for an object moving
+            // unusually fast") could let ShouldTrigger fire purely on elapsed-since-block-start
+            // time, reapplying a rate before the mount has even finished its first real center --
+            // this is that guard.
+            if (trackingItem.LastAppliedRate == null) return false;
+
             var intervalSeconds = Math.Max(60, PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds ?? 900);
             return (DateTime.UtcNow - lastAppliedUtc) >= TimeSpan.FromSeconds(intervalSeconds);
         }
