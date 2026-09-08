@@ -16,17 +16,11 @@ All notable changes to Perihelion are documented here. Format loosely follows
 - **EQMOD RA Rate Correction** — an opt-in fix for a unit mismatch confirmed independently in
   both the Windows ASCOM EQMOD driver and INDI's own separate EQMod driver: both read the RA
   tracking rate as raw arcsec/sec rather than the seconds-of-RA-per-sidereal-second NINA itself
-  sends, which makes RA tracking come out roughly 15× too slow unless corrected. Touch-N-Stars
-  surfaces a contextual suggestion when the connected mount's own driver name looks EQMOD-driven.
+  sends, which makes RA tracking come out roughly 15× too slow unless corrected.
 - **Configurable Quick Track reapply interval** (seconds, default 900 — the same as the previous
   fixed 15 minutes).
 - A dedicated Windows Options page (Options → Plugins → Perihelion) for both settings above,
   alongside the existing port/API toggle.
-
-### Fixed
-
-- The combined "All" filter's Sync Now on the Touch-N-Stars Browse tab now syncs both comets and
-  asteroids together — it previously only synced comets there.
 
 ## [1.0.0.0] — 2026-09-07
 
@@ -75,3 +69,7 @@ First public release, shipping two independent front ends on one shared tracking
 
 - Official listing in NINA's own in-app Plugin Manager — not yet submitted; until then, the
   Windows build is a manual install from the GitHub release only.
+- Touch-N-Stars: the combined "All" filter's Sync Now syncing both comets and asteroids together
+  (currently comets only there), and a contextual suggestion when the connected mount's own
+  driver name looks EQMOD-driven — both written, sitting in open PRs against
+  `Touch-N-Stars/Touch-N-Stars`, not yet merged.
