@@ -170,6 +170,15 @@ namespace Perihelion.Sequencing {
                 dso.Add(guiderShift);
             }
 
+            // Unlike autofocus/meridian flip, this isn't a session-shaping choice with real
+            // tradeoffs (extra exposure time, an interruption) -- it's a background correction
+            // with no cost to the imaging run, so it's unconditional here, matching
+            // SetPerihelionTrackingRate's own always-on coordinate-refresh loop rather than the
+            // opt-in toggles above it. See PerihelionReapplyTrigger's own doc comment for why
+            // Add to Sequence needed this at all (it didn't re-apply the rate after the initial
+            // Execute(), unlike Quick Track).
+            dso.Add(factory.GetTrigger<Perihelion.SequenceItems.PerihelionReapplyTrigger>());
+
             var imagingInstructions = factory.GetContainer<SequentialContainer>();
             imagingInstructions.Name = "Target Imaging Instructions";
 
