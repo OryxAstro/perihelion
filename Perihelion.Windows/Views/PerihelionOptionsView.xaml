@@ -70,7 +70,7 @@
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="100" />
                 </Grid.ColumnDefinitions>
-                <TextBlock Grid.Column="0" Text="Quick Track Reapply Interval" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBlock Grid.Column="0" Text="Reapply Interval" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <Grid Grid.Column="1">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
