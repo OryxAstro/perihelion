@@ -3,6 +3,23 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.1] — 2026-09-09
+
+### Added
+
+- **Periodic tracking-rate reapply for Add to Sequence** (`PerihelionReapplyTrigger`) — Add to
+  Sequence previously applied the tracking rate exactly once, when the sequencer first reached
+  it; a long unattended run had nothing keeping it current as the object's true rate drifted,
+  unlike Quick Track, which already reapplies on a timer. Reuses the same configured interval.
+  Windows native panel only for now — Touch-N-Stars' own sequence builder doesn't add this
+  trigger yet.
+
+### Fixed
+
+- The Windows Options page's reapply-interval field was labeled "Quick Track Reapply Interval"
+  even though it now also governs the sequence-side trigger above — renamed to just "Reapply
+  Interval".
+
 ## [1.1.0.0] — 2026-09-08
 
 ### Added
