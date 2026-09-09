@@ -110,13 +110,14 @@ namespace Perihelion.Astrometry {
     /// on-sky tracking rate. Ported from OryxAstro's server/utils/orbitalTracking.ts.
     /// </summary>
     public static class OrbitalTracking {
-        // Matches OryxAstro's own COMET_MAGNITUDE_THRESHOLD (cometOrbits.ts) -- "reachable with
-        // a typical astrophotography setup", not a hard physical limit.
-        private const double CometMagnitudeThreshold = 16;
-
-        // Keeps ListBrowseObjectsAsync's response bounded -- the live MPC feed has thousands of
-        // rows; nobody's picking a tracking target from more than this many candidates anyway.
-        private const int MaxComets = 30;
+        // Originally a hardcoded 16/30 (matching OryxAstro's own COMET_MAGNITUDE_THRESHOLD,
+        // cometOrbits.ts -- "reachable with a typical astrophotography setup", not a hard
+        // physical limit) -- now real PerihelionPlugin settings (see its own doc comments for
+        // the full reasoning), read fresh on every call rather than cached, same as every other
+        // configurable setting elsewhere in this plugin. These two static properties keep every
+        // call site below unchanged in shape, just no longer a compile-time constant.
+        private static double CometMagnitudeThreshold => PerihelionPlugin.Instance?.CometMagnitudeThreshold ?? 16.0;
+        private static int MaxComets => PerihelionPlugin.Instance?.MaxComets ?? 30;
         /// <summary>Angular separation from the Sun as seen from Earth -- the angle at Earth
         /// between the Sun-Earth line and the Earth-object line. Sun-Earth = -earth (Earth's own
         /// heliocentric vector, negated); Earth-object = geo (already the geocentric vector every

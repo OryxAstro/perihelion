@@ -140,6 +140,33 @@ namespace Perihelion {
             }
         }
 
+        /// <summary>The Browse list's own comet-magnitude cutoff -- was a hardcoded 16 in
+        /// OrbitalTracking.cs ("reachable with a typical astrophotography setup, not a hard
+        /// physical limit," per that constant's own original comment), which undersells what a
+        /// large-aperture/remote-hosted setup (a real Starfront-class rig, for one) can actually
+        /// track and image. The tracking math itself has never cared about magnitude at all --
+        /// this only ever gated what showed up in the browse list.</summary>
+        public double CometMagnitudeThreshold {
+            get => pluginSettings.GetValueDouble("CometMagnitudeThreshold", 16.0);
+            set {
+                pluginSettings.SetValueDouble("CometMagnitudeThreshold", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CometMagnitudeThreshold)));
+            }
+        }
+
+        /// <summary>Caps ListBrowseObjectsAsync's own response size -- kept alongside
+        /// CometMagnitudeThreshold above since raising the threshold can legitimately let more
+        /// than the old default's worth of comets qualify, and 30 (chosen when 16 was the only
+        /// threshold anyone could have) may no longer be enough to show everything a raised
+        /// threshold now allows through.</summary>
+        public int MaxComets {
+            get => pluginSettings.GetValueInt32("MaxComets", 30);
+            set {
+                pluginSettings.SetValueInt32("MaxComets", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaxComets)));
+            }
+        }
+
         /// <summary>The port actually bound this session -- distinct from the Port setting above,
         /// which is only what's configured for the *next* restart and may not match if
         /// GetNearestAvailablePort had to shift away from a conflict. The three address
