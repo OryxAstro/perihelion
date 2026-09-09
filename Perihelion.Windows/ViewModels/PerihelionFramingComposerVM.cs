@@ -215,8 +215,6 @@ namespace Perihelion.ViewModels {
             DetermineRotationCommand.RegisterPropertyChangeNotification(this, nameof(IsBusy));
             DetermineRotationCommand.RegisterPropertyChangeNotification(cameraMediator.GetInfo(), nameof(CameraInfo.Connected));
 
-            CaptureOffsetCommand = new RelayCommand(CaptureOffsetAction, () => telescopeMediator.GetInfo().Connected);
-
             ToggleSlewOptionsCommand = new RelayCommand(() => SlewOptionsOpen = !SlewOptionsOpen);
             ResetCommand = new RelayCommand(ResetAction);
 
@@ -798,7 +796,6 @@ namespace Perihelion.ViewModels {
 
         public AsyncRelayCommand SlewAndCenterCommand { get; }
         public AsyncRelayCommand DetermineRotationCommand { get; }
-        public RelayCommand CaptureOffsetCommand { get; }
         public RelayCommand ToggleSlewOptionsCommand { get; }
         public RelayCommand ResetCommand { get; }
         public RelayCommand ConfirmCommand { get; }

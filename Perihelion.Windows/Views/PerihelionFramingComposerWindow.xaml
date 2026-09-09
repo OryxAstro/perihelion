@@ -324,9 +324,9 @@
 
             <Separator Margin="0,0,0,12" />
 
-            <TextBlock Text="Nudge the mount by hand now if you want to frame off-center (e.g. a comet's tail), then capture that as an offset."
+            <TextBlock Text="Drag the sky map to frame off-center (e.g. a comet's tail) — the offset below updates live."
                        TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,10" />
-            <Grid Margin="0,0,0,8">
+            <Grid Margin="0,0,0,16">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="90" />
@@ -338,9 +338,6 @@
                 <TextBlock Grid.Column="2" Text="Offset Dec" VerticalAlignment="Center" Margin="0,0,4,0" />
                 <TextBlock Grid.Column="3" Text="{Binding OffsetDecText}" VerticalAlignment="Center" />
             </Grid>
-            <Button Command="{Binding CaptureOffsetCommand}" HorizontalAlignment="Left" Margin="0,0,0,16">
-                <TextBlock Text="Capture Offset from Mount" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-            </Button>
 
             <Separator Margin="0,0,0,12" />
 

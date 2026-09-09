@@ -460,7 +460,7 @@
                             <Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText, Mode=OneWay}" />
                         </TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText, Mode=OneWay}" /></TextBlock>
-                        <TextBlock Margin="0,2,0,0"><Run Text="Observed (COBS): " /><Run Text="{Binding ObservedMagnitudeText, Mode=OneWay}" /></TextBlock>
+                        <TextBlock Margin="0,2,0,0"><Run Text="Observed (COBS): " /><Run Text="{Binding ObservedMagnitudeMainText, Mode=OneWay}" Foreground="{Binding ObservedMagnitudeMainBrush, Mode=OneWay}" FontWeight="Bold" /><Run Text="{Binding ObservedMagnitudeAverageText, Mode=OneWay}" Foreground="{Binding ObservedMagnitudeAverageBrush, Mode=OneWay}" /></TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
                     </StackPanel>
 
@@ -560,6 +560,18 @@
 
                 <Separator Margin="0,14,0,14" />
 
+                <!-- Shared between Add to Sequence AND Quick Track — moved up from a checkbox
+                     that used to live only inside Quick Track's own column below, even though
+                     AddToSequenceAction reads this exact same Guiding property too (confirmed
+                     from its own BuildTargetContainer call). A control that affects both had no
+                     business looking like it only belonged to one — same class of scoping bug
+                     already fixed once on the Touch-N-Stars side for the reapply-interval
+                     setting. -->
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <TextBlock Text="Include guiding" VerticalAlignment="Center" Margin="0,0,10,0" />
+                    <CheckBox IsChecked="{Binding Guiding}" />
+                </StackPanel>
+
                 <!-- Add to Sequence (left) / Quick Track (right), with a real vertical rule
                      between them — real user feedback (2026-09-05): these two sections needed
                      more room and more even spacing between their own rows, and side by side
@@ -637,10 +649,6 @@
                     <StackPanel Grid.Column="2" Margin="8,0,0,0">
                         <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
                         <TextBlock Text="Starts tracking this target right now, independent of any sequence -- for manual framing, visual use, or a target you've already centered." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,14" />
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <TextBlock Text="Include guiding" VerticalAlignment="Center" Margin="0,0,10,0" />
-                            <CheckBox IsChecked="{Binding Guiding}" />
-                        </StackPanel>
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <TextBlock Text="Auto re-apply every 15 min" VerticalAlignment="Center" Margin="0,0,10,0" />
                             <CheckBox IsChecked="{Binding AutoReapply}" />

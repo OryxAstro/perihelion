@@ -472,11 +472,44 @@ namespace Perihelion.ViewModels {
         // COBS-observed brightness -- comet-only, null for an asteroid or a comet COBS has no
         // reports for. Shown alongside the predicted Magnitude above, not instead of it: the
         // predicted (H/G model) value can be badly wrong during a real outburst, and that's only
-        // useful to notice when the real observed value sits right next to it.
+        // useful to notice when the real observed value sits right next to it. Diff-colored to
+        // match Touch-N-Stars' own magDiffTier convention exactly (same thresholds, ported here
+        // rather than reinvented) -- the two values are colored independently since the most
+        // recent report and the 5-observation average can genuinely disagree with each other,
+        // not just with the prediction.
         private double? observedMagnitude, observedAverageMagnitude;
-        public string ObservedMagnitudeText => observedMagnitude is double m
-            ? observedAverageMagnitude is double avg ? $"{m:F2} (5-obs avg {avg:F2})" : m.ToString("F2")
-            : "n/a";
+
+        public string ObservedMagnitudeMainText => observedMagnitude is double m ? m.ToString("F2") : "n/a";
+        public Brush ObservedMagnitudeMainBrush => MagnitudeDiffBrush(magnitudeNow, observedMagnitude);
+
+        public string ObservedMagnitudeAverageText =>
+            observedAverageMagnitude is double avg ? $" (5-obs avg {avg:F2})" : "";
+        public Brush ObservedMagnitudeAverageBrush => MagnitudeDiffBrush(magnitudeNow, observedAverageMagnitude);
+
+        // Same tiers/thresholds as PerihelionView.vue's own magDiffTier: negative diff (observed
+        // brighter than predicted, e.g. an outburst) is the "ok"/worth-noticing-positively case,
+        // not danger -- a comet significantly dimmer than predicted is the tier that actually
+        // warrants a warning color. NINA's own theme only defines Warning/Error notification
+        // brushes (confirmed from NINA.WPF.Base's own Brushes.xaml -- no "success" brush exists
+        // at all), so "ok" falls back to a plain literal green rather than a theme resource that
+        // doesn't exist; PrimaryBrush covers the neutral "close to predicted" case.
+        private static Brush MagnitudeDiffBrush(double? predicted, double? observed) {
+            if (predicted is not double p || observed is not double o) {
+                return LookupBrush("PrimaryBrush", Brushes.Gray);
+            }
+            var diff = o - p;
+            if (diff <= -1) return LookupBrush(null, new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80)));
+            if (diff >= 3) return LookupBrush("NotificationErrorBrush", Brushes.OrangeRed);
+            if (diff >= 1) return LookupBrush("NotificationWarningBrush", Brushes.Orange);
+            return LookupBrush("PrimaryBrush", Brushes.Gray);
+        }
+
+        private static Brush LookupBrush(string? resourceKey, Brush fallback) {
+            if (resourceKey != null && System.Windows.Application.Current?.TryFindResource(resourceKey) is Brush b) {
+                return b;
+            }
+            return fallback;
+        }
 
         // Elements card -- Epoch and Periapsis are shown side by side, not one-or-the-other: a
         // comet's own perihelion passage time T is a real, separate quantity from "Epoch" (the
@@ -788,7 +821,9 @@ namespace Perihelion.ViewModels {
 
         private void RaiseLoadedDataChanged() {
             foreach (var name in new[] {
-                nameof(PositionText), nameof(RateText), nameof(MaxExposureText), nameof(MagnitudeText), nameof(ObservedMagnitudeText),
+                nameof(PositionText), nameof(RateText), nameof(MaxExposureText), nameof(MagnitudeText),
+                nameof(ObservedMagnitudeMainText), nameof(ObservedMagnitudeMainBrush),
+                nameof(ObservedMagnitudeAverageText), nameof(ObservedMagnitudeAverageBrush),
                 nameof(EccentricityText), nameof(InclinationText), nameof(ArgPeriText), nameof(NodeText),
                 nameof(PerihelionDistanceText), nameof(SemiMajorAxisText), nameof(MeanAnomalyAtEpochText),
                 nameof(MeanAnomalyNowText), nameof(EccentricAnomalyNowText), nameof(TrueAnomalyNowText),

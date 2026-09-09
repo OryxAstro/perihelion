@@ -17,8 +17,8 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 [assembly: Guid("263c5e4b-47d6-4ce1-83b8-b7b0b14ac6c9")]
 
-[assembly: AssemblyVersion("1.1.0.1")]
-[assembly: AssemblyFileVersion("1.1.0.1")]
+[assembly: AssemblyVersion("1.1.0.2")]
+[assembly: AssemblyFileVersion("1.1.0.2")]
 
 // The minimum version of PiNStars/N.I.N.A. this plugin is compatible with.
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.0.0.1031")]

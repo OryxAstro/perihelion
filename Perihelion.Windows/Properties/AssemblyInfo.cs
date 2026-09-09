@@ -30,8 +30,8 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 [assembly: Guid("263c5e4b-47d6-4ce1-83b8-b7b0b14ac6c9")]
 
-[assembly: AssemblyVersion("1.1.0.1")]
-[assembly: AssemblyFileVersion("1.1.0.1")]
+[assembly: AssemblyVersion("1.1.0.2")]
+[assembly: AssemblyFileVersion("1.1.0.2")]
 
 // Real NINA's own version family this build actually targets -- NINA.Plugin 3.2.0.9001 is the
 // exact pinned package version Perihelion.Windows.csproj references (see its own comment for

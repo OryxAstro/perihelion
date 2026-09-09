@@ -3,6 +3,21 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.2] — 2026-09-09
+
+### Changed
+
+- **The "Include guiding" checkbox now sits above both Add to Sequence and Quick Track**, not
+  just inside Quick Track's own column — it always governed both (confirmed from
+  `AddToSequenceAction`'s own call into `BuildTargetContainer`), so showing it under only one
+  was misleading, the same class of scoping bug already fixed once on the Touch-N-Stars side.
+- **COBS observed magnitude is now diff-colored**, matching Touch-N-Stars' own `magDiffTier`
+  convention exactly (green when notably brighter than predicted, amber/red as it falls short,
+  neutral when close) — previously a single flattened string with no visual cue.
+- **Removed "Capture Offset from Mount"** from the Framing Composer — it converted the mount's
+  real position into the same offset state that dragging the sky map already produces directly,
+  with no real advantage for the ordinary framing workflow.
+
 ## [1.1.0.1] — 2026-09-09
 
 ### Added
