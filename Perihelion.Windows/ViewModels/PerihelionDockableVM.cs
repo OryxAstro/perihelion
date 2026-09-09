@@ -277,16 +277,21 @@ namespace Perihelion.ViewModels {
         public string CometsLastUpdatedText => cometsLastUpdatedText;
         private string cobsLastUpdatedText = "Never";
         public string CobsLastUpdatedText => cobsLastUpdatedText;
-        // Asteroids don't need their own count label the way comets do -- the curated list is a
-        // small, fixed 13 objects (unlike the live MPC comet feed's variable, much larger count),
-        // so "Asteroids" alone is unambiguous without a number alongside it.
         private string asteroidsLastUpdatedText = "Never";
         public string AsteroidsLastUpdatedText => asteroidsLastUpdatedText;
 
-        /// <summary>"Comets (4108)" -- a per-category count label. CometOrbits.CachedCount is a
-        /// cheap synchronous read of whatever's already in memory/on disk, not a live
-        /// fetch.</summary>
+        /// <summary>"Comets (4108)"/"Asteroids (13)"/"COBS (37)" -- per-category count labels.
+        /// Real user request (2026-09-09): Asteroids/COBS originally had no count at all (a
+        /// deliberate call at the time -- the asteroid list is a small, fixed 13, so a number
+        /// alongside it seemed to add little), but real feedback favored consistency with the
+        /// Comets row over that reasoning. All three *Orbits/*Activity CachedCount properties are
+        /// cheap synchronous reads of whatever's already in memory/on disk, never a live fetch.
+        /// COBS counts comets with an actual cached observation, not every comet ever checked --
+        /// see CometActivity.CachedCount's own doc comment for why those aren't the same
+        /// number.</summary>
         public string CometsCountText => $"Comets ({CometOrbits.CachedCount})";
+        public string AsteroidsCountText => $"Asteroids ({AsteroidOrbits.CachedCount})";
+        public string CobsCountText => $"COBS ({CometActivity.CachedCount})";
 
         public AsyncRelayCommand UpdateCometsCommand { get; }
         public AsyncRelayCommand UpdateCobsCommand { get; }
@@ -311,6 +316,8 @@ namespace Perihelion.ViewModels {
             RaisePropertyChanged(nameof(CobsLastUpdatedText));
             RaisePropertyChanged(nameof(CometsCountText));
             RaisePropertyChanged(nameof(AsteroidsLastUpdatedText));
+            RaisePropertyChanged(nameof(AsteroidsCountText));
+            RaisePropertyChanged(nameof(CobsCountText));
         }
 
         private async Task UpdateCometsAction() {

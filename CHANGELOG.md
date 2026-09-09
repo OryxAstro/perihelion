@@ -3,6 +3,16 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.5] — 2026-09-09
+
+### Added
+
+- **Record counts for Asteroids and COBS**, matching the "Comets (4108)" label the Update
+  Sources block already had. Asteroids always shows the same fixed 13 once synced (the curated
+  list itself doesn't grow), shown anyway for the same "confirms it actually loaded" reason the
+  comet count is. COBS counts comets with an actual cached observation, not every comet ever
+  checked.
+
 ## [1.1.0.4] — 2026-09-09
 
 ### Removed

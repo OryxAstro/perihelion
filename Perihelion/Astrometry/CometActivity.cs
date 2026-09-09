@@ -85,6 +85,17 @@ namespace Perihelion.Astrometry {
         /// CometOrbits.LastSyncedUtc's own "read without needing a full fetch first" shape.</summary>
         public static DateTime? LastFullRefreshUtc => _diskCacheLoaded ? _lastFullRefreshUtc : LoadDiskLastFullRefreshTimestampOnly();
 
+        /// <summary>Number of comets with an actual cached COBS observation (a non-null Status --
+        /// a comet COBS simply has no reports for still gets a cache entry, just with Status
+        /// null, so counting all entries would overstate this). Same "cheap, synchronous, read
+        /// without a lock" shape as LastFullRefreshUtc above, not CometOrbits/AsteroidOrbits'
+        /// CachedCount pattern -- this class's own LoadDiskCacheIfNeeded needs CacheLock already
+        /// held by its caller, so a property getter can't call it directly the way those two
+        /// do.</summary>
+        public static int CachedCount => _diskCacheLoaded
+            ? _cache.Count(kv => kv.Value.Status != null)
+            : LoadDiskCachedCountOnly();
+
         private static DateTime? LoadDiskLastFullRefreshTimestampOnly() {
             try {
                 if (!File.Exists(CacheFilePath)) return null;
@@ -92,6 +103,16 @@ namespace Perihelion.Astrometry {
                 return disk?.LastFullRefreshUtc;
             } catch {
                 return null;
+            }
+        }
+
+        private static int LoadDiskCachedCountOnly() {
+            try {
+                if (!File.Exists(CacheFilePath)) return 0;
+                var disk = Newtonsoft.Json.JsonConvert.DeserializeObject<DiskCache>(File.ReadAllText(CacheFilePath));
+                return disk?.Entries.Count(kv => kv.Value.Status != null) ?? 0;
+            } catch {
+                return 0;
             }
         }
 

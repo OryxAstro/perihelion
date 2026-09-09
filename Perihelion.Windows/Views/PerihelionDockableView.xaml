@@ -266,7 +266,7 @@
                                 <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Asteroids" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Grid.Column="0" Text="{Binding AsteroidsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Button Grid.Column="1" Command="{Binding UpdateAsteroidsCommand}"
                                     ToolTip="Re-fetches current orbital elements for every tracked asteroid from JPL's Small-Body Database now, bypassing the normal 24h cache.">
                                 <TextBlock Text="Update" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
@@ -281,7 +281,7 @@
                                 <ColumnDefinition Width="90" />
                                 <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="COBS" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBlock Grid.Column="0" Text="{Binding CobsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <Button Grid.Column="1" Command="{Binding UpdateCobsCommand}"
                                     ToolTip="Refreshes real observed brightness from COBS for every comet in the browse list. Takes several seconds to tens of seconds -- a deliberate, explicit action, not something that runs automatically.">
                                 <TextBlock Text="Update" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />

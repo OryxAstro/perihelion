@@ -100,6 +100,18 @@ namespace Perihelion.Astrometry {
         /// previous one, via the on-disk cache) -- null if never successfully synced.</summary>
         public static DateTime? LastSyncedUtc => _cache != null ? _cacheFetchedAtUtc : LoadDiskCacheTimestampOnly();
 
+        /// <summary>Number of asteroids in the currently cached elements (0 if never synced in
+        /// this run or on disk) -- mirrors CometOrbits.CachedCount exactly. Always the same
+        /// fixed 13 once synced at all, since the curated list itself doesn't grow/shrink and
+        /// per-object fetch failures keep the last-known element rather than dropping it -- shown
+        /// anyway for the same "confirms it actually loaded" reason the comet count is.</summary>
+        public static int CachedCount {
+            get {
+                LoadDiskCacheIfNeeded();
+                return _cache?.Count ?? 0;
+            }
+        }
+
         private static DateTime? LoadDiskCacheTimestampOnly() {
             try {
                 if (!File.Exists(CacheFilePath)) return null;
