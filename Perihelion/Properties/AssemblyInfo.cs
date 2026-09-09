@@ -17,8 +17,8 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 [assembly: Guid("263c5e4b-47d6-4ce1-83b8-b7b0b14ac6c9")]
 
-[assembly: AssemblyVersion("1.1.0.3")]
-[assembly: AssemblyFileVersion("1.1.0.3")]
+[assembly: AssemblyVersion("1.1.0.4")]
+[assembly: AssemblyFileVersion("1.1.0.4")]
 
 // The minimum version of PiNStars/N.I.N.A. this plugin is compatible with.
 [assembly: AssemblyMetadata("MinimumApplicationVersion", "3.0.0.1031")]
@@ -38,14 +38,14 @@ elements, with no external service or internet dependency in the field.
 
 Features
 
-* Every position and rate that actually drives hardware (Frame, Slew and Track, Set
-  Tracking Rate, Quick Track) is corrected for light-time, stellar aberration, and the
-  real observing site — a true topocentric position, not Earth's center — rather than a
-  naive instantaneous geocentric snapshot.
+* Every position and rate that actually drives hardware (Frame, Set Tracking Rate, Quick
+  Track) is corrected for light-time, stellar aberration, and the real observing site — a
+  true topocentric position, not Earth's center — rather than a naive instantaneous
+  geocentric snapshot.
 * A native dockable panel (Imaging tab, real Windows NINA only) to browse live comet and
   asteroid brightness, preview tonight's altitude, a 10-night path, rate and orbital
-  elements, then Frame, Slew and Track, Set Tracking Rate, Set Guider Shift Rate, or start
-  an ad-hoc Quick Track — all in one place.
+  elements, then Frame, Set Tracking Rate, Add to Sequence, or start an ad-hoc Quick
+  Track — all in one place.
 * The same tracking, browsing and Quick Track features from the Perihelion panel in
   Touch-N-Stars, for PINS and remote/mobile control either way.
 * Quick Track's own optional auto re-apply, recomputing and resending the rate on an

@@ -30,8 +30,8 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 [assembly: Guid("263c5e4b-47d6-4ce1-83b8-b7b0b14ac6c9")]
 
-[assembly: AssemblyVersion("1.1.0.3")]
-[assembly: AssemblyFileVersion("1.1.0.3")]
+[assembly: AssemblyVersion("1.1.0.4")]
+[assembly: AssemblyFileVersion("1.1.0.4")]
 
 // Real NINA's own version family this build actually targets -- NINA.Plugin 3.2.0.9001 is the
 // exact pinned package version Perihelion.Windows.csproj references (see its own comment for
@@ -54,14 +54,14 @@ elements, with no external service or internet dependency in the field.
 
 Features
 
-* Every position and rate that actually drives hardware (Frame, Slew and Track, Set
-  Tracking Rate, Quick Track) is corrected for light-time, stellar aberration, and the
-  real observing site — a true topocentric position, not Earth's center — rather than a
-  naive instantaneous geocentric snapshot.
+* Every position and rate that actually drives hardware (Frame, Set Tracking Rate, Quick
+  Track) is corrected for light-time, stellar aberration, and the real observing site — a
+  true topocentric position, not Earth's center — rather than a naive instantaneous
+  geocentric snapshot.
 * A native dockable panel in NINA's own Imaging tab to browse live comet and asteroid
   brightness, preview tonight's altitude, a 10-night path, rate and orbital elements,
-  then Frame, Slew and Track, Set Tracking Rate, Set Guider Shift Rate, or start an
-  ad-hoc Quick Track — all in one place.
+  then Frame, Set Tracking Rate, Add to Sequence, or start an ad-hoc Quick Track — all
+  in one place.
 * A popup Framing Composer — a real sky map (live photographic sources, plus
   NINA's own Offline Sky Map and Cache), pan/zoom, rotation, and offset capture for
   framing off-center targets like a comet's tail.

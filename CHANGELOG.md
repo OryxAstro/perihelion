@@ -3,6 +3,18 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.4] — 2026-09-09
+
+### Removed
+
+- **"Slew and Track" and "Set Guider Shift Rate"**, the two standalone action buttons on the
+  Windows dockable panel — Touch-N-Stars ships the identical workflow (Frame, then Quick Track
+  or Add to Sequence) with no equivalent of either at all: confirmed from its own source that
+  Quick Track never slews on its own, and no standalone guider-shift action exists anywhere in
+  it. Both buttons sat in the same button grid as Frame/Set Tracking Rate/Clear Offset, which
+  made them look like a required step before Quick Track or Add to Sequence rather than the
+  optional, narrower-case alternates they actually were.
+
 ## [1.1.0.3] — 2026-09-09
 
 ### Fixed

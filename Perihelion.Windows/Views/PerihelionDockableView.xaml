@@ -538,30 +538,26 @@
                      re-layout. Height/Foreground come from the shared Button style in this
                      DataTemplate's own Resources (see the top of this file); each button's own
                      text is a nested TextBlock with a real Margin, not a plain Content string
-                     (see that same comment for why). Slew and Track / Set Guider Shift Rate got
-                     real explanatory ToolTips added, 2026-09-05 — real user feedback that their
-                     overlap with Frame + Start Quick Track was confusing without one; kept rather
-                     than removed since each still covers a real, if narrower, case Quick Track
-                     doesn't (a plain no-guiding test slew; reapplying just the guiding shift
-                     without restarting Quick Track's own session). -->
+                     (see that same comment for why). Slew and Track / Set Guider Shift Rate
+                     removed 2026-09-09 — Touch-N-Stars ships the same workflow (Frame, then
+                     Quick Track or Add to Sequence) with no equivalent of either button at all
+                     (confirmed from its own source: startQuickTrack() only ever calls POST
+                     /track, never slews; no standalone guider-shift action exists anywhere in
+                     it either), so keeping Windows-only shortcuts here wasn't earning their
+                     real cost — sitting in the same button grid as Frame/Set Tracking Rate/
+                     Clear Offset made them look like a required step before Quick Track/Add to
+                     Sequence rather than the optional, narrower-case alternates they actually
+                     were. -->
                 <UniformGrid Columns="3" Margin="0,4,0,0">
-                    <Button Command="{Binding FrameCommand}" Margin="0,0,4,4"
+                    <Button Command="{Binding FrameCommand}" Margin="0,0,4,0"
                             ToolTip="Opens the Perihelion Framing Composer -- a real sky/FOV view, Slew and Center, rotation (if a rotator is connected), and offset capture, carried into Add to Sequence and Quick Track.">
                         <TextBlock Text="Frame" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
-                    <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,4">
+                    <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,0">
                         <TextBlock Text="Set Tracking Rate" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
-                    <Button Command="{Binding ResetOffsetCommand}" Margin="4,0,0,4">
+                    <Button Command="{Binding ResetOffsetCommand}" Margin="4,0,0,0">
                         <TextBlock Text="Clear Offset" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                    <Button Command="{Binding SlewAndTrackCommand}" Margin="0,0,4,0"
-                            ToolTip="Quick GoTo (no plate-solve center) plus setting the tracking rate only -- no guiding, no auto-reapply. For precise framing or a full tracking session, use Frame + Start Quick Track instead.">
-                        <TextBlock Text="Slew and Track" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                    <Button Command="{Binding SetGuiderShiftRateCommand}" Margin="4,0,0,0"
-                            ToolTip="Sets only the guider's own shift rate, independent of the telescope's base tracking rate -- Start Quick Track already does this automatically when Guiding is checked. Use this on its own only to reapply just the guiding shift without restarting Quick Track's own session.">
-                        <TextBlock Text="Set Guider Shift Rate" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                 </UniformGrid>
 

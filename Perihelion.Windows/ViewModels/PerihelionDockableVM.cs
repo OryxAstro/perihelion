@@ -44,8 +44,8 @@ namespace Perihelion.ViewModels {
     /// client of Perihelion's own API server (Quick Track start/stop calls QuickTrackEngine
     /// directly, same call NINA's own advanced sequencer path would end up making). A dockable
     /// panel (standard IDockableVM export shape) with a Browse/Load list, a details area, and a
-    /// Frame/Set Tracking Rate/Set Guider Shift Rate/Slew and Track action set, plus live-
-    /// brightness browsing, a 10-night path preview, and Quick Track's auto-reapply.
+    /// Frame/Set Tracking Rate/Clear Offset action set, plus live-brightness browsing, a
+    /// 10-night path preview, and Quick Track's auto-reapply.
     /// </summary>
     [Export(typeof(NINA.Equipment.Interfaces.ViewModel.IDockableVM))]
     public class PerihelionDockableVM : DockableVM {
@@ -190,17 +190,9 @@ namespace Perihelion.ViewModels {
             FrameCommand = new RelayCommand(FrameAction, () => Loaded != null);
             FrameCommand.RegisterPropertyChangeNotification(this, nameof(Loaded));
 
-            SlewAndTrackCommand = new AsyncRelayCommand(SlewAndTrackAction, () => Loaded != null && telescopeMediator.GetInfo().Connected);
-            SlewAndTrackCommand.RegisterPropertyChangeNotification(this, nameof(Loaded));
-            SlewAndTrackCommand.RegisterPropertyChangeNotification(telescopeMediator.GetInfo(), nameof(TelescopeInfo.Connected));
-
             SetTrackingRateCommand = new AsyncRelayCommand(SetTrackingRateAction, CanSetTrackingRate);
             SetTrackingRateCommand.RegisterPropertyChangeNotification(this, nameof(Loaded));
             SetTrackingRateCommand.RegisterPropertyChangeNotification(telescopeMediator.GetInfo(), nameof(TelescopeInfo.Connected), nameof(TelescopeInfo.CanSetRightAscensionRate), nameof(TelescopeInfo.CanSetDeclinationRate));
-
-            SetGuiderShiftRateCommand = new AsyncRelayCommand(SetGuiderShiftRateAction, CanSetGuiderShiftRate);
-            SetGuiderShiftRateCommand.RegisterPropertyChangeNotification(this, nameof(Loaded));
-            SetGuiderShiftRateCommand.RegisterPropertyChangeNotification(guiderMediator.GetInfo(), nameof(GuiderInfo.Connected), nameof(GuiderInfo.CanSetShiftRate));
 
             ResetOffsetCommand = new RelayCommand(() => { OffsetRaArcsec = 0; OffsetDecArcsec = 0; }, () => OffsetRaArcsec != 0 || OffsetDecArcsec != 0);
 
@@ -228,11 +220,6 @@ namespace Perihelion.ViewModels {
         private bool CanSetTrackingRate() {
             var info = telescopeMediator.GetInfo();
             return Loaded != null && info.Connected && info.CanSetRightAscensionRate && info.CanSetDeclinationRate;
-        }
-
-        private bool CanSetGuiderShiftRate() {
-            var info = guiderMediator.GetInfo();
-            return Loaded != null && info.Connected && info.CanSetShiftRate;
         }
 
         // --- Browse ---
@@ -817,9 +804,7 @@ namespace Perihelion.ViewModels {
 
         public AsyncRelayCommand LoadCommand { get; }
         public RelayCommand FrameCommand { get; }
-        public AsyncRelayCommand SlewAndTrackCommand { get; }
         public AsyncRelayCommand SetTrackingRateCommand { get; }
-        public AsyncRelayCommand SetGuiderShiftRateCommand { get; }
         public RelayCommand ResetOffsetCommand { get; }
 
         private void RaiseLoadedDataChanged() {
@@ -1173,39 +1158,6 @@ namespace Perihelion.ViewModels {
             }
         }
 
-        /// <summary>Real bug found from real hardware use, 2026-09-06: NINA's own
-        /// TelescopeVM.SlewAsyncInternal checks AtPark itself and just returns false ("Slew
-        /// requested while mount is parked") rather than unparking -- it does NOT auto-unpark the
-        /// way SetPerihelionTrackingRate.cs already does for the tracking-rate step alone (real
-        /// NINA sequences always run an explicit UnparkScope item first; this VM's own direct
-        /// mediator call has no such item ahead of it). Confirmed the exact same class of bug
-        /// already caught and fixed on the Touch-N-Stars side (PerihelionView.vue's own
-        /// unparkMountIfNeeded(), added for an OnStep mount that silently did nothing) -- same
-        /// fix here, just via the real in-process mediator instead of an HTTP round-trip.</summary>
-        private async Task SlewAndTrackAction() {
-            if (Loaded == null) return;
-            IsBusy = true;
-            try {
-                if (telescopeMediator.GetInfo().AtPark) {
-                    var progress = new Progress<NINA.Core.Model.ApplicationStatus>();
-                    if (!await telescopeMediator.UnparkTelescope(progress, CancellationToken.None)) {
-                        Notification.ShowError("Perihelion: mount is parked and could not be unparked");
-                        return;
-                    }
-                }
-                var success = await telescopeMediator.SlewToCoordinatesAsync(LoadedCoordinatesWithOffset(), CancellationToken.None);
-                if (!success) {
-                    Notification.ShowWarning("Slew failed or was rejected by the mount");
-                    return;
-                }
-                await SetTrackingRateAction();
-            } catch (Exception ex) {
-                Notification.ShowError($"Perihelion: slew and track failed: {ex.Message}");
-            } finally {
-                IsBusy = false;
-            }
-        }
-
         private async Task SetTrackingRateAction() {
             if (Loaded == null) return;
             try {
@@ -1217,20 +1169,6 @@ namespace Perihelion.ViewModels {
                 Notification.ShowSuccess($"Tracking rate set for {Loaded.Name}");
             } catch (Exception ex) {
                 Notification.ShowError($"Perihelion: setting tracking rate failed: {ex.Message}");
-            }
-        }
-
-        private async Task SetGuiderShiftRateAction() {
-            if (Loaded == null) return;
-            try {
-                var item = new SetPerihelionGuiderShiftRate(telescopeMediator, guiderMediator, profileService) {
-                    ObjectType = Loaded.ObjectType,
-                    TargetName = Loaded.Name,
-                };
-                await item.Execute(new Progress<NINA.Core.Model.ApplicationStatus>(), CancellationToken.None);
-                Notification.ShowSuccess($"Guider shift rate set for {Loaded.Name}");
-            } catch (Exception ex) {
-                Notification.ShowError($"Perihelion: setting guider shift rate failed: {ex.Message}");
             }
         }
 
