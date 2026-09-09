@@ -493,7 +493,10 @@ namespace Perihelion.ViewModels {
         // brushes (confirmed from NINA.WPF.Base's own Brushes.xaml -- no "success" brush exists
         // at all), so "ok" falls back to a plain literal green rather than a theme resource that
         // doesn't exist; PrimaryBrush covers the neutral "close to predicted" case.
-        private static Brush MagnitudeDiffBrush(double? predicted, double? observed) {
+        // Internal, not private -- MagnitudeDiffBrushConverter (Browse list's own per-row
+        // coloring, a separate XAML location from this VM's Position/Elements card) reuses this
+        // exact same threshold logic rather than duplicating it a second time.
+        internal static Brush MagnitudeDiffBrush(double? predicted, double? observed) {
             if (predicted is not double p || observed is not double o) {
                 return LookupBrush("PrimaryBrush", Brushes.Gray);
             }

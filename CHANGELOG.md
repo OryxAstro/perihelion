@@ -3,6 +3,25 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.3] — 2026-09-09
+
+### Fixed
+
+- **Removed three leftover references to "Capture Offset from Mount"** in the Framing
+  Composer's own status text (both the default text and all three post-slew messages) — missed
+  in 1.1.0.2's removal of that feature, since they lived in `.cs` defaults rather than the XAML
+  already checked.
+- **"Include guiding" now has an explanatory line**, matching what it actually does (shifts the
+  guider's lock position, starts guiding if needed) rather than a bare label.
+- **Quick Track's always-on meridian safety cutoff is now visible in the UI.** It was already
+  active on every Quick Track session on both platforms (`QuickTrackReapply.CheckMeridian`,
+  unconditional regardless of the auto-reapply setting) — just never surfaced, so it looked
+  like Quick Track had no meridian protection at all when it already did.
+- **Browse list's "Observed Mag (COBS)" column is now diff-colored too** — the Position tab's
+  own card got this in 1.1.0.2, but the separate Browse list location was missed. Same
+  thresholds, via a new `MagnitudeDiffBrushConverter` (the coloring couldn't live directly on
+  `BrowseObject` itself, since that class is also compiled into the cross-platform PINS build).
+
 ## [1.1.0.2] — 2026-09-09
 
 ### Changed

@@ -15,6 +15,7 @@
     <DataTemplate DataType="{x:Type local:PerihelionDockableVM}">
         <DataTemplate.Resources>
             <conv:NullOrEmptyToVisibilityConverter x:Key="NullOrEmptyToVisibility" />
+            <conv:MagnitudeDiffBrushConverter x:Key="MagnitudeDiffBrush" />
             <!-- One shared Button style for the whole panel, rather than repeating Height/
                  Foreground on every button. BasedOn is required — a bare Style with no BasedOn
                  replaces NINA's own app-wide implicit Button style (StandardButton's whole
@@ -190,8 +191,14 @@
                                         <GridViewColumn.CellTemplate>
                                             <DataTemplate>
                                                 <TextBlock Text="{Binding ObservedMagnitude, StringFormat='mag {0:F1}', TargetNullValue='--'}"
-                                                           Opacity="0.7"
-                                                           ToolTip="{Binding ObservedAverageMagnitude, StringFormat='5-obs avg {0:F2}'}" />
+                                                           ToolTip="{Binding ObservedAverageMagnitude, StringFormat='5-obs avg {0:F2}'}">
+                                                    <TextBlock.Foreground>
+                                                        <MultiBinding Converter="{StaticResource MagnitudeDiffBrush}">
+                                                            <Binding Path="Magnitude" />
+                                                            <Binding Path="ObservedMagnitude" />
+                                                        </MultiBinding>
+                                                    </TextBlock.Foreground>
+                                                </TextBlock>
                                             </DataTemplate>
                                         </GridViewColumn.CellTemplate>
                                     </GridViewColumn>
@@ -571,6 +578,8 @@
                     <TextBlock Text="Include guiding" VerticalAlignment="Center" Margin="0,0,10,0" />
                     <CheckBox IsChecked="{Binding Guiding}" />
                 </StackPanel>
+                <TextBlock Text="Shifts the guider's lock position at the same rate as the tracking rate, so guiding doesn't fight it, and starts guiding if it isn't already running — needed whenever you're actually guiding, otherwise leave it off."
+                           TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,-10,0,16" />
 
                 <!-- Add to Sequence (left) / Quick Track (right), with a real vertical rule
                      between them — real user feedback (2026-09-05): these two sections needed
@@ -648,7 +657,14 @@
 
                     <StackPanel Grid.Column="2" Margin="8,0,0,0">
                         <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
-                        <TextBlock Text="Starts tracking this target right now, independent of any sequence -- for manual framing, visual use, or a target you've already centered." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,14" />
+                        <TextBlock Text="Starts tracking this target right now, independent of any sequence -- for manual framing, visual use, or a target you've already centered." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,4" />
+                        <!-- Not a toggle — Quick Track has no MeridianFlipTrigger of its own to
+                             turn on/off (it never runs inside a sequence at all), so this is a
+                             fixed, always-on safety behavior (QuickTrackReapply.CheckMeridian),
+                             not a preference. Purely informational: previously invisible in this
+                             UI even though it was already active on every real Quick Track
+                             session, on both platforms. -->
+                        <TextBlock Text="Automatically stops tracking (not a toggle — always on) if your mount reports it's reached its meridian flip limit." TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,0,0,14" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <TextBlock Text="Auto re-apply every 15 min" VerticalAlignment="Center" Margin="0,0,10,0" />
                             <CheckBox IsChecked="{Binding AutoReapply}" />

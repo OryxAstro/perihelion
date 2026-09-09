@@ -224,7 +224,7 @@ namespace Perihelion.ViewModels {
             // Fire-and-forget, same pattern as PerihelionDockableVM's own constructor
             // auto-loading the Browse list -- SkyMapStatusText/SkyMapLoading reflect progress and
             // any failure, so a slow or unreachable sky-survey endpoint doesn't block this window
-            // from opening or being usable for Slew and Center/Capture Offset in the meantime.
+            // from opening or being usable for Slew and Center/framing in the meantime.
             _ = LoadSkyMapAsync();
         }
 
@@ -384,8 +384,9 @@ namespace Perihelion.ViewModels {
 
         private double imagePanX;
         /// <summary>The one real interaction -- dragging the sky map sets this (and ImagePanY),
-        /// which directly derives and sets OffsetRaArcsec (the same field "Capture Offset from
-        /// Mount" sets, just derived visually here instead of from the mount's real position).
+        /// which directly derives and sets OffsetRaArcsec -- the only way to set the offset now
+        /// that "Capture Offset from Mount" (deriving it from the mount's real position instead)
+        /// has been removed as a narrow, rarely-useful duplicate of this same panning mechanism.
         /// RA increasing = screen right: best understanding as of writing this, not yet confirmed
         /// against a real sky map visually -- flag if it turns out backwards once actually seen
         /// live.</summary>
@@ -418,7 +419,7 @@ namespace Perihelion.ViewModels {
             set { isBusy = value; RaisePropertyChanged(); }
         }
 
-        private string statusText = "Slew and Center to establish the base framing, then optionally nudge the mount and Capture Offset.";
+        private string statusText = "Slew and Center to establish the base framing, then drag the sky map if you want to frame off-center.";
         public string StatusText {
             get => statusText;
             set { statusText = value; RaisePropertyChanged(); }
@@ -605,7 +606,7 @@ namespace Perihelion.ViewModels {
         /// map's fixed pixel space -- called from LoadSkyMapAsync AFTER pixelsPerArcmin is set
         /// (projection needs it), not in parallel with the sky-map fetch itself. Failure here
         /// (e.g. no internet for a comet's MPC elements) just means no path overlay -- it doesn't
-        /// block the Composer from being usable for Slew and Center/Capture Offset, same
+        /// block the Composer from being usable for Slew and Center/framing, same
         /// "secondary data, don't let it block the primary view" pattern as SkyMapStatusText's
         /// own error handling.</summary>
         private async Task LoadPathAsync() {
@@ -852,19 +853,19 @@ namespace Perihelion.ViewModels {
                     rotate.Coordinates = new InputCoordinates(trueCoordinates);
                     rotate.PositionAngle = RotationAngle;
                     await rotate.Execute(progress, CancellationToken.None);
-                    StatusText = "Centered and rotated. Nudge the mount now if you want to frame off-center (e.g. a comet's tail), then Capture Offset.";
+                    StatusText = "Centered and rotated. Drag the sky map if you want to frame off-center (e.g. a comet's tail).";
                 } else if (IncludeCenter) {
                     var center = factory.GetItem<Center>();
                     center.Inherited = false;
                     center.Coordinates = new InputCoordinates(trueCoordinates);
                     await center.Execute(progress, CancellationToken.None);
-                    StatusText = "Centered. Nudge the mount now if you want to frame off-center (e.g. a comet's tail), then Capture Offset.";
+                    StatusText = "Centered. Drag the sky map if you want to frame off-center (e.g. a comet's tail).";
                 } else {
                     var slew = factory.GetItem<SlewScopeToRaDec>();
                     slew.Inherited = false;
                     slew.Coordinates = new InputCoordinates(trueCoordinates);
                     await slew.Execute(progress, CancellationToken.None);
-                    StatusText = "Slewed (no plate-solve center). Nudge the mount now if you want to frame off-center, then Capture Offset.";
+                    StatusText = "Slewed (no plate-solve center). Drag the sky map if you want to frame off-center.";
                 }
             } catch (Exception ex) {
                 StatusText = $"Slew/center failed: {ex.Message}";
