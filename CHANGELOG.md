@@ -56,8 +56,8 @@ All notable changes to Perihelion are documented here. Format loosely follows
   convention exactly (green when notably brighter than predicted, amber/red as it falls short,
   neutral when close) — previously a single flattened string with no visual cue.
 - **Removed "Capture Offset from Mount"** from the Framing Composer — it converted the mount's
-  real position into the same offset state that dragging the sky map already produces directly,
-  with no real advantage for the ordinary framing workflow.
+  position into the same offset state that dragging the sky map already produces directly, with
+  no advantage for the ordinary framing workflow.
 
 ## [1.1.0.1] — 2026-09-09
 
