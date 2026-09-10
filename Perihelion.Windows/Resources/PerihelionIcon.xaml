@@ -5,24 +5,13 @@
       DockableVM.ImageGeometry (NINA.WPF.Base) is a filled GeometryGroup, not a stroked icon — it
       defaults to a "PuzzlePieceSVG" resource when a plugin doesn't set one.
 
-      Redesigned twice now, 2026-09-07. First pass swapped the original ring+dot glyph for a
-      comet shape specifically because it read as near-identical to another plugin's own tab
-      icon at small size. Real user decision, same day: go back to the orbit-ring look after
-      all, specifically Lucide's own "orbit" icon (https://lucide.dev, ISC License — verified
-      directly against lucide-icons/lucide's own LICENSE file; "orbit" isn't one of the few
-      icons under Lucide's separate MIT-licensed Feather-derived subset, so ISC applies here) —
-      deliberately chosen despite the icon-similarity concern already raised, not an oversight.
-
-      This is a REAL, precise conversion of Lucide's actual stroked SVG source (two circular
-      arcs plus three circles, stroke-width 2, round caps/joins), not a hand-approximated shape —
-      converted with Inkscape's own "object-stroke-to-path" operation (real vector tooling doing
-      real stroke-to-fill math, the exact gap called out in this file's own history as blocking a
-      precise conversion before) and the resulting SVG path data carried over into WPF's Path
-      markup syntax essentially verbatim, since WPF and SVG path mini-languages accept the same
-      command letters (M/A/C/Z, relative lowercase forms included). FillRule is Nonzero, not
-      EvenOdd this time — Inkscape's own output for each circle is two subpaths with opposite
-      winding to produce the ring hole, which needs winding-based fill to render correctly, not
-      even-odd.
+      A precise conversion of Lucide's "orbit" icon (https://lucide.dev, ISC License — verified
+      against lucide-icons/lucide's own LICENSE file) — two circular arcs plus three circles,
+      converted from Lucide's stroked SVG source to filled paths via Inkscape's own
+      "object-stroke-to-path" operation, then carried into WPF's Path markup syntax essentially
+      verbatim (WPF and SVG path mini-languages accept the same command letters). FillRule is
+      Nonzero, not EvenOdd — Inkscape's own output for each circle is two subpaths with opposite
+      winding to produce the ring hole, which needs winding-based fill to render correctly.
     -->
     <GeometryGroup x:Key="PerihelionOrbitSVG" FillRule="Nonzero">
         <!-- Outer arc (top-right sweep) -->

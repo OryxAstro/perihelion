@@ -5,17 +5,16 @@ using System.Windows.Input;
 namespace Perihelion.Views {
 
     /// <summary>
-    /// Code-behind exists here for two real reasons, both things a plain MVVM command has no way
-    /// to do on its own: (1) a real popup Window needs somewhere to actually close the dialog
+    /// Code-behind exists here for two reasons, both things a plain MVVM command has no way
+    /// to do on its own: (1) a popup Window needs somewhere to actually close the dialog
     /// (Confirm/Cancel below), and (2) WPF has no built-in pan/zoom gesture support without a
     /// third-party behaviors library this project doesn't reference, so the sky map's own mouse
     /// wheel/drag handling lives here too, calling straight into the VM's own ImagePanX/Y/
-    /// ImageZoom -- ImagePanX/Y's own setters derive and set the real offset, so there's nothing
+    /// ImageZoom -- ImagePanX/Y's own setters derive and set the offset, so there's nothing
     /// else this code-behind needs to compute itself.
     ///
-    /// One drag interaction only (2026-09-05, corrected after reading Touch-N-Stars' own
-    /// FramingOffsetView.vue directly): panning the whole sky map, same as that component's own
-    /// real behavior -- there is no second, independently-draggable FOV rectangle.
+    /// One drag interaction only: panning the whole sky map, matching Touch-N-Stars' own
+    /// FramingOffsetView.vue -- there is no second, independently-draggable FOV rectangle.
     /// </summary>
     public partial class PerihelionFramingComposerWindow : Window {
         private const double MinZoom = 1.0;
@@ -54,7 +53,7 @@ namespace Perihelion.Views {
             vm.ImageZoom = System.Math.Clamp(vm.ImageZoom * factor, MinZoom, MaxZoom);
             // Re-clamp the EXISTING pan to whatever range the new zoom level allows -- zooming
             // back out after panning near the old zoom's own edge would otherwise leave the pan
-            // sitting beyond the new (smaller) overflow, exposing the image's real edge again.
+            // sitting beyond the new (smaller) overflow, exposing the image's edge again.
             ClampPan(vm);
             e.Handled = true;
         }
@@ -81,12 +80,10 @@ namespace Perihelion.Views {
             ((UIElement)sender).ReleaseMouseCapture();
         }
 
-        /// <summary>Keeps the pan from ever revealing the fetched image's own real edge -- real
-        /// bug found from a real screenshot (a visible black strip after dragging): at zoom z,
-        /// the image (Stretch="UniformToFill" on a same-aspect container) renders at
+        /// <summary>Keeps the pan from ever revealing the fetched image's own edge: at zoom
+        /// z, the image (Stretch="UniformToFill" on a same-aspect container) renders at
         /// z*SkyMapDisplaySize, so the overflow available to pan into on each side is exactly
-        /// (z-1)*SkyMapDisplaySize/2 -- zero at z=1, which is exactly why the very first build
-        /// could expose the edge on literally any drag at the default zoom.</summary>
+        /// (z-1)*SkyMapDisplaySize/2 -- zero at z=1, which is why zoom defaults above 1.</summary>
         private static void ClampPan(PerihelionFramingComposerVM vm) {
             var maxOffset = (vm.ImageZoom - 1.0) * PerihelionFramingComposerVM.SkyMapDisplaySize / 2.0;
             vm.ImagePanX = System.Math.Clamp(vm.ImagePanX, -maxOffset, maxOffset);

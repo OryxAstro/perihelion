@@ -32,7 +32,7 @@ namespace Perihelion.Utility {
         /// <summary>The machine's own outbound LAN IPv4 address -- same technique nitr57/
         /// ninaAPI's own Utility/CoreUtility.cs uses for its Options page's "IP Address" row
         /// (GetIPv4Address there): opening a UDP socket and "connecting" it to a public address
-        /// never actually sends a packet, it just asks the OS to pick the real local interface/
+        /// never actually sends a packet, it just asks the OS to pick the local interface/
         /// address it would route through, which is exactly the LAN-reachable address another
         /// device (a phone running Touch-N-Stars) would need. Falls back to loopback if that
         /// fails for any reason (no network, etc.) rather than throwing.</summary>

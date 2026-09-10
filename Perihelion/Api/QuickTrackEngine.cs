@@ -35,8 +35,8 @@ namespace Perihelion.Api {
             CancellationToken ct) {
             QuickTrackStatus.Started(objectType, targetName, guiding, autoReapplyMinutes is > 0 ? autoReapplyMinutes : null);
 
-            // Some real mount drivers don't support a custom base tracking rate at all --
-            // confirmed real case: an ASCOM OnStep driver build reporting
+            // Some mount drivers don't support a custom base tracking rate at all --
+            // confirmed case: an ASCOM OnStep driver build reporting
             // CanSetRightAscensionRate/CanSetDeclinationRate both false (NINA's own
             // TelescopeVM.SetCustomTrackingRate has no fallback for this itself, it just throws
             // NotSupportedException straight up). Checking the capability first, rather than
@@ -81,7 +81,7 @@ namespace Perihelion.Api {
                         // approach, just driving it programmatically instead of through PHD2's own
                         // dialog. The mount itself stays on plain sidereal; PHD2's active
                         // guide-correction loop, driven by a continuously shifting lock position,
-                        // does the real tracking.
+                        // does the tracking.
                         if (!canSetBaseRate) {
                             guidingOnlyFallback = true;
                             if (guiderItem.LastAppliedRate is OrbitalRate guiderRate) {

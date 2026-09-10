@@ -57,10 +57,9 @@ namespace Perihelion.Api {
         /// whatever the guider half of the same attempt does (see GuidingFailed/GuidingSucceeded
         /// below). LastApplySucceeded/LastError describe ONLY this: whether the mount actually
         /// received a correct custom tracking rate. Conflating a guiding hiccup into this value
-        /// (as an earlier version did) meant a Quick Track attempt where the mount was already
-        /// correctly tracking could still read as an outright failure just because PHD2 couldn't
-        /// find a star -- misleading, since the thing Quick Track exists to do had already
-        /// succeeded.
+        /// would mean a Quick Track attempt where the mount was already correctly tracking could
+        /// read as an outright failure just because PHD2 couldn't find a star -- misleading,
+        /// since the thing Quick Track exists to do had already succeeded.
         /// </summary>
         public static void Applied(OrbitalRate rate) {
             current = current with {
@@ -95,13 +94,13 @@ namespace Perihelion.Api {
 
         /// <summary>Set once per Track() attempt (not toggled independently like GuidingFailed/
         /// GuidingSucceeded above) -- true means the mount itself never received a custom
-        /// tracking rate at all (its driver doesn't support one; confirmed real case: at least
+        /// tracking rate at all (its driver doesn't support one; confirmed case: at least
         /// one ASCOM OnStep driver build reports CanSetRightAscensionRate/CanSetDeclinationRate
         /// both false) and the guider's own shift rate is the *entire* tracking mechanism for
         /// this session, not a companion to a base-rate change. The panel needs this to avoid
         /// implying the mount is tracking off-sidereal when it's actually still on plain
         /// sidereal the whole time, with PHD2's own active guide-correction loop (driven by a
-        /// continuously-shifting lock position) doing the real work instead.</summary>
+        /// continuously-shifting lock position) doing the work instead.</summary>
         public static void SetGuidingOnlyFallback(bool guidingOnlyFallback) {
             current = current with { GuidingOnlyFallback = guidingOnlyFallback };
         }
@@ -109,7 +108,7 @@ namespace Perihelion.Api {
         /// <param name="reason">Null for a plain manual stop (the user already knows why --
         /// they just pressed Stop). Set for an automatic stop the user didn't initiate -- in
         /// particular the meridian safety cutoff (see QuickTrackReapply's own CheckMeridian) --
-        /// so the panel can show a real, unmissable explanation rather than the session just
+        /// so the panel can show an unmissable explanation rather than the session just
         /// silently ending.</param>
         public static void Stopped(string? reason = null) {
             current = new Snapshot(false, null, null, false, null, null, null, null, null, false, null, reason, null, false);

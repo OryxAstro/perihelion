@@ -87,16 +87,16 @@ namespace Perihelion.SequenceItems {
         /// The exact rate this instance last successfully computed and sent, in Perihelion's own
         /// arcsec/sec units -- exposed so callers (the Quick Track API controller, the auto-reapply
         /// timer) can report the true applied value rather than a separately-recomputed
-        /// approximation, which could disagree from a few seconds' worth of real orbital motion or
+        /// approximation, which could disagree from a few seconds' worth of orbital motion or
         /// simply obscure whether the call actually reached the mount.
         /// </summary>
         public OrbitalRate? LastAppliedRate { get; private set; }
 
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
-            // Some mounts (real confirmed case: OnStep) simply can't take a custom RA/Dec
+            // Some mounts (confirmed case: OnStep) simply can't take a custom RA/Dec
             // tracking rate at all -- ASCOM reports this up front via these two capability
             // flags, so calling SetCustomTrackingRate anyway is guaranteed to fail. Logging and
-            // returning gracefully here (not throwing) is deliberate: within a real sequence,
+            // returning gracefully here (not throwing) is deliberate: within a sequence,
             // Validate() already blocks running unless either the mount really can do this, or a
             // sibling SetPerihelionGuiderShiftRate is present as the intended fallback -- so by
             // the time Execute() reaches here, skipping is the CORRECT outcome, not a masked
@@ -112,7 +112,7 @@ namespace Perihelion.SequenceItems {
 
             // A parked mount silently ignores a custom tracking rate -- SetCustomTrackingRate
             // returns true regardless (TelescopeVM only checks Connected, not AtPark; see
-            // CLAUDE.md/session notes), so this is the only place that can catch it. Real NINA
+            // CLAUDE.md/session notes), so this is the only place that can catch it. NINA
             // sequences always run an explicit UnparkScope item first; Quick Track has no
             // equivalent step of its own, so it needs to do this itself rather than silently
             // reporting success while the mount stays parked.
@@ -225,11 +225,9 @@ namespace Perihelion.SequenceItems {
         public bool Validate() {
             var i = new List<string>();
             var info = telescopeMediator.GetInfo();
-            // Real hardware feedback (2026-09-05): an OnStep mount can't set a custom RA/Dec
-            // rate at all, which used to hard-block the whole sequence even when a sibling
-            // SetPerihelionGuiderShiftRate item was already present as the intended fallback for
-            // exactly this case (see this project's own architecture notes on Quick Track's
-            // guiding-only fallback). Only a real problem when NEITHER mechanism is available.
+            // A mount that can't set a custom RA/Dec rate at all shouldn't hard-block the whole
+            // sequence when a sibling SetPerihelionGuiderShiftRate item is already present as
+            // the intended fallback -- only a problem when NEITHER mechanism is available.
             var hasGuidingFallback = Parent?.Items?.Any(item => item is SetPerihelionGuiderShiftRate) ?? false;
             if (!info.Connected) {
                 i.Add("Telescope not connected");

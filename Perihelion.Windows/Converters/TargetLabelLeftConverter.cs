@@ -9,10 +9,10 @@ namespace Perihelion.Converters {
     /// the left of it -- depending on which side of the path's own continuation the label should
     /// sit on (see PerihelionFramingComposerVM.TargetLabelOnRight's own doc comment). The gap
     /// itself is a bound value (TargetLabelGap), not a constant here -- it has to track the
-    /// marker's own real on-screen radius, which grows with ImageZoom (see TargetLabelGap's own
-    /// doc comment for the real collision bug this fixes). WPF has no text-anchor equivalent to
+    /// marker's own on-screen radius, which grows with ImageZoom (see TargetLabelGap's own
+    /// doc comment for the collision bug this fixes). WPF has no text-anchor equivalent to
     /// SVG's (which is how FramingOffsetView.vue solves the exact same problem, `ctx.textAlign`/
-    /// measured box width): the label's own real rendered width is only known once it's actually
+    /// measured box width): the label's own rendered width is only known once it's actually
     /// measured, hence a MultiBinding pulling in the label's own ActualWidth via a self-reference,
     /// not something precomputed in the VM.</summary>
     public class TargetLabelLeftConverter : IMultiValueConverter {

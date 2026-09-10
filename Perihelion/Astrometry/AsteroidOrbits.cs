@@ -12,7 +12,7 @@ using Newtonsoft.Json.Linq;
 namespace Perihelion.Astrometry {
 
     /// <summary>
-    /// Real orbital elements for a curated list of bright, numbered asteroids -- NOT the full
+    /// Orbital elements for a curated list of bright, numbered asteroids -- NOT the full
     /// MPC asteroid catalog. The curated NAME list mirrors OryxAstro's own BRIGHT_ASTEROIDS
     /// table, but unlike that table (and unlike this class's own original version), the
     /// ELEMENTS themselves are live-fetched from JPL's Small-Body Database rather than
@@ -161,7 +161,7 @@ namespace Perihelion.Astrometry {
                 var hToken = root["phys_par"]?.FirstOrDefault(p => (string)p["name"]! == "H")?["value"];
                 var gToken = root["phys_par"]?.FirstOrDefault(p => (string)p["name"]! == "G")?["value"];
                 // Generic fallbacks would be surprising for any of these well-known, well-observed
-                // objects (every one of them has real published H/G) -- present only as a safety
+                // objects (every one of them has published H/G) -- present only as a safety
                 // net so a transient feed hiccup can't produce a null-reference instead of a
                 // slightly-off magnitude. 15.0/0.15 are unremarkable, non-alarming placeholders,
                 // not physically meaningful defaults.
@@ -268,8 +268,73 @@ namespace Perihelion.Astrometry {
         }
 
         /// <summary>
+        /// Imports asteroid elements from a local file -- unlike CometOrbits.ImportFromFileAsync,
+        /// there's no universal third-party bulk format for a small, curated, live-per-object-
+        /// fetched set like this one (no MPCORB.DAT-equivalent worth targeting), so this accepts
+        /// the same plain JSON list Export below produces: Perihelion-to-Perihelion sharing rather
+        /// than an MPC-file-compatible import. Still solves the same motivating case (an
+        /// install behind a blocked/rate-limited network egress can receive a colleague's already-
+        /// synced data instead of hitting JPL itself), just via Perihelion's own format since no
+        /// external one fits. Replaces the entire current cache; returns the number of asteroids
+        /// actually parsed.
+        /// </summary>
+        public static async Task<int> ImportFromFileAsync(string filePath, CancellationToken ct = default) {
+            var json = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+            var elements = Newtonsoft.Json.JsonConvert.DeserializeObject<List<AsteroidElements>>(json)
+                ?? throw new InvalidOperationException("File did not contain a recognizable Perihelion asteroid elements list.");
+            await CacheLock.WaitAsync(ct).ConfigureAwait(false);
+            try {
+                _cache = elements;
+                _cacheFetchedAtUtc = DateTime.UtcNow;
+                PersistToDisk(elements, _cacheFetchedAtUtc);
+                return elements.Count;
+            } finally {
+                CacheLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Exports the currently cached asteroid elements as a plain JSON file -- see
+        /// ImportFromFileAsync's own doc comment for why this is Perihelion's own format rather
+        /// than an MPC-compatible one. Returns false (writes nothing) when there is genuinely no
+        /// cache yet on this install.
+        /// </summary>
+        public static async Task<bool> ExportToFileAsync(string filePath, CancellationToken ct = default) {
+            await CacheLock.WaitAsync(ct).ConfigureAwait(false);
+            try {
+                LoadDiskCacheIfNeeded();
+                if (_cache == null) return false;
+                var json = Newtonsoft.Json.JsonConvert.SerializeObject(_cache, Newtonsoft.Json.Formatting.Indented);
+                await File.WriteAllTextAsync(filePath, json, ct).ConfigureAwait(false);
+                return true;
+            } finally {
+                CacheLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Explicit "Clear" action, mirroring CometOrbits.ClearAsync exactly -- wipes both the
+        /// in-memory and on-disk asteroid cache, so the next lookup does a full live re-fetch from
+        /// JPL for every tracked object instead of using anything currently held.
+        /// </summary>
+        public static async Task ClearAsync(CancellationToken ct = default) {
+            await CacheLock.WaitAsync(ct).ConfigureAwait(false);
+            try {
+                _cache = null;
+                _cacheFetchedAtUtc = default;
+                try {
+                    if (File.Exists(CacheFilePath)) File.Delete(CacheFilePath);
+                } catch (Exception ex) {
+                    NINA.Core.Utility.Logger.Warning($"Perihelion: could not delete asteroid elements disk cache: {ex.Message}");
+                }
+            } finally {
+                CacheLock.Release();
+            }
+        }
+
+        /// <summary>
         /// Epoch-staleness guardrail -- pure two-body Keplerian propagation far in time from an
-        /// object's own reference epoch accumulates real, unmodeled error from ongoing planetary
+        /// object's own reference epoch accumulates, unmodeled error from ongoing planetary
         /// perturbation. The live fetch above keeps this bounded under normal operation, but
         /// doesn't guarantee it (a fetch can succeed while simply reporting old data, or every
         /// fetch since some point could have silently been falling back to an aging cache) --
@@ -341,7 +406,7 @@ namespace Perihelion.Astrometry {
 
         private static double VectorLength(EclipticVector v) => Math.Sqrt(v.X * v.X + v.Y * v.Y + v.Z * v.Z);
 
-        /// <summary>Real current apparent (visual) magnitude via the standard IAU H-G two-term phase function (Bowell et al. 1989).</summary>
+        /// <summary>current apparent (visual) magnitude via the standard IAU H-G two-term phase function (Bowell et al. 1989).</summary>
         public static double ApparentMagnitude(AsteroidElements elements, EclipticVector helio, EclipticVector earthHelio) {
             var geo = new EclipticVector(helio.X - earthHelio.X, helio.Y - earthHelio.Y, helio.Z - earthHelio.Z);
             var r = VectorLength(helio); // Sun-asteroid distance, AU

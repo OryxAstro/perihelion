@@ -3,7 +3,7 @@
                     xmlns:local="clr-namespace:Perihelion">
 
     <!--
-      Windows-only (real NINA) settings page for Perihelion, shown under Options > Plugins.
+      Windows-only (NINA) settings page for Perihelion, shown under Options > Plugins.
       Looked up by NINA itself via NINA.ViewModel.Plugins.PluginOptionsDataTemplateSelector,
       keyed "{plugin.Name}_Options" — see PerihelionPlugin.RegisterOptionsTemplate's own
       comment for exactly how this gets registered, and why this same page can never appear on
@@ -25,9 +25,8 @@
                 (Quick Track, Add to Sequence), independent of Advanced API.
             </TextBlock>
 
-            <!-- Real user request (2026-09-05), after comparing against Advanced API's own
-                 Options page: someone using only the native Windows dockable panel has no need
-                 for Touch-N-Stars/Quick Track's remote API, or the open port that comes with it. -->
+            <!-- Someone using only the native Windows dockable panel has no need for
+                 Touch-N-Stars/Quick Track's remote API, or the open port that comes with it. -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <TextBlock Text="API Enabled" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <CheckBox IsChecked="{Binding ApiEnabled}" />
@@ -122,7 +121,7 @@
             <!-- Same idea as Advanced API's own "Network adresses" section — shows ActualPort
                  (the port really bound this session), not the Port setting above (which may be
                  a pending change for next restart, or may not match if a conflict pushed the
-                 real bind to the next free port instead). Hidden entirely when the server isn't
+                 bind to the next free port instead). Hidden entirely when the server isn't
                  running at all, so it never shows an address that isn't actually listening. -->
             <StackPanel Visibility="{Binding ApiEnabled, Converter={StaticResource BoolToVis}}">
                 <Separator Margin="0,0,0,10" />

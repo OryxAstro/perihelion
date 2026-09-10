@@ -33,68 +33,50 @@ using RelayCommand = CommunityToolkit.Mvvm.Input.RelayCommand;
 namespace Perihelion.ViewModels {
 
     /// <summary>
-    /// The Perihelion Framing Composer's own VM -- a plain class, not MEF-exported, since a real
+    /// The Perihelion Framing Composer's own VM -- a plain class, not MEF-exported, since a
     /// popup Window (unlike PerihelionDockableVM's IDockableVM or PerihelionPlugin's
     /// IPluginManifest) isn't something MEF composes at all; PerihelionDockableVM constructs one
     /// directly (`new PerihelionFramingComposerVM(...)`) with whatever it already has on hand
     /// (ITelescopeMediator, IRotatorMediator, the resolved ISequencerFactory), the same way
     /// PerihelionSequenceBuilder is a plain static class rather than an MEF export.
     ///
-    /// Real design decision (2026-09-05, after the earlier "just add a raw rotation-degrees
-    /// TextBox to Add to Sequence" attempt was rightly rejected): rotation and offset shouldn't
-    /// be typed in blind. This VM drives the SAME real Center/CenterAndRotate sequence items Add
-    /// to Sequence itself uses -- via the same ISequencerFactory access, executed directly
-    /// (Execute(), not a full sequence run, same "run outside a sequence" pattern already
-    /// established for Quick Track) -- so "Slew and Center" here is a real hardware action with
-    /// NINA's own real plate-solve loop behind it, not a preview. Confirming this window copies
-    /// whatever was actually achieved (the real offset from the mount's real position, and the
-    /// real rotation angle if a rotator was used) back into the main panel, for Add to Sequence/
-    /// Quick Track to pick up -- rather than a number someone guessed.
+    /// Rotation and offset aren't typed in blind -- this VM drives the SAME
+    /// Center/CenterAndRotate sequence items Add to Sequence itself uses, via the same
+    /// ISequencerFactory access, executed directly (Execute(), not a full sequence run, same
+    /// "run outside a sequence" pattern Quick Track uses) -- so "Slew and Center" here is a
+    /// hardware action with NINA's own plate-solve loop behind it, not a preview.
+    /// Confirming this window copies whatever was actually achieved (the offset from the
+    /// mount's position, and the rotation angle if a rotator was used) back into the
+    /// main panel, for Add to Sequence/Quick Track to pick up.
     /// </summary>
     public class PerihelionFramingComposerVM : INotifyPropertyChanged, IDisposable {
-        // Fixed on-screen size of the sky map display -- deliberately independent of whatever
-        // pixel resolution the fetched SkySurveyImage actually comes back at (confirmed from
-        // NINA.WPF.Base's own NASASkySurvey.cs that this varies with the requested field of view,
-        // not with any width/height passed to GetImage). The FOV rectangle below is computed in
-        // this SAME fixed coordinate space using the image's own real FoVWidth (always set by
-        // every ISkySurvey implementation, regardless of pixel resolution), so it lines up
-        // correctly with the displayed image regardless of its native size -- WPF's own Image
-        // control stretches the source bitmap to fill this fixed area either way. 600, not the
-        // original 320 (then 480) -- real user feedback (2026-09-05, reported twice) that the
-        // whole window read as too small. MUST match the XAML Border's own Width/Height exactly
+        // Fixed on-screen size of the sky map display -- independent of whatever pixel
+        // resolution the fetched SkySurveyImage actually comes back at (this varies with the
+        // requested field of view, not with any width/height passed to GetImage). The FOV
+        // rectangle below is computed in this SAME fixed coordinate space using the image's own
+        // FoVWidth, so it lines up correctly with the displayed image regardless of its native
+        // size. MUST match the XAML Border's own Width/Height exactly
         // (PerihelionFramingComposerWindow.xaml) -- this constant is the only source of truth
-        // for pixelsPerArcmin/FovRectWidth/Height below, so a mismatch here silently misdraws
-        // the FOV rectangle's real size relative to the displayed image.
+        // for pixelsPerArcmin/FovRectWidth/Height below.
         public const double SkyMapDisplaySize = 600;
 
         // Requests a field of view wider than the camera's own actual FOV, so the displayed sky
-        // map shows real surrounding context (other stars/objects) around the FOV rectangle, not
-        // just the rectangle itself filling the whole view. 6x, not the original 3x -- real user
-        // feedback (2026-09-05): this is a single static fetched image being panned around, not a
-        // true tiled/infinite map (that would need a real interactive planetarium library like
-        // Touch-N-Stars' own celestia-atlas, which is JS-only), so there's a genuine, honest limit
-        // to how far this can be panned before reaching the edge of the fetched image regardless
-        // of this factor -- a wider request just pushes that edge further out, it doesn't remove
-        // it.
+        // map shows surrounding context around the FOV rectangle rather than the rectangle
+        // filling the whole view. This is a single static fetched image being panned around, not
+        // a true tiled/infinite map, so there's a genuine limit to how far this can be panned
+        // before reaching the edge of the fetched image -- a wider request just pushes that edge
+        // further out, it doesn't remove it.
         private const double SkyMapZoomOutFactor = 6.0;
 
-        // Offline Sky Map specifically needs a raster rendered at much higher resolution than the
-        // 600x600 display canvas -- unlike the five live photographic sources (which are fetched
+        // Offline Sky Map specifically needs a raster rendered at much higher resolution than
+        // the 600x600 display canvas -- unlike the five live photographic sources (fetched
         // pre-sized to exactly what's displayed), SkyMapAnnotator bakes its whole scene into a
         // fixed-size bitmap ONE TIME per Initialize call, and WPF's own ImageZoom afterward is a
-        // pure visual stretch of that already-rendered bitmap, not a re-render. Requesting the
-        // annotator's own raster at only SkyMapDisplaySize (matching real NINA's own Framing
-        // Assistant's default ~3 deg FOV filling its whole display 1:1) while ALSO fetching
-        // SkyMapZoomOutFactor times more sky area than that meant the same fixed pixel count was
-        // spread across ~6x the angular area -- real user comparison, 2026-09-07 (UGC 5601, same
-        // target, native NINA vs. here): native NINA's tighter native-resolution render showed
-        // dense real detail (dust, dozens of labeled DSOs); this showed the same underlying tiles
-        // genuinely present, just rendered at a fraction of the angular resolution and then
-        // blurrily stretched on zoom. Rendering at SkyMapDisplaySize * SkyMapZoomOutFactor instead
-        // keeps the SAME angular resolution (pixels per degree) as a native ~3 deg-filling render,
-        // all the way out to the wider fetched FOV -- zooming in via ImageZoom then reveals real
-        // tile detail instead of upscaled blur. Only applies to SKYATLAS -- the five live sources
-        // already fetch pre-sized to the display, so they have no equivalent resolution deficit.
+        // pure visual stretch of that already-rendered bitmap, not a re-render. Rendering at
+        // SkyMapDisplaySize * SkyMapZoomOutFactor keeps the same angular resolution (pixels per
+        // degree) as a native ~3 deg-filling render, all the way out to the wider fetched FOV --
+        // zooming in via ImageZoom then reveals tile detail instead of upscaled blur. Only
+        // applies to SKYATLAS -- the five live sources already fetch pre-sized to the display.
         private const double SkyMapOfflineRasterSize = SkyMapDisplaySize * SkyMapZoomOutFactor;
 
         // Same 10 nights PerihelionDockableVM's own Position tab path chart uses (PathDays
@@ -114,12 +96,11 @@ namespace Perihelion.ViewModels {
         private readonly OrbitalObjectType objectType;
         private readonly Coordinates trueCoordinates;
 
-        /// <summary>Real, public NINA.WPF.Base API (NINA.WPF.Base/SkySurvey/SkyMapAnnotator.cs) --
-        /// same class real NINA's own Framing Assistant uses to render Offline Sky Map, not a
-        /// custom rendering. Owned and constructed by PerihelionDockableVM, not here -- see that
-        /// field's own doc comment for the real-hardware-confirmed bug (works exactly once per
-        /// NINA process if constructed fresh per Composer window) that made a shared, one-per-
-        /// session instance necessary instead.</summary>
+        /// <summary>NINA.WPF.Base.SkySurvey.SkyMapAnnotator -- the same class NINA's own
+        /// Framing Assistant uses to render Offline Sky Map, not a custom rendering. Owned and
+        /// constructed by PerihelionDockableVM, not here -- see that field's own doc comment for
+        /// why a shared, one-per-session instance is necessary instead of one per Composer
+        /// window.</summary>
         private readonly SkyMapAnnotator skyMapAnnotator;
 
         /// <summary>Named, not a lambda passed straight to +=, specifically so it can be
@@ -160,27 +141,14 @@ namespace Perihelion.ViewModels {
             this.skyMapAnnotator = skyMapAnnotator;
 
             // SkyMapAnnotator.Initialize renders TWICE, not once: an immediate first pass using
-            // only the catalog overlay (before any real cached tile bitmaps are even decoded from
-            // disk), then a second pass, asynchronously, once UseCachedImages' own background
-            // image-load task finishes (SkyMapAnnotator.QueueMissingImages/LoadMissingImages) --
-            // arriving well after Initialize's own await has already completed. A one-time read of
-            // SkyMapOverlay right after awaiting Initialize (an earlier version of this code)
-            // permanently captured that first, tile-less pass and never saw the real, later update
-            // -- confirmed as the actual cause of "sometimes a bare grid, usually nothing at all"
-            // real user reports, not (as first suspected) the catalog overlay being inherently too
-            // sparse to show anything on its own. Subscribing here means every later render --
-            // including that second async pass -- reaches SkyImage, same as it would for real
-            // NINA's own directly-bound SkyMapOverlay. Guarded on SelectedImageSource so a render
-            // that finishes after the user has since switched to a live photographic source
-            // doesn't stomp back over it.
+            // only the catalog overlay (before any cached tile bitmaps are decoded from disk),
+            // then a second pass, asynchronously, once the background image-load task finishes
+            // (SkyMapAnnotator.QueueMissingImages/LoadMissingImages) -- arriving after
+            // Initialize's own await has already completed. Subscribing here (rather than a
+            // one-time read right after Initialize) means that second pass reaches SkyImage too.
+            // Guarded on SelectedImageSource so a render that finishes after the user has since
+            // switched to a live photographic source doesn't stomp back over it.
             skyMapAnnotatorHandler = (_, e) => {
-                // Temporary diagnostic (2026-09-07) -- logs every property change on the shared
-                // annotator, not just SkyMapOverlay, to see whether something is re-triggering
-                // UpdateSkyMap (and so cancelling/restarting the tile decode via
-                // QueueMissingImages' own CancelImageLoad) faster than a single decode pass can
-                // finish. Remove once the "reopen gets permanently stuck partial" bug is
-                // understood.
-                Logger.Info($"Perihelion: [diag] skyMapAnnotator.{e.PropertyName} changed at {DateTime.UtcNow:HH:mm:ss.fff}, selectedImageSource={selectedImageSource}");
                 if (e.PropertyName == nameof(SkyMapAnnotator.SkyMapOverlay) && selectedImageSource == SkySurveySource.SKYATLAS) {
                     SkyImage = skyMapAnnotator.SkyMapOverlay;
                 }
@@ -189,13 +157,10 @@ namespace Perihelion.ViewModels {
 
             PositionText = $"RA {AstroUtil.HoursToHMS(trueCoordinates.RA)}  Dec {AstroUtil.DegreesToDMS(trueCoordinates.Dec)}";
             RotatorConnected = rotatorMediator.GetInfo().Connected;
-            // Defaults to whatever RotatorConnected already is, not unconditionally off -- real
-            // user feedback (2026-09-06): with a rotator actually connected, requiring a manual
-            // toggle every time this opens was just friction for what's almost always the wanted
-            // behavior. The toggle itself still exists (backing field set directly here, not via
-            // the property setter, so this doesn't trigger its own IncludeCenter side effect) --
-            // a user WITH a rotator can still opt out for one session; a user WITHOUT one still
-            // opens with it correctly off.
+            // Defaults to whatever RotatorConnected already is, not unconditionally off, so a
+            // user with a rotator doesn't have to toggle it on every time. Backing field set
+            // directly here, not via the property setter, so this doesn't trigger its own
+            // IncludeCenter side effect.
             useRotation = RotatorConnected;
             // Backing field directly, not the property setter -- the setter's own side effects
             // (persisting to the profile, re-triggering LoadSkyMapAsync) are for when the USER
@@ -236,13 +201,13 @@ namespace Perihelion.ViewModels {
 
         /// <summary>Only File is excluded -- it needs a local file picker, a genuinely different
         /// interaction model from "fetch and render," not built here. Cache and Offline
-        /// (SkyAtlasSkySurvey) are both included despite each having a real caveat: Cache only
+        /// (SkyAtlasSkySurvey) are both included despite each having a caveat: Cache only
         /// has content once something else has already populated it for that field (fetched via
-        /// one of the five live sources below, in this Composer or real NINA's own Framing
+        /// one of the five live sources below, in this Composer or NINA's own Framing
         /// Assistant, since both read/write the same on-disk cache), and Offline renders as a
         /// flat mid-grey placeholder with no actual imagery at all (confirmed: it fills every
-        /// pixel with the literal byte value 30) -- real, even in stock NINA. Neither caveat is a
-        /// reason to hide the option entirely, though: real NINA lists both unfiltered, and Cache
+        /// pixel with the literal byte value 30) --, even in stock NINA. Neither caveat is a
+        /// reason to hide the option entirely, though: NINA lists both unfiltered, and Cache
         /// specifically is exactly the kind of no-network-required source this whole project
         /// cares about -- once a target's imagery has been fetched once while online, Cache keeps
         /// working for that same field with no signal at all.</summary>
@@ -252,7 +217,7 @@ namespace Perihelion.ViewModels {
             SkySurveySource.SKYATLAS,
         };
 
-        /// <summary>The real cache-index key each live source's own images are saved under
+        /// <summary>The cache-index key each live source's own images are saved under
         /// (SkySurveySourceExtension.GetCacheSourceString() in NINA.WPF.Base.SkySurvey --
         /// literally that source class's own type name, e.g. "NASASkySurvey") -- tried in turn
         /// by the CACHE branch of LoadSkyMapAsync below, since a cached entry is filed under
@@ -268,7 +233,7 @@ namespace Perihelion.ViewModels {
                 if (selectedImageSource == value) return;
                 selectedImageSource = value;
                 RaisePropertyChanged();
-                // Persisted back to the profile -- same field NINA's own real Framing Assistant
+                // Persisted back to the profile -- same field NINA's own Framing Assistant
                 // reads/writes for this exact purpose, so switching sources here also becomes
                 // the new default there (and next time this Composer opens), matching how a
                 // user's own preference is normally expected to stick.
@@ -318,13 +283,11 @@ namespace Perihelion.ViewModels {
             set { slewOptionsOpen = value; RaisePropertyChanged(); }
         }
 
-        /// <summary>Real user request (2026-09-05): the Slew and Center button's own label should
-        /// reflect exactly what it's about to do, since Center and Rotate are now independently
-        /// toggleable via the Slew options popup rather than fixed. Checks RotatorConnected too,
-        /// not just UseRotation -- UseRotation can be true with no rotator present (it's no longer
-        /// gated on one, see its own doc comment and the XAML's), in which case SlewAndCenterAction
-        /// itself falls back to plain Center, so the label has to say that's what will actually
-        /// happen rather than promising a rotate that won't occur.</summary>
+        /// <summary>Reflects exactly what Slew and Center is about to do, since Center and
+        /// Rotate are independently toggleable via the Slew options popup. Checks
+        /// RotatorConnected too, not just UseRotation -- UseRotation can be true with no rotator
+        /// present, in which case SlewAndCenterAction falls back to plain Center, so the label
+        /// has to say that rather than promising a rotate that won't occur.</summary>
         public string SlewButtonLabel {
             get {
                 if (UseRotation && RotatorConnected) return "Slew, Center & Rotate";
@@ -343,39 +306,32 @@ namespace Perihelion.ViewModels {
         /// negated because screen-space rotation (WPF's RotateTransform.Angle, clockwise in
         /// pixel space) and the astronomical position-angle convention CenterAndRotate itself
         /// uses aren't the same direction by default for a standard N-up display. Best
-        /// understanding as of writing this, not yet confirmed against a real rotator visually --
+        /// understanding as of writing this, not yet confirmed against a rotator visually --
         /// flag if the box appears to rotate the wrong way once actually seen live.</summary>
         public double DisplayRotationAngle => UseRotation ? -RotationAngle : 0;
 
         // --- Background pan/zoom ---
         //
-        // Rebuilt (2026-09-05) to match how Touch-N-Stars' own Perihelion framing view
-        // (FramingOffsetView.vue) actually works -- read directly rather than guessed a second
-        // time: it has exactly ONE drag interaction (pan the whole sky view), not two. The target
-        // marker is pinned to a real point ON the sky image, so panning carries it along, same as
-        // a pin on a map; the FOV rectangle stays fixed at the viewport's own center the whole
-        // time (there is no independently-draggable FOV box on the TNS side at all). Offset is
-        // then just "how far the marker has moved from center" -- exactly what
-        // FramingOffsetView.vue's own captureFraming() reads off its view's pan state.
+        // Matches Touch-N-Stars' own Perihelion framing view (FramingOffsetView.vue): exactly
+        // ONE drag interaction (pan the whole sky view), not two. The target marker is pinned to
+        // a point ON the sky image, so panning carries it along like a pin on a map; the FOV
+        // rectangle stays fixed at the viewport's own center the whole time. Offset is then just
+        // "how far the marker has moved from center".
         //
-        // ImageZoom is still purely cosmetic (never changes any real value, just for looking
-        // around at more/less context) -- TranslateTransform is applied AFTER ScaleTransform in
+        // ImageZoom is purely cosmetic -- TranslateTransform is applied AFTER ScaleTransform in
         // the Window's own TransformGroup, so a pan distance in on-screen pixels stays constant
-        // regardless of zoom level (translation happens in the already-scaled coordinate frame),
-        // which is why ImagePanX/Y can convert straight to arcsec via pixelsPerArcmin below with
-        // no zoom-dependent correction needed.
+        // regardless of zoom level, which is why ImagePanX/Y can convert straight to arcsec via
+        // pixelsPerArcmin below with no zoom-dependent correction needed.
         //
         // PerihelionFramingComposerWindow's own code-behind drives Zoom/Pan from mouse wheel/
         // drag, since WPF has no built-in pan/zoom gesture support without a third-party
         // behaviors library this project doesn't reference. Zoom clamping happens there too, the
         // natural place to enforce "don't zoom out past 1x".
 
-        // 2.5, not 1.0 -- real bug found from a real screenshot: at zoom exactly 1.0 the fetched
-        // image is displayed at precisely the viewport's own size (Stretch="UniformToFill" on an
-        // image whose own aspect matches a same-aspect container is an exact fit, no overflow at
-        // all), so ANY pan at that zoom level immediately exposed the image's real edge (the
-        // black strip the screenshot showed) -- there was no slack to pan into. Starting zoomed
-        // in past 1.0 guarantees real overflow to pan around within from the moment this opens.
+        // 2.5, not 1.0 -- at zoom exactly 1.0 the fetched image exactly fills the viewport
+        // (Stretch="UniformToFill" on a same-aspect image/container has zero overflow), so any
+        // pan at that zoom immediately exposes the image's edge with no slack to pan into.
+        // Starting zoomed in past 1.0 guarantees overflow to pan around within.
         private double imageZoom = 2.5;
         public double ImageZoom {
             get => imageZoom;
@@ -383,12 +339,12 @@ namespace Perihelion.ViewModels {
         }
 
         private double imagePanX;
-        /// <summary>The one real interaction -- dragging the sky map sets this (and ImagePanY),
+        /// <summary>The one interaction -- dragging the sky map sets this (and ImagePanY),
         /// which directly derives and sets OffsetRaArcsec -- the only way to set the offset now
-        /// that "Capture Offset from Mount" (deriving it from the mount's real position instead)
+        /// that "Capture Offset from Mount" (deriving it from the mount's position instead)
         /// has been removed as a narrow, rarely-useful duplicate of this same panning mechanism.
         /// RA increasing = screen right: best understanding as of writing this, not yet confirmed
-        /// against a real sky map visually -- flag if it turns out backwards once actually seen
+        /// against a sky map visually -- flag if it turns out backwards once actually seen
         /// live.</summary>
         public double ImagePanX {
             get => imagePanX;
@@ -427,9 +383,8 @@ namespace Perihelion.ViewModels {
 
         // Separate from StatusText -- that field sits right under Slew and Center/Determine
         // Rotation and reports on THOSE hardware actions specifically; Reset isn't one of those
-        // (it touches no hardware), and showing its own confirmation there read as misplaced
-        // (real user feedback, 2026-09-05). This one is displayed right above the bottom button
-        // row instead, next to the action it actually confirms.
+        // (it touches no hardware). This one is displayed right above the bottom button row
+        // instead, next to the action it actually confirms.
         private string footerStatusText = string.Empty;
         public string FooterStatusText {
             get => footerStatusText;
@@ -489,56 +444,48 @@ namespace Perihelion.ViewModels {
 
         // FOV rectangle -- fixed at the viewport's own center always (HorizontalAlignment=Center
         // in the XAML, no Left/Top here at all), matching FramingOffsetView.vue's own behavior
-        // (no independently-draggable FOV box there). Only its size is real state, computed from
+        // (no independently-draggable FOV box there). Only its size is state, computed from
         // the user's own gear.
         private double fovRectWidth, fovRectHeight;
         public double FovRectWidth { get => fovRectWidth; private set { fovRectWidth = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetMarkerSize)); RaisePropertyChanged(nameof(TargetLabelGap)); } }
         public double FovRectHeight { get => fovRectHeight; private set { fovRectHeight = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(TargetMarkerSize)); RaisePropertyChanged(nameof(TargetLabelGap)); } }
 
         /// <summary>Target marker's on-screen diameter, sized relative to the FOV rectangle
-        /// rather than a fixed pixel size -- a comet/asteroid has no real angular size worth
+        /// rather than a fixed pixel size -- a comet/asteroid has no angular size worth
         /// drawing to scale, but a fixed-size dot looked disproportionate across very different
         /// camera FOVs (a speck against a huge FOV rectangle, or nearly filling a tiny one).
         /// Clamped so it stays visible at a small FOV and doesn't dominate a large one.</summary>
         public double TargetMarkerSize => Math.Clamp(Math.Min(FovRectWidth, FovRectHeight) * 0.12, 6.0, 24.0);
 
-        /// <summary>Real bug found from a real screenshot: the name label used a fixed 8px gap
-        /// from the marker's own center, but the marker itself lives inside the zoom-scaled Grid
-        /// (its real on-screen diameter is TargetMarkerSize * ImageZoom, not TargetMarkerSize
-        /// alone -- unlike the label, which was just fixed to render at a constant size, see
-        /// TargetLabelScreenX/Y's own doc comment), so at higher zoom the marker visibly grew
-        /// past that fixed gap and covered the first letters of the label. This is the marker's
-        /// own real on-screen radius plus a small constant clearance, not a fixed number, so the
-        /// label's gap always starts just outside the marker's actual rendered edge regardless of
-        /// zoom.</summary>
+        /// <summary>The marker's own on-screen radius (TargetMarkerSize * ImageZoom, since
+        /// the marker lives inside the zoom-scaled Grid unlike the label -- see
+        /// TargetLabelScreenX/Y's own doc comment) plus a small constant clearance, not a fixed
+        /// gap, so the label always starts just outside the marker's actual rendered edge
+        /// regardless of zoom.</summary>
         public double TargetLabelGap => TargetMarkerSize * ImageZoom / 2.0 + 4.0;
 
         // Set once per LoadSkyMapAsync call -- how many on-screen pixels correspond to one arcmin
-        // on the sky, used by ImagePanX/Y's own setters to convert a drag distance to a real
+        // on the sky, used by ImagePanX/Y's own setters to convert a drag distance to a
         // angular offset, and by CaptureOffsetAction to convert the other way.
         private double pixelsPerArcmin = 1;
 
         // --- Path overlay ---
         //
-        // Real user request (2026-09-06): overlay the object's own 10-night path directly on the
-        // sky map, matching Touch-N-Stars' own FramingOffsetView.vue (a violet path line plus
-        // dots, the "tonight" point distinguished from the rest). That component draws onto a
-        // separate <canvas> using a proper tangent-plane (gnomonic) projection from its own
-        // interactive planetarium library's view state -- not something this Composer can reuse
-        // directly (no such library here, just a fetched static bitmap), but the CONCEPT ports
-        // cleanly: project each point's RA/Dec into the exact same fixed pixel space
-        // ImagePanX/Y/CaptureOffsetAction already use (arcsec-from-trueCoordinates times
-        // pixelsPerArcmin, no cos(dec) compensation) rather than a separate, more rigorous
-        // projection -- deliberately consistent with how every other point in this same view
-        // (the target marker, the captured offset) is already placed, not more "correct" in
-        // isolation. At the small angular scales a camera FOV actually spans, the difference is
-        // negligible; a different convention for just this one overlay would be a real
-        // inconsistency for no visible benefit.
+        // Overlays the object's own 10-night path directly on the sky map, matching
+        // Touch-N-Stars' own FramingOffsetView.vue (a violet path line plus dots, the "tonight"
+        // point distinguished from the rest). That component projects via a proper tangent-plane
+        // (gnomonic) projection from its own interactive planetarium library's view state -- not
+        // something this Composer can reuse (no such library here, just a fetched static
+        // bitmap), but the CONCEPT ports cleanly: project each point's RA/Dec into the same
+        // fixed pixel space ImagePanX/Y/CaptureOffsetAction already use (arcsec-from-
+        // trueCoordinates times pixelsPerArcmin, no cos(dec) compensation), consistent with how
+        // the target marker and captured offset are already placed. At the small angular scales
+        // a camera FOV actually spans, the difference from a true projection is negligible.
         //
         // Absolute canvas-space coordinates (SkyMapDisplaySize/2 already added), not raw offsets,
         // so the XAML can bind Canvas.Left/Top and Polyline.Points directly with no converter.
         // Lives inside the SAME transformed Grid as the sky image and target marker, so it pans/
-        // zooms as one unit with them -- these are real positions on the sky, not a viewport-
+        // zooms as one unit with them -- these are positions on the sky, not a viewport-
         // fixed overlay like the FOV rectangle.
         //
         // Day 0 (tonight) is deliberately NOT drawn as its own marker -- LoadSkyMapAsync's own
@@ -547,7 +494,7 @@ namespace Perihelion.ViewModels {
         // on why day 0 uses full-precision UtcNow, not midnight), so it would coincide almost
         // exactly with the existing target Ellipse and just double-draw the same dot. PathMarkers
         // starts from day 1; the connecting Polyline still includes day 0, so the line visibly
-        // starts at the real target marker.
+        // starts at the target marker.
         private PointCollection? pathPolylinePoints;
         public PointCollection? PathPolylinePoints {
             get => pathPolylinePoints;
@@ -566,43 +513,35 @@ namespace Perihelion.ViewModels {
             public string Tooltip { get; set; } = string.Empty;
         }
 
-        // Real bug found from a real screenshot (2026-09-06): the label was first placed INSIDE
-        // the same pan/zoom-transformed Grid as the image/marker/path, so at the default 2.5x
-        // zoom its font rendered 2.5x too -- FramingOffsetView.vue's own canvas-drawn label uses
-        // a font size fixed in screen pixels regardless of the view's own zoom/FOV, so it should
-        // stay constant here too, not scale. Fixed by moving the label to the OUTER, untransformed
-        // Grid instead (sibling of the FOV rectangle) and computing its own screen position
-        // directly from ImagePanX/Y rather than inheriting the shared RenderTransform. This is
+        // The label lives in the OUTER, untransformed Grid (sibling of the FOV rectangle), not
+        // the pan/zoom-transformed Grid the image/marker/path sit in, so its font size stays
+        // constant regardless of ImageZoom. Its screen position is computed directly from
+        // ImagePanX/Y rather than inherited from the shared RenderTransform. This is
         // mathematically exact, not an approximation: the marker/label sit exactly at the inner
-        // Grid's own RenderTransformOrigin (0.5,0.5 = dead center), and WPF scales a
-        // RenderTransform around that origin point -- a point exactly AT the scale origin is
-        // invariant under scaling, so ImageZoom drops out of the position entirely and only the
-        // TranslateTransform (ImagePanX/Y) actually moves it. Y is nudged up ~7px (half a
-        // typical single-line 11pt run's own height) so the label reads vertically centered on
-        // the marker, matching FramingOffsetView.vue's own boxY centering -- a fixed constant,
-        // not measured, since WPF has no clean way to bind a TextBlock's own rendered height back
-        // into a Canvas.Top the way ActualWidth already gets used for TargetLabelLeftConverter
-        // (that one has real user-visible payoff -- text overlapping the wrong side of the path
-        // -- worth a MultiBinding; a few px of vertical centering doesn't).
+        // Grid's own RenderTransformOrigin (0.5,0.5 = dead center), and a point exactly at a
+        // RenderTransform's scale origin is invariant under scaling, so ImageZoom drops out of
+        // the position entirely and only the TranslateTransform (ImagePanX/Y) actually moves it.
+        // Y is nudged up ~7px (half a typical single-line run's own height) so the label reads
+        // vertically centered on the marker -- a fixed constant, not measured, since WPF has no
+        // clean way to bind a TextBlock's own rendered height back into a Canvas.Top.
         public double TargetLabelScreenX => SkyMapDisplaySize / 2.0 + ImagePanX;
         public double TargetLabelScreenY => SkyMapDisplaySize / 2.0 - 7 + ImagePanY;
 
         private bool targetLabelOnRight = true;
-        /// <summary>Real user request (2026-09-06), matching FramingOffsetView.vue's own name-tag
-        /// placement exactly: the target's name sits on the OPPOSITE side from wherever the path
-        /// continues from "tonight" (day 0), so the label never runs alongside/through the path
-        /// line itself. True (right) until path data loads or there's fewer than 2 points to
-        /// judge a direction from. Doesn't need FramingOffsetView.vue's own canvas-edge safety
-        /// fallback -- the target marker sits at the sky map's own exact center by construction
-        /// here (unlike that component's own pannable view center), so there's always at least
-        /// SkyMapDisplaySize/2 of clearance on either side, comfortably more than any real target
+        /// <summary>Matches FramingOffsetView.vue's own name-tag placement: the target's name
+        /// sits on the OPPOSITE side from wherever the path continues from "tonight" (day 0), so
+        /// the label never runs alongside/through the path line. True (right) until path data
+        /// loads or there's fewer than 2 points to judge a direction from. Doesn't need
+        /// FramingOffsetView.vue's own canvas-edge safety fallback -- the target marker sits at
+        /// the sky map's own exact center by construction here, so there's always at least
+        /// SkyMapDisplaySize/2 of clearance on either side, comfortably more than any target
         /// name's rendered width.</summary>
         public bool TargetLabelOnRight {
             get => targetLabelOnRight;
             private set { targetLabelOnRight = value; RaisePropertyChanged(); }
         }
 
-        /// <summary>Fetches the object's own real 10-night path and projects it into the sky
+        /// <summary>Fetches the object's own 10-night path and projects it into the sky
         /// map's fixed pixel space -- called from LoadSkyMapAsync AFTER pixelsPerArcmin is set
         /// (projection needs it), not in parallel with the sky-map fetch itself. Failure here
         /// (e.g. no internet for a comet's MPC elements) just means no path overlay -- it doesn't
@@ -643,18 +582,18 @@ namespace Perihelion.ViewModels {
             }
         }
 
-        /// <summary>Fetches a real sky-survey image centered on the target, sized to show
+        /// <summary>Fetches a sky-survey image centered on the target, sized to show
         /// genuine surrounding context (SkyMapZoomOutFactor wider than the camera's own actual
-        /// field of view), then computes the FOV rectangle overlay from the user's own real gear
+        /// field of view), then computes the FOV rectangle overlay from the user's own gear
         /// settings -- CameraSettings.PixelSize + TelescopeSettings.FocalLength for arcsec/pixel
         /// (AstroUtil.ArcsecPerPixel, already used elsewhere in this project for MaxExposureText),
         /// times FramingAssistantSettings.CameraWidth/CameraHeight for the sensor's own pixel
-        /// dimensions -- the SAME persisted settings NINA's own real Framing Assistant uses for
-        /// this exact purpose (IFramingAssistantSettings, confirmed from its own real source),
+        /// dimensions -- the SAME persisted settings NINA's own Framing Assistant uses for
+        /// this exact purpose (IFramingAssistantSettings, confirmed from its own source),
         /// not something reinvented here. LastSelectedImageSource is reused for the same reason:
         /// whatever image source the user already prefers (or has working, if they don't have
-        /// reliable internet) in the real Framing Assistant is almost certainly the right default
-        /// here too, rather than hardcoding one. SkySurveyFactory/ISkySurvey are both real,
+        /// reliable internet) in the Framing Assistant is almost certainly the right default
+        /// here too, rather than hardcoding one. SkySurveyFactory/ISkySurvey are both,
         /// plugin-safe NINA.WPF.Base APIs (same assembly AltitudeChart came from) -- this is
         /// genuine sky-survey imagery, not a custom rendering.</summary>
         private async Task LoadSkyMapAsync() {
@@ -678,46 +617,44 @@ namespace Perihelion.ViewModels {
                     cameraFovWidthArcmin = cameraFovHeightArcmin = 0;
                 }
 
-                // Offline Sky Map has no real photographic image to fetch -- SkySurveyFactory
+                // Offline Sky Map has no photographic image to fetch -- SkySurveyFactory
                 // would just hand back a flat placeholder for it (see ImageSources' own doc
-                // comment). Real NINA's own Framing Assistant doesn't display that placeholder
+                // comment). NINA's own Framing Assistant doesn't display that placeholder
                 // either for this source; the actual viewable content is SkyMapAnnotator's own
                 // rendered scene, which is TWO things composited together, not one: the
                 // catalog-based star/constellation/grid overlay (always present, computed live),
-                // and -- the part that was missing here until now -- whatever real photographic
+                // and -- the part that was missing here until now -- whatever photographic
                 // tiles already happen to be sitting in the user's own Sky Survey Cache folder
-                // near these coordinates, drawn as a background layer underneath it. Real NINA
+                // near these coordinates, drawn as a background layer underneath it. NINA
                 // enables this second part specifically for SKYATLAS via
                 // "SkyMapAnnotator.UseCachedImages = IsX64" (effectively always true on any modern
                 // system) -- a fast-moving target like a comet will still often show mostly bare
                 // overlay, since nothing's likely been cached for its exact, constantly-shifting
                 // field before, but a popular fixed DSO target (M31, say) that's been framed
                 // before through NINA or Perihelion looks genuinely photographic here, exactly
-                // matching real NINA's own behavior rather than a plain catalog chart.
+                // matching NINA's own behavior rather than a plain catalog chart.
                 if (selectedImageSource == SkySurveySource.SKYATLAS) {
                     var vFoVDegrees = AstroUtil.ArcminToDegree(requestedFovArcmin);
                     var offlineCache = new CacheSkySurvey(profileService.ActiveProfile.ApplicationSettings.SkySurveyCacheDirectory);
-                    Logger.Info($"Perihelion: [diag] Initialize starting at {DateTime.UtcNow:HH:mm:ss.fff}, UseCachedImages currently {skyMapAnnotator.UseCachedImages}");
                     skyMapAnnotator.UseCachedImages = true;
                     await skyMapAnnotator.Initialize(trueCoordinates, vFoVDegrees,
                         SkyMapOfflineRasterSize, SkyMapOfflineRasterSize, 0.0, offlineCache, CancellationToken.None);
                     SkyImage = skyMapAnnotator.SkyMapOverlay;
-                    Logger.Info($"Perihelion: [diag] Initialize returned at {DateTime.UtcNow:HH:mm:ss.fff}");
                     pixelsPerArcmin = SkyMapDisplaySize / requestedFovArcmin;
                 } else if (selectedImageSource == SkySurveySource.CACHE) {
-                    // Real, working NINA API (NINA.WPF.Base.SkySurvey.CacheSkySurvey, confirmed
+                    // A working NINA API (NINA.WPF.Base.SkySurvey.CacheSkySurvey, confirmed
                     // via reflection against the exact NINA.Plugin 3.2.0.9001 assembly this
                     // project builds against -- its own source isn't present in the PINS tree
-                    // this project otherwise reads from, so its real constructor/method shapes
+                    // this project otherwise reads from, so its constructor/method shapes
                     // were confirmed directly against the compiled DLL rather than guessed).
                     // ApplicationSettings.SkySurveyCacheDirectory is the exact same persisted
                     // setting behind NINA's own Options > Imaging > "Sky Survey Cache folder"
                     // field, so this reads from wherever the user has that configured, not a
-                    // hardcoded path. GetImage(sourceKey, ra, dec, rotation, fovArcmin) is real
+                    // hardcoded path. GetImage(sourceKey, ra, dec, rotation, fovArcmin) is
                     // NINA's own "find an already-cached image near these coordinates" lookup
                     // (used internally by FramingAssistantVM as an opportunistic cache-first check
                     // for every source, not just Cache itself) -- there's no separate "pick one
-                    // from a list" UI here, unlike real NINA's own Cache option, since this same
+                    // from a list" UI here, unlike NINA's own Cache option, since this same
                     // method already does location-based matching on its own; tried across every
                     // live source's own cache key in turn since a user picking "Cache" here almost
                     // certainly means "whatever's already been fetched for this field," not
@@ -756,8 +693,8 @@ namespace Perihelion.ViewModels {
                     SkyImage = image.Image;
                     pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
 
-                    // Mirrors real NINA's own FramingAssistantVM: only when the user has this on
-                    // in their own Options does a live fetch also get persisted to the same real
+                    // Mirrors NINA's own FramingAssistantVM: only when the user has this on
+                    // in their own Options does a live fetch also get persisted to the same
                     // cache folder, building up genuine offline coverage over repeated use --
                     // exactly the "no internet dependency in the field" principle this whole
                     // project already leans on elsewhere, extended to this Composer's own fetches.
@@ -784,7 +721,7 @@ namespace Perihelion.ViewModels {
 
                 SkyMapStatusText = cameraFovWidthArcmin > 0
                     ? string.Empty
-                    : "Camera/telescope profile isn't fully configured -- showing the sky map without a real FOV rectangle.";
+                    : "Camera/telescope profile isn't fully configured -- showing the sky map without an FOV rectangle.";
 
                 await LoadPathAsync();
             } catch (Exception ex) {
@@ -814,15 +751,15 @@ namespace Perihelion.ViewModels {
         /// CenterAndRotate step to actually command either.</summary>
         public double? CapturedRotationAngle => UseRotation && RotatorConnected ? RotationAngle : (double?)null;
 
-        /// <summary>Three real, distinct outcomes depending on the Slew options popup's own
+        /// <summary>Three, distinct outcomes depending on the Slew options popup's own
         /// IncludeCenter/UseRotation toggles -- SlewButtonLabel above always names exactly which
         /// one is about to run. Checks RotatorConnected alongside UseRotation for the same reason
         /// SlewButtonLabel and CapturedRotationAngle do -- UseRotation can be true with no rotator
         /// present, and CenterAndRotate has nothing to command in that case, so this falls back to
         /// plain Center instead of attempting (and failing) a rotate against hardware that isn't
-        /// there. Plain Slew (no plate-solve) uses the same real
+        /// there. Plain Slew (no plate-solve) uses the same
         /// NINA.Sequencer.SequenceItem.Telescope.SlewScopeToRaDec item Add to Sequence's own
-        /// "just point there" step would use -- a real, if less common, use case for a quick test
+        /// "just point there" step would use -- a valid, if less common, use case for a quick test
         /// frame before committing to a full plate-solved center.</summary>
         private async Task SlewAndCenterAction() {
             IsBusy = true;
@@ -832,14 +769,10 @@ namespace Perihelion.ViewModels {
                 : IncludeCenter ? "Slewing and centering..." : "Slewing...";
             try {
                 var progress = new Progress<ApplicationStatus>(s => StatusText = s.Status ?? StatusText);
-                // Real bug found from real hardware use, 2026-09-06: NINA's own Center/
-                // CenterAndRotate/SlewScopeToRaDec.Execute() all check AtPark themselves and
-                // THROW ("Telescope Parked") rather than unparking -- real NINA sequences always
-                // run an explicit UnparkScope item first, which none of these three branches have
-                // ahead of them here (they're executed standalone, not inside a real sequence).
-                // Same class of bug already caught and fixed for Add to Sequence's own use of
-                // these same items (that container DOES start with a real Unpark step) and for
-                // Touch-N-Stars' own Slew and Center (PerihelionView.vue's unparkMountIfNeeded()).
+                // NINA's own Center/CenterAndRotate/SlewScopeToRaDec.Execute() all check AtPark
+                // themselves and THROW ("Telescope Parked") rather than unparking -- a
+                // sequence always runs an explicit UnparkScope item first, which none of these
+                // three branches have ahead of them here since they're executed standalone.
                 if (telescopeMediator.GetInfo().AtPark) {
                     if (!await telescopeMediator.UnparkTelescope(progress, CancellationToken.None)) {
                         StatusText = "Slew/center failed: mount is parked and could not be unparked.";
@@ -876,10 +809,10 @@ namespace Perihelion.ViewModels {
             }
         }
 
-        /// <summary>Real plate-solve rotation readout -- the only way a user WITHOUT a rotator can
+        /// <summary>plate-solve rotation readout -- the only way a user WITHOUT a rotator can
         /// know what framing rotation they'll actually get (the "Rotate to" section above is
         /// disabled entirely without one, since there's nothing to command), and a quick sanity
-        /// check for a user WITH one before picking a target angle. Ported directly from real
+        /// check for a user WITH one before picking a target angle. Ported directly from
         /// NINA's own FramingAssistantVM.GetRotationFromCamera
         /// (NINA/ViewModel/FramingAssistant/FramingAssistantVM.cs) -- same CaptureSolver/
         /// PlateSolverFactory/CaptureSolverParameter construction sourced from the same
@@ -922,7 +855,7 @@ namespace Perihelion.ViewModels {
                 if (result.Success) {
                     RotationAngle = Math.Round(AstroUtil.EuclidianModulus(result.PositionAngle, 360), 1);
                     UseRotation = true;
-                    // Same real behavior as FramingAssistantVM's own version -- if a rotator IS
+                    // Same behavior as FramingAssistantVM's own version -- if a rotator IS
                     // connected, sync its reported position to match what was just measured
                     // (calibration), it doesn't command a move anywhere.
                     if (rotatorMediator.GetInfo().Connected) {
@@ -945,7 +878,7 @@ namespace Perihelion.ViewModels {
         /// <summary>Clears every adjustment made in this Composer session (pan/zoom, rotation,
         /// offset) back to the defaults it opened with -- lets a user start over without closing
         /// and reopening the whole window. Does not touch SelectedImageSource/RotatorConnected
-        /// (real profile/hardware state, not a session adjustment).</summary>
+        /// (profile/hardware state, not a session adjustment).</summary>
         private void ResetAction() {
             ImagePanX = 0;
             ImagePanY = 0;
@@ -972,12 +905,12 @@ namespace Perihelion.ViewModels {
             if (pixelsPerArcmin > 0) {
                 // Setting the pan (not OffsetRa/DecArcsec directly) -- ImagePanX/Y's own setters
                 // derive and set the offset, so this keeps the on-screen marker's position and
-                // the real offset value as one source of truth instead of two that could drift,
+                // the offset value as one source of truth instead of two that could drift,
                 // and moves the marker to visually reflect this physical capture too.
                 ImagePanX = (raArcsec / 60.0) * pixelsPerArcmin;
                 ImagePanY = -(decArcsec / 60.0) * pixelsPerArcmin;
             } else {
-                // No real gear configured to derive a pixel scale from -- fall back to setting
+                // No gear configured to derive a pixel scale from -- fall back to setting
                 // the offset directly; the marker just won't visually move to match.
                 OffsetRaArcsec = raArcsec;
                 OffsetDecArcsec = decArcsec;
@@ -995,7 +928,6 @@ namespace Perihelion.ViewModels {
         /// must NOT dispose it (that would break every future "Frame" click for the rest of the
         /// session, not just this window).</summary>
         public void Dispose() {
-            Logger.Info($"Perihelion: [diag] Composer window closing at {DateTime.UtcNow:HH:mm:ss.fff} for {TargetName}");
             skyMapAnnotator.PropertyChanged -= skyMapAnnotatorHandler;
         }
     }

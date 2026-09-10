@@ -10,13 +10,13 @@ using System.Threading.Tasks;
 namespace Perihelion.Astrometry {
 
     /// <summary>
-    /// Real, current observer-reported brightness for a comet -- a cross-check against
-    /// OrbitalTracking's own predicted (H, G model) magnitude, which has no way to know about a
-    /// real outburst or under-performance. Ported from OryxAstro's own
-    /// server/utils/cometActivity.ts -- that file's own doc comment cites verified real cases:
+    /// Current observer-reported brightness for a comet -- a cross-check against
+    /// OrbitalTracking's own predicted (H, G model) magnitude, which has no way to know about
+    /// an outburst or under-performance. Ported from OryxAstro's own
+    /// server/utils/cometActivity.ts -- that file's own doc comment cites verified cases:
     /// 10P/Tempel and 220P/McNaught were both observed 4+ magnitudes brighter than the model
-    /// predicts during active outbursts, a gap large enough to matter for real session planning.
-    /// Sourced from COBS (Comet OBServation database)'s public obs_list.api, which returns real
+    /// predicts during active outbursts, a gap large enough to matter for session planning.
+    /// Sourced from COBS (Comet OBServation database)'s public obs_list.api, which returns
     /// submitted observations in the 80-column ICQ format. Comet-only -- asteroids have no
     /// equivalent observer-reporting community/format.
     /// </summary>
@@ -52,13 +52,12 @@ namespace Perihelion.Astrometry {
         private static readonly Dictionary<string, (CometActivityStatus? Status, DateTime FetchedAtUtc)> _cache = new();
         private static readonly SemaphoreSlim CacheLock = new(1, 1);
 
-        // Real problem measured on real hardware: this cache used to be in-memory only, so every
-        // PINS restart wiped it -- the very next Browse-tab open then had to make a fresh COBS
-        // round-trip for every one of up to MaxComets comets (capped at 6 concurrent to stay a
-        // reasonable citizen of a third-party API), which measured at ~18 seconds. Disk-persisting
-        // it, same pattern as CometOrbits' own comet-elements cache, means a restart only pays
-        // that cost once ever (or once per comet, staggered, as each entry's own 2h TTL happens to
-        // lapse) rather than on every single restart.
+        // An in-memory-only cache is wiped on every PINS restart, so the next Browse-tab open
+        // would make a fresh COBS round-trip for every one of up to MaxComets comets (capped at
+        // 6 concurrent to stay a reasonable citizen of a third-party API) -- measured at ~18
+        // seconds. Disk-persisting it, same pattern as CometOrbits' own comet-elements cache,
+        // means a restart only pays that cost once ever (or once per comet, staggered, as each
+        // entry's own 2h TTL lapses) rather than on every single restart.
         private static readonly string CacheDirectory = Path.Combine(NINA.Core.Utility.CoreUtil.APPLICATIONTEMPPATH, "PerihelionData");
         private static readonly string CacheFilePath = Path.Combine(CacheDirectory, "comet-activity-cache.json");
         private static bool _diskCacheLoaded = false;
@@ -259,7 +258,7 @@ namespace Perihelion.Astrometry {
         /// callers should treat that as "no cross-check available", not an error, and fall back
         /// to the predicted magnitude alone. <paramref name="forceRefresh"/> bypasses the 2h TTL
         /// for an explicit "Refresh COBS" action (see ListBrowseObjectsAsync's own
-        /// forceRefreshCobs parameter) -- an explicit user action deserves today's real numbers,
+        /// forceRefreshCobs parameter) -- an explicit user action deserves today's numbers,
         /// not whatever happened to already be cached.</summary>
         public static async Task<CometActivityStatus?> FetchAsync(HttpClient httpClient, string name, CancellationToken ct = default, bool forceRefresh = false) {
             await CacheLock.WaitAsync(ct).ConfigureAwait(false);
@@ -274,9 +273,9 @@ namespace Perihelion.Astrometry {
                 // that's never had a cached entry (cache the null so a data-less comet doesn't
                 // hammer COBS on every call), but overwriting an EXISTING known-good status with
                 // null on every transient network blip would mean a bad moment on COBS' end (or
-                // this box's own connectivity) quietly erases real data from disk -- exactly the
+                // this box's own connectivity) quietly erases data from disk -- exactly the
                 // resilience this cache is supposed to buy. So a null result only overwrites when
-                // there was nothing worth keeping; otherwise the stale-but-real status rides
+                // there was nothing worth keeping; otherwise the stale-but-status rides
                 // another cycle and the next request just tries again.
                 var hadGoodEntry = _cache.TryGetValue(name, out var existing) && existing.Status != null;
                 if (fresh != null || !hadGoodEntry) {

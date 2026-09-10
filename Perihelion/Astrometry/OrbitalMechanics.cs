@@ -97,12 +97,12 @@ namespace Perihelion.Astrometry {
         }
 
         /// <summary>
-        /// The real observer's heliocentric position and velocity -- Earth's own state plus,
+        /// The observer's heliocentric position and velocity -- Earth's own state plus,
         /// when a site (lat/lon/elevation) is given, the offset and velocity contributed by
         /// standing on Earth's rotating surface rather than at its center. A null observer
         /// means "Earth's center" (no topocentric correction) -- the right choice for anything
         /// that doesn't need this rigor (a browse-list position, a multi-night finder chart),
-        /// since real site coordinates aren't always available to every caller.
+        /// since site coordinates aren't always available to every caller.
         /// </summary>
         public static EclipticState ObserverHeliocentricState(AstroTime t, Observer? observer) {
             var earth = Astronomy.HelioState(Body.Earth, t);
@@ -113,7 +113,7 @@ namespace Perihelion.Astrometry {
             // ObserverState gives the SITE's offset/velocity relative to Earth's center --
             // adding it to Earth's own heliocentric state gives the observer's true heliocentric
             // state, including both Earth's orbital motion and the site's own rotational
-            // velocity (small, ~0.3-0.5 km/s at most, but real).
+            // velocity (small, ~0.3-0.5 km/s at most, but).
             var site = Astronomy.ObserverState(t, observer.Value, EquatorEpoch.J2000);
             var sitePos = RotateEqjToEcliptic(site.x, site.y, site.z, t);
             var siteVel = RotateEqjToEcliptic(site.vx, site.vy, site.vz, t);
