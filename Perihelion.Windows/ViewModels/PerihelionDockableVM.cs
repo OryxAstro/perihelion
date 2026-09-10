@@ -226,7 +226,7 @@ namespace Perihelion.ViewModels {
             // switching this combo box just re-filters the existing, already-fetched list instantly
             // instead of requiring a fresh fetch. browseObjectsView is null the one time this setter
             // runs during the constructor's own initial assignment, before the view exists yet.
-            set { selectedObjectType = value; RaisePropertyChanged(); browseObjectsView?.Refresh(); }
+            set { selectedObjectType = value; RaisePropertyChanged(); browseObjectsView?.Refresh(); UpdateStatusTextFromCurrentFilter(); }
         }
 
         public ObservableCollection<BrowseObject> BrowseObjects { get; }
@@ -239,7 +239,18 @@ namespace Perihelion.ViewModels {
         private string searchText = string.Empty;
         public string SearchText {
             get => searchText;
-            set { searchText = value; RaisePropertyChanged(); browseObjectsView.Refresh(); }
+            set { searchText = value; RaisePropertyChanged(); browseObjectsView.Refresh(); UpdateStatusTextFromCurrentFilter(); }
+        }
+
+        // Switching the object type or typing a search term re-filters the already-fetched
+        // BrowseObjects instantly (both setters above), but StatusText's own count/wording was
+        // only ever set once, by the fetch that last populated the list -- switching from Comets
+        // to Asteroids left it showing the stale comet count until Refresh was clicked, which
+        // looked like the switch itself hadn't done anything. Keeps StatusText in sync with
+        // whatever the list is actually showing right now, without a network round-trip.
+        private void UpdateStatusTextFromCurrentFilter() {
+            if (browseObjectsView == null || IsBusy) return;
+            StatusText = $"{VisibleBrowseObjectCount} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded, brightest first.";
         }
 
         /// <summary>Number of rows the Browse list is actually showing right now (current object
