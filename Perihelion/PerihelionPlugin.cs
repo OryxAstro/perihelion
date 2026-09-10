@@ -171,7 +171,7 @@ namespace Perihelion {
         }
 
         /// <summary>Caps ListBrowseObjectsAsync's own response size for asteroids, same reasoning
-        /// as MaxComets -- applied after every candidate's real current apparent magnitude is
+        /// as MaxComets -- applied after every candidate's current apparent magnitude is
         /// computed and sorted by, since AsteroidMagnitudeThreshold alone (an H, not apparent-
         /// magnitude, cutoff) can still let through far more candidates than are worth
         /// displaying.</summary>

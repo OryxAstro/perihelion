@@ -146,7 +146,7 @@
                 <TextBox Grid.Column="1" Text="{Binding MaxAsteroids, UpdateSourceTrigger=PropertyChanged}" />
             </Grid>
             <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
-                Default 30. Applied after every candidate's real, current apparent magnitude is
+                Default 30. Applied after every candidate's current apparent magnitude is
                 computed and the list sorted by it -- not by Magnitude Limit (H) directly, which
                 alone would favor intrinsically huge but distant objects over closer, brighter
                 ones.

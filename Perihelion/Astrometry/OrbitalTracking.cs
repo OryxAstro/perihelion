@@ -307,7 +307,7 @@ namespace Perihelion.Astrometry {
                 // brightness -- capping on H before computing position would let those crowd out
                 // much fainter-by-H but far brighter-right-now main-belt asteroids. Pure math, no
                 // I/O, so processing the whole pool (thousands of objects even at a generous
-                // threshold) before capping costs single-digit milliseconds, not a real concern.
+                // threshold) before capping costs single-digit milliseconds, not a concern.
                 var asteroidResults = new List<BrowseObject>(asteroids.Count);
                 foreach (var asteroid in asteroids) {
                     var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);

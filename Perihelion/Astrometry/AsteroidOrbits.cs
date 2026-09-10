@@ -186,7 +186,7 @@ namespace Perihelion.Astrometry {
             // Sorted brightest-by-H first for a deterministic, meaningful order on this raw set
             // (Export, disk cache) -- JPL's bulk query API filters but does not sort. NOT the
             // order the Browse list itself is shown in: ListBrowseObjectsAsync computes each
-            // candidate's real current apparent magnitude and re-sorts by that instead, since H
+            // candidate's current apparent magnitude and re-sorts by that instead, since H
             // alone favors intrinsically huge-but-distant objects (dwarf planets, TNOs) over
             // smaller, much-brighter-right-now main-belt asteroids.
             result.Sort((a, b) => a.H.CompareTo(b.H));
