@@ -39,7 +39,7 @@ using RelayCommand = CommunityToolkit.Mvvm.Input.RelayCommand;
 namespace Perihelion.ViewModels {
 
     /// <summary>
-    /// Perihelion's own native dockable panel for real Windows NINA -- the Windows-only
+    /// Perihelion's own native dockable panel for Windows NINA -- the Windows-only
     /// counterpart to the Touch-N-Stars web panel, but running in-process rather than as an HTTP
     /// client of Perihelion's own API server (Quick Track start/stop calls QuickTrackEngine
     /// directly, same call NINA's own advanced sequencer path would end up making). A dockable
@@ -66,46 +66,23 @@ namespace Perihelion.ViewModels {
         private readonly DispatcherTimer statusTimer;
         private CancellationTokenSource? loadCts;
 
-        /// <summary>Owned here, at the dockable panel's own (whole-NINA-session) lifetime, and
-        /// handed into every PerihelionFramingComposerVM the Frame button creates -- NOT
-        /// constructed fresh per Composer window as an earlier version of this code did. Real bug
-        /// found and confirmed via a real-hardware A/B test, 2026-09-07: a brand-new
-        /// SkyMapAnnotator/DatabaseInteraction pairing works exactly once per NINA process (first
-        /// Offline Sky Map load after a fresh NINA start renders correctly; every subsequent one,
-        /// regardless of target, silently renders nothing -- no exception anywhere, confirmed via
-        /// TRACE-level logging showing GetCacheImagesForViewport completing normally each time
-        /// while the actual tile-image compositing pass simply never fires again). Real NINA's own
-        /// Framing Assistant, by contrast, keeps exactly ONE SkyMapAnnotator alive for its own
-        /// whole session and just re-Initializes it repeatedly -- confirmed reliable across four
-        /// consecutive loads in the same test, no degradation. Matching that same one-instance-
-        /// per-session pattern here, rather than continuing to construct a fresh instance per
-        /// Composer open, is the fix -- something in NINA's own underlying DB/native-image
-        /// pipeline (Entity Framework 6 and/or GDI+ tile decoding are the leading suspects, per
-        /// this project's own pre-existing dependency-conflict notes in this exact area) is
-        /// evidently not safe to initialize more than once per process, even though nothing here
-        /// requires it to be.</summary>
+        /// <summary>Owned here at the panel's own whole-session lifetime and handed to every
+        /// PerihelionFramingComposerVM the Frame button creates, rather than constructed fresh
+        /// per window: a second SkyMapAnnotator/DatabaseInteraction pairing in the same NINA
+        /// process silently fails to render its Offline Sky Map (no exception, the tile
+        /// compositing pass just never fires again) -- matching NINA's own Framing Assistant,
+        /// which keeps one instance alive for the whole session and re-Initializes it instead
+        /// of recreating it each time.</summary>
         private readonly SkyMapAnnotator skyMapAnnotator;
 
-        // ISequencerFactory/ISequenceMediator are NOT imported here directly -- confirmed the
-        // hard way that doing so silently breaks this VM's own MEF composition entirely (the
-        // whole panel vanishes from the Imaging tab, no error, no log signal). See
-        // PerihelionPlugin's own static SequencerFactory/SequenceMediator fields for the full
-        // explanation and the working alternative used instead. INighttimeCalculator below is a
-        // different case -- confirmed safe because another real, working NINA dockable VM
-        // elsewhere in the plugin ecosystem imports this exact type directly into its own
-        // constructor. IRotatorMediator (added 2026-09-05, for the Framing Composer's own
-        // rotator-aware framing), IImageDataFactory (added the same day, for the Composer's own
-        // real sky-map fetch via SkySurveyFactory), and ICameraMediator/IImagingMediator/
-        // IFilterWheelMediator (added the same day, for the Composer's own real "Determine
-        // Rotation from Camera" plate-solve -- confirmed safely MEF-importable since
-        // nitr57/ninaAPI's own AdvancedAPI.cs imports all three directly too) are the same kind
-        // of standard, non-special interfaces as ITelescopeMediator/IGuiderMediator above, not
-        // the ISequencerFactory/ISequenceMediator special case.
-        // IFramingAssistantVM/IApplicationMediator are deliberately NOT imported -- "Frame" opens
-        // Perihelion's own popup Framing Composer, not NINA's own Framing Assistant tab. (An
-        // earlier same-day attempt to jump to that tab instead was explicitly rejected --
-        // Perihelion needs its own real popup with a real sky-map/FOV view, not a redirect
-        // elsewhere.)
+        // ISequencerFactory/ISequenceMediator are NOT imported here directly -- doing so
+        // silently breaks this VM's own MEF composition (the whole panel vanishes from the
+        // Imaging tab, no error). See PerihelionPlugin's own static SequencerFactory/
+        // SequenceMediator fields for the working alternative. IRotatorMediator/
+        // IImageDataFactory/ICameraMediator/IImagingMediator/IFilterWheelMediator are all
+        // safely importable standard interfaces, unlike the two above.
+        // IFramingAssistantVM/IApplicationMediator are deliberately not imported -- "Frame"
+        // opens Perihelion's own popup Framing Composer, not NINA's own Framing Assistant tab.
 
         [ImportingConstructor]
         public PerihelionDockableVM(
@@ -128,7 +105,7 @@ namespace Perihelion.ViewModels {
             this.imageDataFactory = imageDataFactory;
             this.nighttimeCalculator = nighttimeCalculator;
 
-            // Same real, persisted FramingAssistantSettings the Composer itself used to read --
+            // Same persisted FramingAssistantSettings the Composer itself used to read --
             // see the SkyMapAnnotator field's own doc comment for why this is constructed once
             // here rather than fresh per Composer window.
             var framingDefaults = profileService.ActiveProfile.FramingAssistantSettings;
@@ -162,6 +139,12 @@ namespace Perihelion.ViewModels {
             UpdateCometsCommand = new AsyncRelayCommand(UpdateCometsAction);
             UpdateCobsCommand = new AsyncRelayCommand(UpdateCobsAction);
             UpdateAsteroidsCommand = new AsyncRelayCommand(UpdateAsteroidsAction);
+            ImportCometsCommand = new AsyncRelayCommand(ImportCometsAction);
+            ExportCometsCommand = new AsyncRelayCommand(ExportCometsAction);
+            ClearCometsCommand = new AsyncRelayCommand(ClearCometsAction);
+            ImportAsteroidsCommand = new AsyncRelayCommand(ImportAsteroidsAction);
+            ExportAsteroidsCommand = new AsyncRelayCommand(ExportAsteroidsAction);
+            ClearAsteroidsCommand = new AsyncRelayCommand(ClearAsteroidsAction);
             RefreshLastUpdatedText();
 
             PathPoints = new PointCollection();
@@ -169,11 +152,22 @@ namespace Perihelion.ViewModels {
             // whole minutes -- Quick Track's own reapply timer only works in minutes. Default
             // 900s / 60 = 15, identical to the previous hardcoded value.
             AutoReapplyMinutes = Math.Max(1, PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds / 60 ?? 15);
+            // ReapplyIntervalSeconds itself always reads the live value with no caching, but a
+            // plain property read alone doesn't refresh anything already bound in the UI -- WPF
+            // only re-reads a binding when it's told to. Subscribing here means an Options-page
+            // change is reflected on this already-open panel immediately, no NINA restart needed.
+            if (PerihelionPlugin.Instance != null) {
+                PerihelionPlugin.Instance.PropertyChanged += (_, e) => {
+                    if (e.PropertyName == nameof(PerihelionPlugin.QuickTrackReapplyIntervalSeconds)) {
+                        RaisePropertyChanged(nameof(ReapplyIntervalSeconds));
+                    }
+                };
+            }
             StatusText = "Loading live comet and asteroid data...";
 
             // "(Don't switch)" first, then every filter actually configured on this profile --
             // matches SwitchFilter's own convention (an empty/null ComboBoxText means leave the
-            // wheel alone, not a real filter position).
+            // wheel alone, not a filter position).
             AvailableFilterNames = new[] { NoFilterChangeOption }
                 .Concat(profileService.ActiveProfile.FilterWheelSettings.FilterWheelFilters.Select(f => f.Name))
                 .ToArray();
@@ -210,10 +204,9 @@ namespace Perihelion.ViewModels {
             statusTimer.Start();
             RefreshQuickTrackStatus();
 
-            // Auto-populate on open instead of waiting for an explicit Refresh click -- real user
-            // feedback (2026-09-05): "why do I have to click refresh for the asteroids/comets to
-            // appear, just populate the list if the data is already cached." Fire-and-forget is
-            // safe here: RefreshBrowseListAction handles its own IsBusy/StatusText/error reporting.
+            // Auto-populate on open rather than waiting for an explicit Refresh click, so a
+            // warm cache shows results immediately. Fire-and-forget is safe here:
+            // RefreshBrowseListAction handles its own IsBusy/StatusText/error reporting.
             _ = RefreshBrowseListAction();
         }
 
@@ -233,7 +226,7 @@ namespace Perihelion.ViewModels {
             // switching this combo box just re-filters the existing, already-fetched list instantly
             // instead of requiring a fresh fetch. browseObjectsView is null the one time this setter
             // runs during the constructor's own initial assignment, before the view exists yet.
-            set { selectedObjectType = value; RaisePropertyChanged(); browseObjectsView?.Refresh(); }
+            set { selectedObjectType = value; RaisePropertyChanged(); browseObjectsView?.Refresh(); UpdateStatusTextFromCurrentFilter(); }
         }
 
         public ObservableCollection<BrowseObject> BrowseObjects { get; }
@@ -246,7 +239,18 @@ namespace Perihelion.ViewModels {
         private string searchText = string.Empty;
         public string SearchText {
             get => searchText;
-            set { searchText = value; RaisePropertyChanged(); browseObjectsView.Refresh(); }
+            set { searchText = value; RaisePropertyChanged(); browseObjectsView.Refresh(); UpdateStatusTextFromCurrentFilter(); }
+        }
+
+        // Switching the object type or typing a search term re-filters the already-fetched
+        // BrowseObjects instantly (both setters above), but StatusText's own count/wording was
+        // only ever set once, by the fetch that last populated the list -- switching from Comets
+        // to Asteroids left it showing the stale comet count until Refresh was clicked, which
+        // looked like the switch itself hadn't done anything. Keeps StatusText in sync with
+        // whatever the list is actually showing right now, without a network round-trip.
+        private void UpdateStatusTextFromCurrentFilter() {
+            if (browseObjectsView == null || IsBusy) return;
+            StatusText = $"{VisibleBrowseObjectCount} {SelectedObjectType.ToString().ToLowerInvariant()}(s) loaded, brightest first.";
         }
 
         /// <summary>Number of rows the Browse list is actually showing right now (current object
@@ -258,10 +262,10 @@ namespace Perihelion.ViewModels {
 
         // --- Update Databases ---
         //
-        // Real user concern: does this cache actually persist across NINA restarts/reboots, or
+        // User concern: does this cache actually persist across NINA restarts/reboots, or
         // could it silently clear out? Verified empirically, not assumed: both
         // %LocalAppData%\NINA\PerihelionData\comet-elements-cache.json and
-        // \comet-activity-cache.json (COBS) already exist on the real deployed machine from
+        // \comet-activity-cache.json (COBS) already exist on the deployed machine from
         // earlier in this same session, surviving every restart and redeploy since -- this is
         // the same stable, persistent NINA.Core.Utility.CoreUtil.APPLICATIONTEMPPATH root that
         // hosts the Plugins folder itself (confirmed from NINA.Plugin/Constants.cs using the same
@@ -269,7 +273,7 @@ namespace Perihelion.ViewModels {
         // the confusing name. CometOrbits' own comet-elements cache has a 6-hour TTL and is used
         // automatically by Load/Refresh; these two buttons are the explicit "do it now, bypass
         // the TTL" actions, matching this project's own existing PINS-side /objects/refresh-cobs
-        // route (mirrored exactly, not reinvented) for the same real reason -- a full COBS sweep
+        // route (mirrored exactly, not reinvented) for the same reason -- a full COBS sweep
         // across every comet takes several seconds to tens of seconds, so it stays a deliberate,
         // explicit action rather
         // than something that runs silently on every Load.
@@ -280,14 +284,11 @@ namespace Perihelion.ViewModels {
         private string asteroidsLastUpdatedText = "Never";
         public string AsteroidsLastUpdatedText => asteroidsLastUpdatedText;
 
-        /// <summary>"Comets (4108)"/"Asteroids (13)"/"COBS (37)" -- per-category count labels.
-        /// Real user request (2026-09-09): Asteroids/COBS originally had no count at all (a
-        /// deliberate call at the time -- the asteroid list is a small, fixed 13, so a number
-        /// alongside it seemed to add little), but real feedback favored consistency with the
-        /// Comets row over that reasoning. All three *Orbits/*Activity CachedCount properties are
-        /// cheap synchronous reads of whatever's already in memory/on disk, never a live fetch.
-        /// COBS counts comets with an actual cached observation, not every comet ever checked --
-        /// see CometActivity.CachedCount's own doc comment for why those aren't the same
+        /// <summary>"Comets (4108)"/"Asteroids (6761)"/"COBS (37)" -- per-category count labels.
+        /// All three *Orbits/*Activity CachedCount properties are cheap synchronous reads of
+        /// whatever's already in memory/on disk, never a live fetch. COBS counts comets with an
+        /// actual cached observation, not every comet ever checked -- see
+        /// CometActivity.CachedCount's own doc comment for why those aren't the same
         /// number.</summary>
         public string CometsCountText => $"Comets ({CometOrbits.CachedCount})";
         public string AsteroidsCountText => $"Asteroids ({AsteroidOrbits.CachedCount})";
@@ -297,11 +298,27 @@ namespace Perihelion.ViewModels {
         public AsyncRelayCommand UpdateCobsCommand { get; }
         public AsyncRelayCommand UpdateAsteroidsCommand { get; }
 
+        /// <summary>Import/Export/Clear -- for an observatory behind a shared/high-density
+        /// network egress that gets IP-blocked by MPC/JPL for looking "spammy": fetching data
+        /// once from an unblocked network and distributing the file locally is the workaround.
+        /// Comets accept/produce MPC's own CometEls.txt format directly (so anyone, not
+        /// just another Perihelion install, can produce a compatible file); asteroids use
+        /// Perihelion's own plain JSON list instead, since there's no external universal bulk
+        /// format for this data -- see CometOrbits/AsteroidOrbits' own ImportFromFileAsync doc
+        /// comments for the full reasoning. COBS deliberately has none of these three: it's a live per-comet
+        /// observation cache, not an elements dataset, and doesn't fit the same import/export
+        /// story.</summary>
+        public AsyncRelayCommand ImportCometsCommand { get; }
+        public AsyncRelayCommand ExportCometsCommand { get; }
+        public AsyncRelayCommand ClearCometsCommand { get; }
+        public AsyncRelayCommand ImportAsteroidsCommand { get; }
+        public AsyncRelayCommand ExportAsteroidsCommand { get; }
+        public AsyncRelayCommand ClearAsteroidsCommand { get; }
+
         /// <summary>Status for the Update Sources actions specifically (Update Comets/Update
-        /// COBS) -- kept separate from StatusText, which is Browse/Load-only, per real user
-        /// feedback (2026-09-05): "Updating comet elements from MPC..." was showing next to the
-        /// Browse combo box, where it looked like a Browse-list status rather than what it
-        /// actually was. Displayed under the Update Sources block in the view instead.</summary>
+        /// COBS) -- kept separate from StatusText, which is Browse/Load-only, so an Update
+        /// Sources message doesn't appear next to the Browse combo box as if it were a
+        /// Browse-list status.</summary>
         private string updateSourcesStatusText = string.Empty;
         public string UpdateSourcesStatusText {
             get => updateSourcesStatusText;
@@ -369,6 +386,132 @@ namespace Perihelion.ViewModels {
             }
         }
 
+        private async Task ImportCometsAction() {
+            var dialog = new Microsoft.Win32.OpenFileDialog {
+                Title = "Import Comet Elements",
+                Filter = "MPC comet elements (*.txt)|*.txt|All files (*.*)|*.*",
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            IsBusy = true;
+            UpdateSourcesStatusText = "Importing comet elements...";
+            try {
+                var count = await CometOrbits.ImportFromFileAsync(dialog.FileName, CancellationToken.None);
+                UpdateSourcesStatusText = $"Imported {count} comet(s) from {System.IO.Path.GetFileName(dialog.FileName)}.";
+            } catch (Exception ex) {
+                UpdateSourcesStatusText = $"Comet import failed: {ex.Message}";
+                Notification.ShowError($"Perihelion: comet import failed: {ex.Message}");
+            } finally {
+                RefreshLastUpdatedText();
+                IsBusy = false;
+            }
+        }
+
+        private async Task ExportCometsAction() {
+            var dialog = new Microsoft.Win32.SaveFileDialog {
+                Title = "Export Comet Elements",
+                FileName = "CometEls.txt",
+                Filter = "MPC comet elements (*.txt)|*.txt|All files (*.*)|*.*",
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            IsBusy = true;
+            UpdateSourcesStatusText = "Exporting comet elements...";
+            try {
+                var ok = await CometOrbits.ExportToFileAsync(dialog.FileName, CancellationToken.None);
+                UpdateSourcesStatusText = ok
+                    ? $"Exported comet elements to {System.IO.Path.GetFileName(dialog.FileName)}."
+                    : "Nothing to export -- comet elements have never been synced on this install.";
+            } catch (Exception ex) {
+                UpdateSourcesStatusText = $"Comet export failed: {ex.Message}";
+                Notification.ShowError($"Perihelion: comet export failed: {ex.Message}");
+            } finally {
+                IsBusy = false;
+            }
+        }
+
+        private async Task ClearCometsAction() {
+            var confirm = MessageBox.Show(
+                "This removes all cached comet elements. The Browse list's comets will be empty until the next Update or a fresh Load.",
+                "Clear Comet Cache", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.OK) return;
+
+            IsBusy = true;
+            try {
+                await CometOrbits.ClearAsync(CancellationToken.None);
+                foreach (var b in BrowseObjects.Where(o => o.ObjectType == OrbitalObjectType.Comet).ToList()) {
+                    BrowseObjects.Remove(b);
+                }
+                UpdateSourcesStatusText = "Comet cache cleared.";
+            } finally {
+                RefreshLastUpdatedText();
+                IsBusy = false;
+            }
+        }
+
+        private async Task ImportAsteroidsAction() {
+            var dialog = new Microsoft.Win32.OpenFileDialog {
+                Title = "Import Asteroid Elements",
+                Filter = "Perihelion asteroid elements (*.json)|*.json|All files (*.*)|*.*",
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            IsBusy = true;
+            UpdateSourcesStatusText = "Importing asteroid elements...";
+            try {
+                var count = await AsteroidOrbits.ImportFromFileAsync(dialog.FileName, CancellationToken.None);
+                UpdateSourcesStatusText = $"Imported {count} asteroid(s) from {System.IO.Path.GetFileName(dialog.FileName)}.";
+            } catch (Exception ex) {
+                UpdateSourcesStatusText = $"Asteroid import failed: {ex.Message}";
+                Notification.ShowError($"Perihelion: asteroid import failed: {ex.Message}");
+            } finally {
+                RefreshLastUpdatedText();
+                IsBusy = false;
+            }
+        }
+
+        private async Task ExportAsteroidsAction() {
+            var dialog = new Microsoft.Win32.SaveFileDialog {
+                Title = "Export Asteroid Elements",
+                FileName = "perihelion-asteroid-elements.json",
+                Filter = "Perihelion asteroid elements (*.json)|*.json|All files (*.*)|*.*",
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            IsBusy = true;
+            UpdateSourcesStatusText = "Exporting asteroid elements...";
+            try {
+                var ok = await AsteroidOrbits.ExportToFileAsync(dialog.FileName, CancellationToken.None);
+                UpdateSourcesStatusText = ok
+                    ? $"Exported asteroid elements to {System.IO.Path.GetFileName(dialog.FileName)}."
+                    : "Nothing to export -- asteroid elements have never been synced on this install.";
+            } catch (Exception ex) {
+                UpdateSourcesStatusText = $"Asteroid export failed: {ex.Message}";
+                Notification.ShowError($"Perihelion: asteroid export failed: {ex.Message}");
+            } finally {
+                IsBusy = false;
+            }
+        }
+
+        private async Task ClearAsteroidsAction() {
+            var confirm = MessageBox.Show(
+                "This removes all cached asteroid elements. The Browse list's asteroids will be empty until the next Update or a fresh Load.",
+                "Clear Asteroid Cache", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+            if (confirm != MessageBoxResult.OK) return;
+
+            IsBusy = true;
+            try {
+                await AsteroidOrbits.ClearAsync(CancellationToken.None);
+                foreach (var b in BrowseObjects.Where(o => o.ObjectType == OrbitalObjectType.Asteroid).ToList()) {
+                    BrowseObjects.Remove(b);
+                }
+                UpdateSourcesStatusText = "Asteroid cache cleared.";
+            } finally {
+                RefreshLastUpdatedText();
+                IsBusy = false;
+            }
+        }
+
         private BrowseObject? selectedBrowseObject;
         public BrowseObject? SelectedBrowseObject {
             get => selectedBrowseObject;
@@ -415,8 +558,8 @@ namespace Perihelion.ViewModels {
         /// <summary>Fills in each comet's ObservedMagnitude/ObservedAverageMagnitude in the
         /// background after the fast, COBS-less list above has already rendered -- same two-phase
         /// pattern as the Touch-N-Stars web panel's own fetchBrowseObjects.js (comment there has
-        /// the full "why": even a warm COBS cache measurably slowed down the initial render on
-        /// real hardware). Reuses ListBrowseObjectsAsync's own parallel COBS-fetch logic rather
+        /// the full "why": even a warm COBS cache measurably slowed down the initial render.
+        /// Reuses ListBrowseObjectsAsync's own parallel COBS-fetch logic rather
         /// than re-implementing it, matched back onto the already-rendered BrowseObjects by Name.
         /// BrowseObject doesn't implement INotifyPropertyChanged, so a plain field mutation won't
         /// update the ListView on its own -- browseObjectsView.Refresh() forces WPF to regenerate
@@ -465,8 +608,8 @@ namespace Perihelion.ViewModels {
 
         // COBS-observed brightness -- comet-only, null for an asteroid or a comet COBS has no
         // reports for. Shown alongside the predicted Magnitude above, not instead of it: the
-        // predicted (H/G model) value can be badly wrong during a real outburst, and that's only
-        // useful to notice when the real observed value sits right next to it. Diff-colored to
+        // predicted (H/G model) value can be badly wrong during an outburst, and that's only
+        // useful to notice when the observed value sits right next to it. Diff-colored to
         // match Touch-N-Stars' own magDiffTier convention exactly (same thresholds, ported here
         // rather than reinvented) -- the two values are colored independently since the most
         // recent report and the 5-observation average can genuinely disagree with each other,
@@ -509,9 +652,9 @@ namespace Perihelion.ViewModels {
         }
 
         // Elements card -- Epoch and Periapsis are shown side by side, not one-or-the-other: a
-        // comet's own perihelion passage time T is a real, separate quantity from "Epoch" (the
+        // comet's own perihelion passage time T is a separate quantity from "Epoch" (the
         // reference date its Mean Anomaly at Epoch is computed for -- today's date at 00:00 UTC,
-        // a convention cross-checked against another real tool's displayed value for the same
+        // a convention cross-checked against another tool's displayed value for the same
         // comet on the same day), not a substitute for it.
         private double? eccentricity, inclinationDeg, argPeriDeg, nodeDeg, perihelionDistanceAu, semiMajorAxisAu;
         private double? meanAnomalyAtEpochDeg, meanAnomalyNowDeg, eccentricAnomalyNowDeg, trueAnomalyNowDeg, distanceNowAu;
@@ -526,10 +669,9 @@ namespace Perihelion.ViewModels {
         public string NodeText => nodeDeg is double n ? $"{n:F4}°" : "--";
         public string PerihelionDistanceText => perihelionDistanceAu is double q ? $"{q:F4} au" : "--";
         public string SemiMajorAxisText => semiMajorAxisAu is double a ? $"{a:F4} au" : "n/a (non-elliptical)";
-        // Wrapped to (-180, 180] -- real user feedback comparing this panel's values side by
-        // side with another reference display for the same comet found the raw [0, 360) values
-        // (this panel's own original convention) confusingly "dramatically different" at a
-        // glance (e.g. 356.25° here vs. -3.75° there) when they were actually the same angle.
+        // Wrapped to (-180, 180] rather than the raw [0, 360) range -- values near the
+        // wraparound point (e.g. 356.25° vs. -3.75°) otherwise look "dramatically different"
+        // at a glance despite being the same angle.
         public string MeanAnomalyAtEpochText => meanAnomalyAtEpochDeg is double m ? $"{WrapSigned(m):F4}°" : "n/a";
         public string MeanAnomalyNowText => meanAnomalyNowDeg is double m ? $"{WrapSigned(m):F4}°" : "n/a";
         public string EccentricAnomalyNowText => eccentricAnomalyNowDeg is double e ? $"{WrapSigned(e):F4}°" : "n/a";
@@ -556,13 +698,11 @@ namespace Perihelion.ViewModels {
         private static double WrapSigned(double degrees) => ((degrees % 360) + 540) % 360 - 180;
 
         // Arcsec remains the internal storage (what LoadedCoordinatesWithOffset actually adds),
-        // but real user feedback: don't display it as a raw arcsec number -- show it as
-        // HH:MM:SS for RA and DMS for Dec instead (both AstroUtil.HoursToHMS/DegreesToDMS
-        // correctly handle negative offsets with a leading "-", confirmed from NINA's own
-        // source, unlike a plain position which never goes negative). Read-only display, not an
+        // but displayed as HH:MM:SS for RA and DMS for Dec instead of a raw arcsec number
+        // (AstroUtil.HoursToHMS/DegreesToDMS correctly handle negative offsets with a leading
+        // "-", unlike a plain position which never goes negative). Read-only display, not an
         // editable sexagesimal text box -- Set Offset (capture from the mount) and Clear Offset
-        // are the only ways to change this (no manual offset typing), which avoids needing a
-        // bespoke bidirectional HH:MM:SS/DMS parser.
+        // are the only ways to change this, avoiding a bespoke bidirectional parser.
         private double offsetRaArcsec, offsetDecArcsec;
         public double OffsetRaArcsec {
             get => offsetRaArcsec;
@@ -592,7 +732,7 @@ namespace Perihelion.ViewModels {
         /// of the 10 nights -- each renders distinctly so the chart reads start-to-end at a
         /// glance, not just as an undifferentiated string of dots. Tooltip carries this point's
         /// own date/RA/Dec so hovering (WPF's native equivalent of "click for info" for a custom
-        /// vector chart like this one) shows something real, not just an anonymous dot.</summary>
+        /// vector chart like this one) shows something, not just an anonymous dot.</summary>
         public sealed class PathMarker {
             public required double Left { get; init; }
             public required double Top { get; init; }
@@ -609,7 +749,7 @@ namespace Perihelion.ViewModels {
         // Named by screen position (Left/Right), not chronology (Start/End) -- a comet's path is
         // an RA/Dec trajectory, not a strict left-to-right timeline, so night 0 does not always
         // plot to the left of night 9 (e.g. a comet whose RA decreases night over night runs the
-        // other way). A real user-reported bug: the previous Start=Left/End=Right assumption put
+        // other way). A user-reported bug: the previous Start=Left/End=Right assumption put
         // the wrong date under each dot whenever a comet's own path happened to run right-to-left.
         // Touch-N-Stars' own web chart (OrbitalPathChart.vue) already gets this right by anchoring
         // each label to that point's own actual x-coordinate; this mirrors the same fix.
@@ -636,7 +776,7 @@ namespace Perihelion.ViewModels {
         private string pathDriftSummaryText = string.Empty;
         public string PathDriftSummaryText => pathDriftSummaryText;
 
-        /// <summary>A real angular reference for the path line's own length -- not a coordinate
+        /// <summary>An angular reference for the path line's own length -- not a coordinate
         /// grid. X1/X2/Y are already in the same canvas pixel space as PathPoints/PathMarkers;
         /// LabelText sits just above the bar's own start tick. Null when there's no meaningful
         /// path (fewer than 2 nights, or the two endpoints plot on top of each other). Ported
@@ -650,7 +790,7 @@ namespace Perihelion.ViewModels {
             public required double X2 { get; init; }
             public required double Y { get; init; }
             // Precomputed here, not via XAML arithmetic (no built-in +/- binding converter in
-            // this project, and one real property per tick is simpler than adding one) -- the
+            // this project, and one property per tick is simpler than adding one) -- the
             // two end-tick verticals and the label's own row, all a few px off the bar's own Y.
             public required double TickTopY { get; init; }
             public required double TickBottomY { get; init; }
@@ -663,23 +803,20 @@ namespace Perihelion.ViewModels {
             private set { pathScaleBar = value; RaisePropertyChanged(); RaisePropertyChanged(nameof(PathScaleBarVisibility)); }
         }
         // Plain Visibility, not a bool + BooleanToVisibilityConverter -- this project has no
-        // converters declared as resources anywhere yet, and a real enum property here is one
+        // converters declared as resources anywhere yet, and an enum property here is one
         // less thing to wire up for a single binding.
         public System.Windows.Visibility PathScaleBarVisibility => PathScaleBarInfo != null ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
 
         // --- Tonight's altitude ---
         //
-        // Uses NINA's own real AltitudeChart control (NINA.WPF.Base.View.AltitudeChart) rather
-        // than a hand-rolled chart -- real user feedback on the hand-rolled version: it looked
-        // inferior to what every other real NINA panel already gets from this control
-        // for free (proper twilight shading, a real "Now" line, transit annotation, moon
-        // position). The control binds its own DataContext (a real NINA.Astrometry.DeepSkyObject
-        // -- SkyObjectBase.Altitudes/Horizon/MaxAltitude compute themselves once
-        // SetDateAndPosition is called, no manual sampling needed) plus a NighttimeData for the
-        // twilight/moon background, exactly the same pattern NINA's own FramingAssistantView.xaml
-        // and SkyAtlasView.xaml use. NighttimeCalculator's ReferenceDate (not DateTime.Now
-        // directly) is what SkyAtlasVM.cs itself passes to SetDateAndPosition, so the target
-        // curve and the twilight background always agree on the same night window.
+        // Uses NINA's own AltitudeChart control (NINA.WPF.Base.View.AltitudeChart) rather than
+        // a hand-rolled one, for the same twilight shading/"Now" line/transit annotation/moon
+        // position every other NINA panel gets for free. The control binds its own DataContext
+        // (a NINA.Astrometry.DeepSkyObject -- SkyObjectBase.Altitudes/Horizon/MaxAltitude
+        // compute themselves once SetDateAndPosition is called) plus NighttimeData for the
+        // twilight/moon background, the same pattern FramingAssistantView.xaml and
+        // SkyAtlasView.xaml use. NighttimeCalculator's ReferenceDate (not DateTime.Now
+        // directly) keeps the target curve and twilight background on the same night window.
         private NighttimeData? nighttimeData;
         public NighttimeData? NighttimeData {
             get => nighttimeData;
@@ -743,14 +880,11 @@ namespace Perihelion.ViewModels {
 
         public RelayCommand AddToSequenceCommand { get; }
 
-        // Wired up 2026-09-05 -- see PerihelionPlugin's own updated comment on SequenceMediator
-        // and PerihelionSequenceBuilder.ResolveFactory's doc comment for the full story: this VM
-        // still never imports ISequencerFactory/ISequenceMediator directly (that's still not
-        // safe -- unchanged from before), it reads PerihelionPlugin's own static
-        // SequenceMediator field instead (populated from a constructor import that turns out
-        // to work fine on ITS OWN, now that ISequencerFactory isn't also being imported
-        // alongside it) and reflects the real ISequencerFactory out of it the same way
-        // nitr57/ninaAPI's own Sequence.cs route does.
+        // This VM never imports ISequencerFactory/ISequenceMediator directly -- see
+        // PerihelionPlugin's own comment on SequenceMediator and
+        // PerihelionSequenceBuilder.ResolveFactory's doc comment for why. It reads
+        // PerihelionPlugin's own static SequenceMediator field instead and reflects the
+        // ISequencerFactory out of it, the same way ninaAPI's own Sequence.cs route does.
         private void AddToSequenceAction() {
             if (Loaded == null) return;
 
@@ -789,10 +923,9 @@ namespace Perihelion.ViewModels {
                 sequenceMediator.AddAdvancedTarget(container);
 
                 // Global Triggers, not this target's own local ones -- see
-                // EnsureGlobalMeridianFlipTrigger's own doc comment for why (real user feedback,
-                // 2026-09-05). Best-effort: if the root can't be reached for some reason, the
-                // target itself was still added successfully above, so this only logs rather
-                // than rolling back or erroring the whole action.
+                // EnsureGlobalMeridianFlipTrigger's own doc comment for why. Best-effort: if the
+                // root can't be reached, the target itself was still added successfully above,
+                // so this only logs rather than rolling back or erroring the whole action.
                 if (MeridianFlip) {
                     var root = PerihelionSequenceBuilder.ResolveSequenceRoot(sequenceMediator);
                     if (root != null) {
@@ -893,7 +1026,7 @@ namespace Perihelion.ViewModels {
                         // A comet has no stored epoch the way an asteroid does -- MPC's own comet
                         // elements are parameterized by perihelion passage time T instead. "Epoch"
                         // here is today's date at 00:00 UTC, a reference-date convention
-                        // cross-checked against another real tool's displayed Epoch for this same
+                        // cross-checked against another tool's displayed Epoch for this same
                         // comet on the same day (matched exactly), used purely so Mean Anomaly at
                         // Epoch has a concrete instant to be computed for.
                         var cometEpoch = now.Date;
@@ -910,14 +1043,14 @@ namespace Perihelion.ViewModels {
                         var helio = CometOrbits.HeliocentricEcliptic(comet, now);
                         distanceNowAu = Math.Sqrt(helio.X * helio.X + helio.Y * helio.Y + helio.Z * helio.Z);
 
-                        // COBS (real observed brightness) -- fetched only for the loaded object,
+                        // COBS (observed brightness) -- fetched only for the loaded object,
                         // not the whole browse list, unlike the Touch-N-Stars panel's own
                         // includeCobs path: that one needs a non-blocking per-row background
                         // sweep specifically because it covers the WHOLE list; loading a single
                         // object doesn't have that problem, so a direct await here is simplest
-                        // and correct. Real value: predicted (H/G model) magnitude can be badly
+                        // and correct. Value: predicted (H/G model) magnitude can be badly
                         // wrong during an outburst -- 10P/Tempel and 220P/McNaught are verified
-                        // real cases several magnitudes off.
+                        // cases several magnitudes off.
                         var activity = await CometActivity.FetchAsync(HttpClient, target.Name, ct);
                         observedMagnitude = activity?.MostRecent.Magnitude;
                         observedAverageMagnitude = activity?.RecentAverageMagnitude;
@@ -1063,7 +1196,7 @@ namespace Perihelion.ViewModels {
                 var perNightDeg = totalDeg / nights;
                 pathDriftSummaryText = $"{FormatDeg(totalDeg)} total drift over {nights} nights (~{FormatDeg(perNightDeg)}/night)";
 
-                // Real angular scale bar, sized from the endpoints' own actual pixel distance
+                // Angular scale bar, sized from the endpoints' own actual pixel distance
                 // (so it reflects the plot's own effective scale) and placed on whichever
                 // horizontal side has the most clearance from the WHOLE path, not just the start
                 // point -- a curved path can swing close to either bottom corner somewhere other
@@ -1102,8 +1235,8 @@ namespace Perihelion.ViewModels {
             }
 
             // Labels sit in their own row below the plot (see the view), not overlaid on the
-            // canvas -- a real-hardware test found the overlaid version colliding with the line
-            // and dots whenever the path's first/last point happened to land near a top corner.
+            // canvas -- an overlaid label can collide with the line and dots whenever the
+            // path's first/last point lands near a top corner.
             // Which date goes on which SIDE is decided by comparing the two points' own x
             // coordinates, not assumed from chronology -- see PathLeftLabel's own doc comment.
             if (points[0].X <= points[^1].X) {
@@ -1116,7 +1249,7 @@ namespace Perihelion.ViewModels {
             PathPoints = points;
         }
 
-        // --- Actions that drive real hardware ---
+        // --- Actions that drive hardware ---
 
         private Coordinates LoadedCoordinatesWithOffset() {
             var ra = raHours + offsetRaArcsec / 3600.0 / 15.0; // arcsec -> hours, cos(dec)-compensated rate already; offset is a plain positional nudge
@@ -1124,11 +1257,11 @@ namespace Perihelion.ViewModels {
             return new Coordinates(ra, dec, Epoch.J2000, Coordinates.RAType.Hours);
         }
 
-        /// <summary>Opens Perihelion's own popup Framing Composer -- a real sky/FOV view plus
-        /// Slew and Center, rotation (real, if a rotator is connected), and offset capture, all
+        /// <summary>Opens Perihelion's own popup Framing Composer -- a sky/FOV view plus
+        /// Slew and Center, rotation (if a rotator is connected), and offset capture, all
         /// carried into Add to Sequence/Quick Track on confirm. Deliberately Perihelion's own
         /// popup, not a jump to NINA's own Framing Assistant tab (considered and explicitly
-        /// rejected -- Perihelion needs its own real window here, not a redirect). Same factory-
+        /// rejected -- Perihelion needs its own window here, not a redirect). Same factory-
         /// resolution path as AddToSequenceAction (see its own comment): PerihelionPlugin's
         /// static SequenceMediator field, reflected via PerihelionSequenceBuilder.ResolveFactory,
         /// since this VM still never imports ISequencerFactory/ISequenceMediator directly.</summary>
@@ -1194,6 +1327,17 @@ namespace Perihelion.ViewModels {
         }
 
         public int AutoReapplyMinutes { get; }
+
+        /// <summary>The unconverted Options-page value (QuickTrackReapplyIntervalSeconds,
+        /// default 900) -- for display only, read fresh each time rather than cached at
+        /// construction like AutoReapplyMinutes is, so it reflects a mid-session Options change.
+        /// Deliberately NOT the same number AutoReapplyMinutes*60 would give: AutoReapplyMinutes
+        /// exists only because Quick Track's own reapply wire call takes whole minutes (a
+        /// documented limitation -- see AutoReapplyMinutes' own use in StartQuickTrackAction),
+        /// while PerihelionReapplyTrigger (Add to Sequence's own reapply, a separate consumer of
+        /// this exact same setting) reads this raw seconds value directly with no such
+        /// rounding.</summary>
+        public int ReapplyIntervalSeconds => PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds ?? 900;
 
         private bool quickTrackActive;
         public bool QuickTrackActive {

@@ -224,7 +224,7 @@ namespace Perihelion.Astrometry {
         /// Explicit "Sync Now" action for the panel's own sync button -- unlike
         /// FetchCometElementsAsync, this always
         /// attempts a live fetch regardless of cache age, and reports success/failure directly
-        /// rather than silently falling back, since an explicit user action deserves a real
+        /// rather than silently falling back, since an explicit user action deserves a
         /// answer about whether it worked. Leaves the existing cache (disk and in-memory) alone
         /// on failure, so a failed manual sync attempt can't make things worse.
         /// </summary>
@@ -251,10 +251,85 @@ namespace Perihelion.Astrometry {
         }
 
         /// <summary>
+        /// Imports comet elements from a local file already in MPC's own plain CometEls.txt
+        /// format -- the exact same format this class already parses from its own live fetch, not
+        /// a Perihelion-specific one. Motivating case: an observatory behind a shared/
+        /// high-density network egress (e.g. a multi-scope remote site) can get its whole site IP
+        /// blocked by MPC for looking "spammy"; the workaround is fetching the file once from an
+        /// unblocked network and distributing that plain file locally. Because Import accepts
+        /// MPC's own raw format directly, anyone can produce a compatible file with a plain
+        /// browser download of
+        /// MPC's public URL -- no Perihelion involvement needed on the producing end, matching
+        /// Export below being a convenience re-share rather than a requirement. Replaces the
+        /// entire current cache (both in-memory and on disk); returns the number of comets
+        /// actually parsed out of the file (0 is a valid, if suspicious, result -- not an
+        /// exception -- since a malformed or empty file still "imports" successfully as empty).
+        /// </summary>
+        public static async Task<int> ImportFromFileAsync(string filePath, CancellationToken ct = default) {
+            var rawText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+            var parsed = ParseCometElementsText(rawText);
+            await CacheLock.WaitAsync(ct).ConfigureAwait(false);
+            try {
+                _cache = parsed;
+                _cacheFetchedAtUtc = DateTime.UtcNow;
+                PersistToDisk(rawText, _cacheFetchedAtUtc);
+                return parsed.Count;
+            } finally {
+                CacheLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Exports the currently cached comet elements back out as a plain file in the exact same
+        /// MPC CometEls.txt format they were parsed from -- a convenience re-share (e.g. "I
+        /// already have a good sync, hand it to another install behind the same blocked network"),
+        /// not a requirement, since Import above already accepts MPC's own file directly. The
+        /// disk cache already holds the exact raw text this cache was parsed from, so this just
+        /// re-reads and re-writes that rather than keeping a second in-memory copy of the same
+        /// string solely for this rarely-used path. Returns false (writes nothing) when there is
+        /// genuinely no cache yet on this install -- distinct from a file with zero comets in it.
+        /// </summary>
+        public static async Task<bool> ExportToFileAsync(string filePath, CancellationToken ct = default) {
+            await CacheLock.WaitAsync(ct).ConfigureAwait(false);
+            try {
+                LoadDiskCacheIfNeeded();
+                if (_cache == null || !File.Exists(CacheFilePath)) return false;
+                var disk = Newtonsoft.Json.JsonConvert.DeserializeObject<DiskCache>(await File.ReadAllTextAsync(CacheFilePath, ct).ConfigureAwait(false));
+                if (disk == null || string.IsNullOrEmpty(disk.RawText)) return false;
+                await File.WriteAllTextAsync(filePath, disk.RawText, ct).ConfigureAwait(false);
+                return true;
+            } finally {
+                CacheLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Explicit "Clear" action -- wipes both the in-memory and on-disk comet cache, so the
+        /// next lookup does a full live fetch instead of using anything currently held. Use:
+        /// forcing a genuinely clean state after importing a suspect file, or before handing an
+        /// install off to someone else. Does not itself protect against being called mid-fetch
+        /// beyond the same CacheLock every other cache mutation here already serializes against.
+        /// </summary>
+        public static async Task ClearAsync(CancellationToken ct = default) {
+            await CacheLock.WaitAsync(ct).ConfigureAwait(false);
+            try {
+                _cache = null;
+                _cacheFetchedAtUtc = default;
+                try {
+                    if (File.Exists(CacheFilePath)) File.Delete(CacheFilePath);
+                } catch (Exception ex) {
+                    NINA.Core.Utility.Logger.Warning($"Perihelion: could not delete comet elements disk cache: {ex.Message}");
+                }
+            } finally {
+                CacheLock.Release();
+            }
+        }
+
+        /// <summary>
         /// Epoch-staleness guardrail -- pure two-body Keplerian propagation far in time from an
         /// object's own reference epoch (here, the perihelion passage time T -- see
         /// ComputeAnomalies' own doc comment for why a comet has no separate epoch field)
-        /// accumulates real error, because the model doesn't account for ongoing planetary
+        /// accumulates error, because the model doesn't account for ongoing planetary
         /// perturbation. This plugin already lives on MPC's live feed rather than a fixed
         /// snapshot, but that alone doesn't guarantee any GIVEN comet's own T is recent -- an
         /// object not being actively re-observed can sit in the feed with an old T regardless of

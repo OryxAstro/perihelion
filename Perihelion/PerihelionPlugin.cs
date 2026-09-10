@@ -23,22 +23,14 @@ namespace Perihelion {
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        /// <summary>Corrected finding, 2026-09-05: ISequenceMediator IS safely importable here
-        /// after all. The earlier "No exports were found that match the constraint ...
-        /// IPluginManifest" CompositionException was real, but mis-attributed -- that attempt
-        /// imported BOTH ISequencerFactory AND ISequenceMediator together, and ISequencerFactory
-        /// is the one that isn't MEF-exported at all (it's a plain DI-registered class,
-        /// confirmed from NINA.Sequencer/SequencerFactory.cs's own constructor -- MEF has no
-        /// [Export] for it anywhere to satisfy the import, hence the hard composition failure).
-        /// ISequenceMediator alone is a completely different case: nitr57/ninaAPI's own
-        /// AdvancedAPI.cs lists it directly in its [ImportingConstructor] and that plugin loads
-        /// and runs correctly on this exact PINS build today -- real, working proof the MEF
-        /// bridge for this specific interface does exist. Re-tried with ISequenceMediator alone
-        /// this time: builds clean, and (see AddToSequenceAction's own comment in
-        /// PerihelionDockableVM) reflecting the same private fields ninaAPI's own Sequence.cs
-        /// route reflects (SequenceMediator.sequenceNavigation, then
-        /// ISequenceNavigationVM.factory) is how the actual ISequencerFactory instance is reached
-        /// from here, since that one genuinely has no direct import path.</summary>
+        /// <summary>ISequenceMediator is safely importable here, unlike ISequencerFactory, which
+        /// is a plain DI-registered class with no [Export] anywhere to satisfy a MEF import
+        /// (importing both together causes a hard composition failure). ninaAPI's own
+        /// AdvancedAPI.cs imports ISequenceMediator alone the same way. The actual
+        /// ISequencerFactory instance is then reached by reflecting the same private fields
+        /// ninaAPI's own Sequence.cs route reflects (SequenceMediator.sequenceNavigation, then
+        /// ISequenceNavigationVM.factory) -- see AddToSequenceAction's own comment in
+        /// PerihelionDockableVM.</summary>
         public static ISequenceMediator? SequenceMediator { get; private set; }
 
         /// <summary>Static self-reference, same pattern as SequenceMediator above -- lets
@@ -62,10 +54,10 @@ namespace Perihelion {
             // plugin both use for their own configurable port. On PINS there's still no settings
             // UI to expose this through at all (no WPF shell renders, the same root cause
             // documented in CLAUDE.md) -- Port there stays hand-edit-the-profile-XML-only, same
-            // as before. On real Windows NINA, PerihelionOptionsView.xaml (Windows-only, see
+            // as before. On Windows NINA, PerihelionOptionsView.xaml (Windows-only, see
             // RegisterOptionsTemplate below) binds directly to the Port property below, so this
-            // now has a real settings page there. What actually matters day to day either way is
-            // GetNearestAvailablePort(): the same real conflict-avoidance ninaAPI/Touch-N-Stars
+            // now has a settings page there. What actually matters day to day either way is
+            // GetNearestAvailablePort(): the same conflict-avoidance ninaAPI/Touch-N-Stars
             // already rely on, so an unconfigured collision with another plugin (or anything
             // else on the box) self-resolves at startup instead of the server silently failing
             // to bind.
@@ -95,11 +87,11 @@ namespace Perihelion {
             }
         }
 
-        /// <summary>Whether the standalone HTTP server should start at all -- real user request
-        /// (2026-09-05): someone using only the native Windows panel has no need for Touch-N-
-        /// Stars/Quick Track's remote API and the open port that comes with it. Defaults true so
-        /// existing installs keep working unchanged. Same "takes effect on next restart"
-        /// convention as Port -- doesn't attempt to stop/start the already-running server live.</summary>
+        /// <summary>Whether the standalone HTTP server should start at all -- someone using only
+        /// the native Windows panel has no need for Touch-N-Stars/Quick Track's remote API and
+        /// the open port that comes with it. Defaults true so existing installs keep working
+        /// unchanged. Same "takes effect on next restart" convention as Port -- doesn't attempt
+        /// to stop/start the already-running server live.</summary>
         public bool ApiEnabled {
             get => pluginSettings.GetValueBoolean("ApiEnabled", true);
             set {
@@ -124,14 +116,10 @@ namespace Perihelion {
         }
 
         /// <summary>How often Quick Track's auto-reapply timer recomputes and resends the
-        /// tracking rate, in seconds -- default 900 (15 minutes) preserves the exact previous
-        /// hardcoded behavior. Seconds, not minutes, to match the granularity real-world use
-        /// might need (a comet close to Earth moving fast enough to want a much shorter
-        /// interval) and to match the unit convention NINA.Joko.Plugin.Orbitals' own analogous
-        /// "Orbital Position Refresh Time" setting uses -- though that plugin's own default is
-        /// far shorter (20s) because it also has to cover fast-moving TLE-tracked satellites,
-        /// which Perihelion doesn't (yet) support; comets/asteroids alone drift on a timescale
-        /// of minutes to hours, not seconds, so 900s stays a physically reasonable default here.</summary>
+        /// tracking rate, in seconds -- default 900 (15 minutes). Seconds, not minutes, to
+        /// match the granularity real-world use might need (a comet close to Earth moving fast
+        /// enough to want a much shorter interval); comets/asteroids drift on a timescale of
+        /// minutes to hours, not seconds, so 900s stays a physically reasonable default.</summary>
         public int QuickTrackReapplyIntervalSeconds {
             get => pluginSettings.GetValueInt32("QuickTrackReapplyIntervalSeconds", 900);
             set {
@@ -140,12 +128,67 @@ namespace Perihelion {
             }
         }
 
+        /// <summary>The Browse list's own comet-magnitude cutoff -- was a hardcoded 16 in
+        /// OrbitalTracking.cs ("reachable with a typical astrophotography setup, not a hard
+        /// physical limit," per that constant's own original comment), which undersells what a
+        /// large-aperture/remote-hosted setup (a Starfront-class rig, for one) can actually
+        /// track and image. The tracking math itself has never cared about magnitude at all --
+        /// this only ever gated what showed up in the browse list.</summary>
+        public double CometMagnitudeThreshold {
+            get => pluginSettings.GetValueDouble("CometMagnitudeThreshold", 16.0);
+            set {
+                pluginSettings.SetValueDouble("CometMagnitudeThreshold", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(CometMagnitudeThreshold)));
+            }
+        }
+
+        /// <summary>Caps ListBrowseObjectsAsync's own response size -- kept alongside
+        /// CometMagnitudeThreshold above since raising the threshold can legitimately let more
+        /// than the old default's worth of comets qualify, and 30 (chosen when 16 was the only
+        /// threshold anyone could have) may no longer be enough to show everything a raised
+        /// threshold now allows through.</summary>
+        public int MaxComets {
+            get => pluginSettings.GetValueInt32("MaxComets", 30);
+            set {
+                pluginSettings.SetValueInt32("MaxComets", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaxComets)));
+            }
+        }
+
+        /// <summary>The Browse list's own asteroid cutoff -- filters on absolute magnitude (H),
+        /// not the true apparent magnitude CometMagnitudeThreshold filters comets by. JPL's bulk
+        /// query API (AsteroidOrbits' own live source, replacing a fixed 13-object table) can
+        /// only filter server-side on H, not on a distance-dependent apparent magnitude that
+        /// varies with today's date -- see AsteroidOrbits.HardCapH for the practical ceiling this
+        /// is clamped to regardless of what's configured here. Default 9.0 comfortably covers the
+        /// old curated list's own brightest-to-faintest span (H ~3.3-7.6) with headroom.</summary>
+        public double AsteroidMagnitudeThreshold {
+            get => pluginSettings.GetValueDouble("AsteroidMagnitudeThreshold", 9.0);
+            set {
+                pluginSettings.SetValueDouble("AsteroidMagnitudeThreshold", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AsteroidMagnitudeThreshold)));
+            }
+        }
+
+        /// <summary>Caps ListBrowseObjectsAsync's own response size for asteroids, same reasoning
+        /// as MaxComets -- applied after every candidate's real current apparent magnitude is
+        /// computed and sorted by, since AsteroidMagnitudeThreshold alone (an H, not apparent-
+        /// magnitude, cutoff) can still let through far more candidates than are worth
+        /// displaying.</summary>
+        public int MaxAsteroids {
+            get => pluginSettings.GetValueInt32("MaxAsteroids", 30);
+            set {
+                pluginSettings.SetValueInt32("MaxAsteroids", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaxAsteroids)));
+            }
+        }
+
         /// <summary>The port actually bound this session -- distinct from the Port setting above,
         /// which is only what's configured for the *next* restart and may not match if
         /// GetNearestAvailablePort had to shift away from a conflict. The three address
         /// properties below are for PerihelionOptionsView.xaml's own "Network Addresses" section,
         /// same idea as nitr57/ninaAPI's own Options page, so a user pointing Touch-N-Stars at
-        /// this server knows the real, currently-listening address rather than guessing from the
+        /// this server knows the currently-listening address rather than guessing from the
         /// configured port alone.</summary>
         public int ActualPort { get; }
 
@@ -190,7 +233,7 @@ namespace Perihelion {
         // PerihelionApiServer.Start() already catches its own exceptions (see its own comment
         // for why), but this belt-and-braces try/catch exists so that even a completely
         // unanticipated failure here can never propagate out of Initialize() and risk NINA
-        // treating the whole plugin as failed to activate -- a real, previously-observed
+        // treating the whole plugin as failed to activate -- a previously-observed
         // symptom (the plugin's own "enabled" toggle didn't persist across a PINS restart,
         // consistent with a failed Initialize() somewhere in this call chain, though no
         // exception ever reached the log because of the bug PerihelionApiServer.Start() fixes).

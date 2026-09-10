@@ -3,7 +3,7 @@
                     xmlns:local="clr-namespace:Perihelion">
 
     <!--
-      Windows-only (real NINA) settings page for Perihelion, shown under Options > Plugins.
+      Windows-only settings page for Perihelion, shown under Options > Plugins.
       Looked up by NINA itself via NINA.ViewModel.Plugins.PluginOptionsDataTemplateSelector,
       keyed "{plugin.Name}_Options" — see PerihelionPlugin.RegisterOptionsTemplate's own
       comment for exactly how this gets registered, and why this same page can never appear on
@@ -25,9 +25,8 @@
                 (Quick Track, Add to Sequence), independent of Advanced API.
             </TextBlock>
 
-            <!-- Real user request (2026-09-05), after comparing against Advanced API's own
-                 Options page: someone using only the native Windows dockable panel has no need
-                 for Touch-N-Stars/Quick Track's remote API, or the open port that comes with it. -->
+            <!-- Someone using only the native Windows dockable panel has no need for
+                 Touch-N-Stars/Quick Track's remote API, or the open port that comes with it. -->
             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                 <TextBlock Text="API Enabled" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <CheckBox IsChecked="{Binding ApiEnabled}" />
@@ -89,10 +88,74 @@
                 Add to Sequence reaches this trigger.
             </TextBlock>
 
+            <Separator Margin="0,0,0,10" />
+            <TextBlock Text="Comet Browse List" FontWeight="Bold" Margin="0,0,0,6" />
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Magnitude Limit" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Text="{Binding CometMagnitudeThreshold, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
+                Default 16, chosen as roughly what a typical backyard setup can usefully image --
+                not a hard limit the tracking math itself needs. A large-aperture or remote-hosted
+                rig can track and usefully image considerably fainter objects; raise this to see
+                them in the Browse list. Takes effect on the next Refresh.
+            </TextBlock>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Max Comets Shown" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Text="{Binding MaxComets, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
+                Default 30. A higher Magnitude Limit can let more comets qualify than this cap
+                allows through -- raise both together if you want to see all of them.
+            </TextBlock>
+
+            <Separator Margin="0,0,0,10" />
+            <TextBlock Text="Asteroid Browse List" FontWeight="Bold" Margin="0,0,0,6" />
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Magnitude Limit (H)" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Text="{Binding AsteroidMagnitudeThreshold, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
+                Default 9.0. Unlike the comet limit above, this filters on absolute magnitude (H,
+                a fixed measure of an asteroid's own intrinsic brightness) rather than today's
+                apparent brightness -- JPL's own bulk catalog query only supports filtering on H.
+                Lower H means intrinsically brighter; clamped to 12.0 regardless of what's entered
+                here, to keep a sync from downloading an unreasonably large candidate set. Takes
+                effect on the next Sync Now (a plain Refresh reuses whatever is already cached).
+            </TextBlock>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Max Asteroids Shown" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Text="{Binding MaxAsteroids, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
+                Default 30. Applied after every candidate's real, current apparent magnitude is
+                computed and the list sorted by it -- not by Magnitude Limit (H) directly, which
+                alone would favor intrinsically huge but distant objects over closer, brighter
+                ones.
+            </TextBlock>
+
             <!-- Same idea as Advanced API's own "Network adresses" section — shows ActualPort
                  (the port really bound this session), not the Port setting above (which may be
                  a pending change for next restart, or may not match if a conflict pushed the
-                 real bind to the next free port instead). Hidden entirely when the server isn't
+                 bind to the next free port instead). Hidden entirely when the server isn't
                  running at all, so it never shows an address that isn't actually listening. -->
             <StackPanel Visibility="{Binding ApiEnabled, Converter={StaticResource BoolToVis}}">
                 <Separator Margin="0,0,0,10" />

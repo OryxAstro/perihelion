@@ -20,10 +20,10 @@ using System.Reflection;
 namespace Perihelion.Sequencing {
 
     /// <summary>
-    /// Builds the same real-sequence shape Touch-N-Stars' own buildPerihelionSequence.js does
+    /// Builds the same sequence shape Touch-N-Stars' own buildPerihelionSequence.js does
     /// (Center honoring a captured offset -> SetPerihelionTrackingRate [+ StartGuiding
     /// + SetPerihelionGuiderShiftRate] -> a filter-switch + exposure loop, plus an optional
-    /// autofocus trigger) -- but built directly as real NINA.Sequencer C# objects rather than
+    /// autofocus trigger) -- but built directly as NINA.Sequencer C# objects rather than
     /// hand-rolled JSON matching NINA's own serialization contract. Running in-process (the
     /// native dockable panel, not an HTTP route) makes this the natural approach: every item
     /// comes from ISequencerFactory, which resolves the exact same MEF-composed instance NINA's
@@ -33,12 +33,12 @@ namespace Perihelion.Sequencing {
     /// </summary>
     public static class PerihelionSequenceBuilder {
         /// <summary>
-        /// ISequencerFactory has no direct MEF import path at all -- confirmed from its own real
+        /// ISequencerFactory has no direct MEF import path at all -- confirmed from its own
         /// source (NINA.Sequencer/SequencerFactory.cs): it's a plain class registered in NINA's
         /// separate Microsoft.Extensions.DependencyInjection container, constructed there from
         /// MEF-aggregated item/condition/trigger lists, but never itself exported via [Export]
         /// for MEF to hand back out. The only way in is through SequenceMediator's own private
-        /// `sequenceNavigation` field (confirmed against its real source, SequenceMediator.cs) --
+        /// `sequenceNavigation` field (confirmed against its source, SequenceMediator.cs) --
         /// one reflection hop, not two: nitr57/ninaAPI's own Sequence.cs reflects a SECOND
         /// private field (`factory`) on the nav object itself, but ISequenceNavigationVM already
         /// exposes the exact same instance publicly via Sequence2VM.SequencerFactory (confirmed
@@ -61,14 +61,13 @@ namespace Perihelion.Sequencing {
         /// EnsureGlobalMeridianFlipTrigger's own doc comment for why that distinction matters.
         /// Returns the CONCRETE SequenceRootContainer, not the ISequenceRootContainer interface
         /// it's declared as on ISequencer.MainContainer -- confirmed from SequenceContainer.cs's
-        /// own real source that this matters: Add(ISequenceItem) (the only overload
+        /// own source that this matters: Add(ISequenceItem) (the only overload
         /// ISequenceContainer/ISequenceRootContainer expose) just appends to Items unconditionally,
         /// with no runtime type check at all, while Add(ISequenceTrigger) (only reachable when
         /// the call site's declared type is the concrete SequenceContainer or a subclass, since
         /// C# overload resolution is based on static type) correctly appends to Triggers instead.
-        /// Calling root.Add(trigger) through the interface would have silently misfiled the
-        /// trigger into Items instead of Triggers -- caught by reading this source before
-        /// shipping, not by a second round of real-hardware trial and error.</summary>
+        /// Calling root.Add(trigger) through the interface would silently misfile the trigger
+        /// into Items instead of Triggers.</summary>
         public static SequenceRootContainer? ResolveSequenceRoot(ISequenceMediator mediator) {
             return ResolveSequenceNavigation(mediator)?.Sequence2VM.Sequencer.MainContainer as SequenceRootContainer;
         }
@@ -82,27 +81,22 @@ namespace Perihelion.Sequencing {
 
         /// <summary>Adds a MeridianFlipTrigger to the sequence's own Global Triggers (the root
         /// container's own Triggers list -- SequenceContainer.Add() routes an ISequenceTrigger
-        /// there automatically, same mechanism as any per-container Add) instead of nesting it
-        /// inside the target container BuildTargetContainer just built. Real user feedback
-        /// (2026-09-05): a per-target trigger showed up under that one target's own local
-        /// "Triggers" section in the sequencer UI, not the sequence-wide Global Triggers area a
-        /// meridian flip protection is conventionally set once for, covering every target that
-        /// runs afterward -- exactly matching how a user manually adding this trigger themselves
-        /// via the sequencer's own UI would normally do it. Skips adding a second one if a
-        /// MeridianFlipTrigger already exists globally (e.g. from an earlier Add to Sequence
-        /// call, or one the user added themselves) -- redundant duplicates would just mean the
-        /// same check runs twice for no benefit, and silently piling one up per "Add to Sequence"
-        /// click across several targets in one sequence would be real clutter.</summary>
+        /// there automatically) instead of nesting it inside the target container
+        /// BuildTargetContainer just built -- a meridian flip protection is conventionally set
+        /// once, covering every target that runs afterward, matching how a user would add this
+        /// trigger themselves via the sequencer's own UI. Skips adding a second one if a
+        /// MeridianFlipTrigger already exists globally, so multiple Add to Sequence calls across
+        /// several targets in one sequence don't pile up duplicates.</summary>
         public static void EnsureGlobalMeridianFlipTrigger(ISequencerFactory factory, SequenceRootContainer root) {
             if (root.Triggers.Any(t => t is MeridianFlipTrigger)) return;
             root.Add(factory.GetTrigger<MeridianFlipTrigger>());
         }
 
         /// <summary>Filter null means "leave the wheel alone" -- the installed NINA.Sequencer
-        /// (3.2.0.9001) SwitchFilter takes a real FilterInfo via its settable Filter property,
+        /// (3.2.0.9001) SwitchFilter takes a FilterInfo via its settable Filter property,
         /// not the string-based ComboBoxText/ Xfilter expression system added in a later,
         /// currently-unshipped version (confirmed by inspecting the actual installed DLL, not
-        /// assumed from upstream source -- a real, previously-hit version-drift trap in this
+        /// assumed from upstream source -- a previously-hit version-drift trap in this
         /// project). Resolving the name to a FilterInfo is the caller's job, since that needs
         /// IProfileService, which this builder deliberately doesn't depend on.</summary>
         public sealed record ExposureSettings(NINA.Core.Model.Equipment.FilterInfo? Filter, double ExposureSeconds, int FrameCount);
@@ -122,19 +116,13 @@ namespace Perihelion.Sequencing {
             dso.Target.TargetName = targetName;
             dso.Target.InputCoordinates = new InputCoordinates(trueCoordinates);
 
-            // rotationAngle null means plain Center (no rotator involved at all) -- real user
-            // feedback (2026-09-05): with no rotator connected, CenterAndRotate fails validation
-            // ("rotator not connected") and blocks the whole sequence, so this can no longer be
-            // unconditional. A real angle means CenterAndRotate instead, for users who do have a
-            // rotator and want real framing control over it. Each branch sets Inherited/
-            // Coordinates on its own concrete type rather than through a shared base variable --
-            // deliberate: this project has already hit a real version-drift trap once
-            // (SwitchFilter's Filter property vs. a newer, currently-unshipped ComboBoxText
-            // system, confirmed only by inspecting the actual installed DLL) from assuming
-            // upstream NINA.Sequencer source matches what's actually installed here, and Center/
-            // CenterAndRotate's own common base type was one such assumption that turned out not
-            // to resolve against this exact installed package version. Not worth the same risk
-            // twice for two lines of duplication.
+            // rotationAngle null means plain Center (no rotator involved) -- with no rotator
+            // connected, CenterAndRotate fails validation ("rotator not connected") and blocks
+            // the whole sequence, so this can't be unconditional. A angle means
+            // CenterAndRotate instead. Each branch sets Inherited/Coordinates on its own
+            // concrete type rather than through a shared base variable -- Center/CenterAndRotate
+            // don't share a common base type that resolves against this installed package
+            // version, so this avoids relying on an assumption that doesn't hold here.
             if (rotationAngle is double angle) {
                 var rotate = factory.GetItem<CenterAndRotate>();
                 rotate.PositionAngle = angle;
@@ -170,7 +158,7 @@ namespace Perihelion.Sequencing {
                 dso.Add(guiderShift);
             }
 
-            // Unlike autofocus/meridian flip, this isn't a session-shaping choice with real
+            // Unlike autofocus/meridian flip, this isn't a session-shaping choice with
             // tradeoffs (extra exposure time, an interruption) -- it's a background correction
             // with no cost to the imaging run, so it's unconditional here, matching
             // SetPerihelionTrackingRate's own always-on coordinate-refresh loop rather than the

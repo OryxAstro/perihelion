@@ -116,7 +116,7 @@ namespace Perihelion.Api {
         public double DecArcsecPerSec { get; set; }
 
         /// <summary>Null when the active profile's CameraSettings.PixelSize/TelescopeSettings.
-        /// FocalLength aren't fully configured -- same "can't compute a real number, don't fake
+        /// FocalLength aren't fully configured -- same "can't compute a number, don't fake
         /// one" convention as the Windows panel's own MaxExposureText.</summary>
         [JsonProperty]
         public double? MaxExposureSeconds { get; set; }
@@ -128,6 +128,18 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public int QuickTrackReapplyIntervalSeconds { get; set; }
+
+        [JsonProperty]
+        public double CometMagnitudeThreshold { get; set; }
+
+        [JsonProperty]
+        public int MaxComets { get; set; }
+
+        [JsonProperty]
+        public double AsteroidMagnitudeThreshold { get; set; }
+
+        [JsonProperty]
+        public int MaxAsteroids { get; set; }
     }
 
     internal class SyncStatusResponse {
@@ -240,7 +252,7 @@ namespace Perihelion.Api {
 
         /// <summary>
         /// Every bright asteroid plus every comet in the current MPC feed worth showing, each
-        /// with today's real magnitude/RA/Dec -- backs the Touch-N-Stars panel's Browse tab.
+        /// with today's magnitude/RA/Dec -- backs the Touch-N-Stars panel's Browse tab.
         /// The panel is a thin client of this computation, not a second implementation of the
         /// same orbital math in JavaScript (see CLAUDE.md's "Quick Track" architecture section
         /// for the fuller reasoning -- the panel and this plugin run on the same Pi, so there's
@@ -283,7 +295,7 @@ namespace Perihelion.Api {
 
         /// <summary>
         /// Explicit "Refresh COBS" action -- bypasses CometActivity's own 2h TTL for every comet
-        /// currently in the list, so a user who wants today's real observed-brightness numbers
+        /// currently in the list, so a user who wants today's observed-brightness numbers
         /// right now can get them without waiting for each comet's own cache to lapse naturally.
         /// Deliberately separate from /sync/comets (comet orbital elements): that's a single,
         /// fast MPC file fetch, while this is a full COBS round-trip per comet -- the same
@@ -322,7 +334,7 @@ namespace Perihelion.Api {
         /// Explicit "download comets now" action -- the deliberate "do this while I still have a
         /// connection, before heading to the dark site" step. Unlike ListObjects/Track's own
         /// passive stale-cache fallback, this always attempts a live fetch and reports whether it
-        /// actually worked, since a user pressing a sync button deserves a real answer.
+        /// actually worked, since a user pressing a sync button deserves an answer.
         /// </summary>
         [Route(HttpVerbs.Post, "/sync/comets")]
         public async Task SyncComets() {
@@ -355,7 +367,7 @@ namespace Perihelion.Api {
 
         /// <summary>
         /// One position per day for the requested number of nights -- backs the Position &amp;
-        /// Path tab's finder-chart plot (the object's real path against the fixed stars, not
+        /// Path tab's finder-chart plot (the object's path against the fixed stars, not
         /// movement within a tracked frame).
         /// </summary>
         [Route(HttpVerbs.Get, "/objects/path")]
@@ -371,7 +383,7 @@ namespace Perihelion.Api {
                 // Full precision, not .Date (midnight UTC) -- day 0 has to be the same reference
                 // instant as /objects' own current-position computation (also DateTime.UtcNow), or
                 // the framing view's "Tonight" path point silently drifts away from the object's
-                // true live position by however many hours have passed since midnight (a real bug:
+                // true live position by however many hours have passed since midnight (a bug:
                 // for a fast-moving comet this can be a large enough offset to land outside the
                 // framing view entirely, even though both endpoints are describing "now"). The
                 // displayed date label is unaffected -- PathPointResponse.Date is formatted
@@ -396,16 +408,13 @@ namespace Perihelion.Api {
 
         /// <summary>
         /// Current RA/Dec rate for one target, plus the derived "seconds until a 1px drift
-        /// relative to the background stars" figure using this profile's own real
-        /// CameraSettings.PixelSize/TelescopeSettings.FocalLength -- the exact same numbers and
-        /// formula the native Windows panel's own Position section already shows on Load
-        /// (PerihelionDockableVM.RateText/MaxExposureText), just never previously exposed to the
-        /// Touch-N-Stars panel at all (real gap flagged by the user, 2026-09-05, after noticing
-        /// NINA's own panel has it and Position &amp; Path doesn't -- before this, TNS only ever
-        /// saw a rate AFTER Quick Track was already running, via /status's own LastRaArcsecPerSec).
-        /// Deliberately its own route mirroring /objects/path, not folded into /objects' own
-        /// bright-object list -- computing this for all 30-ish browse objects on every load would
-        /// be wasted work for the ones never actually selected.
+        /// relative to the background stars" figure using this profile's own
+        /// CameraSettings.PixelSize/TelescopeSettings.FocalLength -- the same numbers and
+        /// formula the native Windows panel's own Position section shows on Load
+        /// (PerihelionDockableVM.RateText/MaxExposureText). Deliberately its own route mirroring
+        /// /objects/path, not folded into /objects' own bright-object list -- computing this for
+        /// all 30-ish browse objects on every load would be wasted work for the ones never
+        /// actually selected.
         /// </summary>
         [Route(HttpVerbs.Get, "/objects/rate")]
         public async Task GetRate([QueryField] string objectType, [QueryField] string targetName) {
@@ -448,9 +457,9 @@ namespace Perihelion.Api {
         }
 
         /// <summary>
-        /// Real, observer-reported "last seen" brightness for a comet, as a cross-check against
+        /// Current, observer-reported "last seen" brightness for a comet, as a cross-check against
         /// the predicted (H, G model) magnitude already in the /objects list -- see
-        /// CometActivity.cs's own doc comment for real verified cases where the two disagreed by
+        /// CometActivity.cs's own doc comment for verified cases where the two disagreed by
         /// 4+ magnitudes. Comet-only, so there's no objectType param; asteroids have no COBS
         /// equivalent. Available: false (not a 404) when COBS simply has nothing for this comet,
         /// or the fetch failed -- that's a normal, expected case for most comets, not an error.
@@ -511,19 +520,24 @@ namespace Perihelion.Api {
         }
 
         /// <summary>
-        /// EqmodRaRateCorrection and QuickTrackReapplyIntervalSeconds, both persisted via
+        /// EqmodRaRateCorrection, QuickTrackReapplyIntervalSeconds, CometMagnitudeThreshold,
+        /// MaxComets, AsteroidMagnitudeThreshold, and MaxAsteroids, all persisted via
         /// PerihelionPlugin's own PluginOptionsAccessor -- PINS has no reachable settings UI of
         /// its own (no WPF shell renders there at all), so the Touch-N-Stars panel reads and
-        /// writes these through this route instead of the Windows-only Options page. Unlike
-        /// Port, both settings are read fresh on every use (not baked into a fixed binding at
-        /// startup), so a change here takes effect on the very next Quick Track start or
-        /// tracking-rate application -- no restart needed.
+        /// writes these through this route instead of the Windows-only Options page. Unlike Port,
+        /// all six are read fresh on every use (not baked into a fixed binding at startup), so a
+        /// change here takes effect on the very next Quick Track start, tracking-rate
+        /// application, or Browse list refresh -- no restart needed.
         /// </summary>
         [Route(HttpVerbs.Get, "/settings")]
         public Task GetSettings() {
             var response = new SettingsResponse {
                 EqmodRaRateCorrection = PerihelionPlugin.Instance?.EqmodRaRateCorrection ?? false,
                 QuickTrackReapplyIntervalSeconds = PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds ?? 900,
+                CometMagnitudeThreshold = PerihelionPlugin.Instance?.CometMagnitudeThreshold ?? 16.0,
+                MaxComets = PerihelionPlugin.Instance?.MaxComets ?? 30,
+                AsteroidMagnitudeThreshold = PerihelionPlugin.Instance?.AsteroidMagnitudeThreshold ?? 9.0,
+                MaxAsteroids = PerihelionPlugin.Instance?.MaxAsteroids ?? 30,
             };
             return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
         }
@@ -536,6 +550,10 @@ namespace Perihelion.Api {
                 if (PerihelionPlugin.Instance != null) {
                     PerihelionPlugin.Instance.EqmodRaRateCorrection = request.EqmodRaRateCorrection;
                     PerihelionPlugin.Instance.QuickTrackReapplyIntervalSeconds = request.QuickTrackReapplyIntervalSeconds;
+                    PerihelionPlugin.Instance.CometMagnitudeThreshold = request.CometMagnitudeThreshold;
+                    PerihelionPlugin.Instance.MaxComets = request.MaxComets;
+                    PerihelionPlugin.Instance.AsteroidMagnitudeThreshold = request.AsteroidMagnitudeThreshold;
+                    PerihelionPlugin.Instance.MaxAsteroids = request.MaxAsteroids;
                 }
                 await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = true }), "application/json", Encoding.UTF8);
             } catch (Exception ex) {
@@ -545,7 +563,7 @@ namespace Perihelion.Api {
         }
 
         /// <summary>
-        /// The actual state of whatever Quick Track session is running -- in particular the real
+        /// The actual state of whatever Quick Track session is running -- in particular the
         /// RA/Dec rate last computed and sent, not just whether the toggle was on when the
         /// session started. Backs a live status readout in the Track tab, and is the
         /// unambiguous way to confirm the mount actually received a comet-specific rate rather

@@ -65,10 +65,9 @@ namespace Perihelion.SequenceItems {
         }
 
         // Same shared setting Quick Track's own reapply timer reads (PerihelionPlugin's
-        // QuickTrackReapplyIntervalSeconds) -- deliberately not renamed/duplicated here. Its
-        // name predates this trigger; see this project's own session notes for why a rename was
-        // held back (it's also the wire-level JSON field name Touch-N-Stars' frontend already
-        // depends on, so renaming it needs a matching frontend change, not a drive-by here).
+        // QuickTrackReapplyIntervalSeconds) -- not renamed/duplicated here even though its name
+        // predates this trigger, since it's also the wire-level JSON field name Touch-N-Stars'
+        // frontend already depends on; renaming it needs a matching frontend change.
         private DateTime lastAppliedUtc = DateTime.MinValue;
 
         public override void SequenceBlockInitialize() {
@@ -85,7 +84,7 @@ namespace Perihelion.SequenceItems {
             // still slewing/centering/settling). Without this gate, a short user-configured
             // interval (the Options page explicitly invites shortening it "for an object moving
             // unusually fast") could let ShouldTrigger fire purely on elapsed-since-block-start
-            // time, reapplying a rate before the mount has even finished its first real center --
+            // time, reapplying a rate before the mount has even finished its first center --
             // this is that guard.
             if (trackingItem.LastAppliedRate == null) return false;
 

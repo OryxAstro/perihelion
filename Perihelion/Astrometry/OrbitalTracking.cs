@@ -49,12 +49,12 @@ namespace Perihelion.Astrometry {
         /// <summary>Null for a comet with no reliable H in the current MPC feed.</summary>
         public double? Magnitude { get; init; }
 
-        /// <summary>Comet-only: the most recent real COBS-reported magnitude, and the mean of
+        /// <summary>Comet-only: the most recent COBS-reported magnitude, and the mean of
         /// the last up-to-5 reports (see CometActivity's own doc comment for why an average).
         /// Both null for an asteroid, or a comet COBS has no reports for. Shown alongside
         /// Magnitude in the Browse list specifically because the predicted (H/G model) value can
-        /// be badly wrong during a real outburst -- 10P/Tempel and 220P/McNaught are verified
-        /// real cases several magnitudes off -- and that's invisible unless the real observed
+        /// be badly wrong during an outburst -- 10P/Tempel and 220P/McNaught are verified
+        /// cases several magnitudes off -- and that's invisible unless the observed
         /// value is right there next to it, not one tap away on a detail view.</summary>
         // Settable, not init-only: the native Windows panel populates the list instantly without
         // COBS (same reasoning as includeCobs's own doc comment below -- don't block the initial
@@ -75,7 +75,7 @@ namespace Perihelion.Astrometry {
         public required double EarthDistanceAu { get; init; }
 
         /// <summary>Angular separation from the Sun as seen from Earth (degrees) -- how close to
-        /// the Sun's glare the object currently sits, which real observed-brightness readouts
+        /// the Sun's glare the object currently sits, which observed-brightness readouts
         /// like TheSkyLive show alongside distance for exactly this reason.</summary>
         public required double SolarElongationDeg { get; init; }
 
@@ -110,13 +110,15 @@ namespace Perihelion.Astrometry {
     /// on-sky tracking rate. Ported from OryxAstro's server/utils/orbitalTracking.ts.
     /// </summary>
     public static class OrbitalTracking {
-        // Matches OryxAstro's own COMET_MAGNITUDE_THRESHOLD (cometOrbits.ts) -- "reachable with
-        // a typical astrophotography setup", not a hard physical limit.
-        private const double CometMagnitudeThreshold = 16;
-
-        // Keeps ListBrowseObjectsAsync's response bounded -- the live MPC feed has thousands of
-        // rows; nobody's picking a tracking target from more than this many candidates anyway.
-        private const int MaxComets = 30;
+        // Originally a hardcoded 16/30 (matching OryxAstro's own COMET_MAGNITUDE_THRESHOLD,
+        // cometOrbits.ts -- "reachable with a typical astrophotography setup", not a hard
+        // physical limit) -- now PerihelionPlugin settings (see its own doc comments for
+        // the full reasoning), read fresh on every call rather than cached, same as every other
+        // configurable setting elsewhere in this plugin. These two static properties keep every
+        // call site below unchanged in shape, just no longer a compile-time constant.
+        private static double CometMagnitudeThreshold => PerihelionPlugin.Instance?.CometMagnitudeThreshold ?? 16.0;
+        private static int MaxComets => PerihelionPlugin.Instance?.MaxComets ?? 30;
+        private static int MaxAsteroids => PerihelionPlugin.Instance?.MaxAsteroids ?? 30;
         /// <summary>Angular separation from the Sun as seen from Earth -- the angle at Earth
         /// between the Sun-Earth line and the Earth-object line. Sun-Earth = -earth (Earth's own
         /// heliocentric vector, negated); Earth-object = geo (already the geocentric vector every
@@ -141,9 +143,9 @@ namespace Perihelion.Astrometry {
         private const double AuPerDaySpeedOfLight = 173.14463267424031;
 
         /// <summary>
-        /// The object's real apparent position -- light-time corrected (the direction light
+        /// The object's apparent position -- light-time corrected (the direction light
         /// actually left the object from, not its instantaneous "right now" position) and, when
-        /// an observer site is given, from that real site rather than Earth's center
+        /// an observer site is given, from that site rather than Earth's center
         /// (topocentric parallax) and corrected for the observer's own velocity (classical
         /// stellar aberration, first order in v/c -- plenty accurate given v/c ~ 1e-4 for any
         /// observer on or near Earth). This is what actually drives a mount and what a live
@@ -215,10 +217,10 @@ namespace Perihelion.Astrometry {
         }
 
         /// <param name="observer">
-        /// The real observer site (lat/lon/elevation) -- ApparentPosition always applies
+        /// The observer site (lat/lon/elevation) -- ApparentPosition always applies
         /// light-time and aberration correction regardless (neither needs a specific site,
         /// only Earth's own position/velocity), but the topocentric parallax piece specifically
-        /// needs a real site to correct FROM. Null skips just that piece -- still strictly more
+        /// needs a site to correct FROM. Null skips just that piece -- still strictly more
         /// accurate than the old plain-geocentric calculation, just without the site-specific
         /// correction on top.
         /// </param>
@@ -242,7 +244,7 @@ namespace Perihelion.Astrometry {
         }
 
         /// <summary>
-        /// The object's current real apparent position (see ApparentPosition's own doc comment)
+        /// The object's current apparent position (see ApparentPosition's own doc comment)
         /// -- backs the live coordinate-refresh loop in SetPerihelionTrackingRate, which keeps a
         /// sequence's GoTo target current rather than frozen at whatever it was when the
         /// sequence was built. Null if the object isn't found.
@@ -253,7 +255,7 @@ namespace Perihelion.Astrometry {
             return ApparentPosition(heliocentricAt, atDateUtc, observer);
         }
 
-        /// <summary>Real apparent magnitude right now (or at any given date) -- null if the object isn't found, or is a comet with no reliable H in the current feed.</summary>
+        /// <summary>apparent magnitude right now (or at any given date) -- null if the object isn't found, or is a comet with no reliable H in the current feed.</summary>
         public static async Task<double?> ComputeCurrentMagnitudeAsync(HttpClient httpClient, OrbitalObjectType objectType, string name, DateTime atDateUtc, CancellationToken ct = default) {
             var t = new AstroTime(atDateUtc);
             if (objectType == OrbitalObjectType.Comet) {
@@ -270,7 +272,7 @@ namespace Perihelion.Astrometry {
 
         /// <summary>
         /// Every bright asteroid (always -- it's a small, fixed list) plus every comet in the
-        /// current MPC feed bright enough to be worth showing, each with today's real
+        /// current MPC feed bright enough to be worth showing, each with today's
         /// magnitude/RA/Dec -- backs the Touch-N-Stars panel's Browse tab.
         /// </summary>
         /// <param name="forceRefreshCobs">Bypasses CometActivity's own 2h TTL for every comet in
@@ -279,15 +281,14 @@ namespace Perihelion.Astrometry {
         /// elements sync (Sync Now): a full COBS refresh across every listed comet costs the same
         /// several-seconds-to-tens-of-seconds round-trip that disk-persisting the cache exists to
         /// keep off the normal load path, so it stays a separate, deliberate action.</param>
-        /// <param name="includeCobs">Real hardware feedback (2026-09-03): even with a warm cache,
-        /// waiting on COBS at all before the list can render was still felt as "the page is slow"
-        /// -- a cold cache (first run, or a comet's own 2h TTL lapsing) made it much worse (14-16s
-        /// measured on real hardware). Default false: /objects returns comets/asteroids with only
-        /// their predicted magnitude, instantly, and the panel fills in real observed-brightness
-        /// badges afterward via a background per-comet GET /objects/activity sweep (see
-        /// fetchBrowseObjects.js's own comment) -- COBS never blocks the initial render again.
+        /// <param name="includeCobs">Waiting on COBS at all before the list can render is
+        /// noticeably slow, worse on a cold cache (first run, or a comet's own 2h TTL lapsing).
+        /// Default false: /objects returns comets/asteroids with only their predicted magnitude,
+        /// instantly, and the panel fills in observed-brightness badges afterward via a
+        /// background per-comet GET /objects/activity sweep (see fetchBrowseObjects.js's own
+        /// comment) -- COBS never blocks the initial render.
         /// True only for the explicit "Refresh COBS" action (POST /objects/refresh-cobs), where
-        /// blocking IS the point -- an explicit refresh should report success/failure for real.</param>
+        /// blocking IS the point -- an explicit refresh should report success/failure for.</param>
         public static async Task<IReadOnlyList<BrowseObject>> ListBrowseObjectsAsync(HttpClient httpClient, DateTime atDateUtc, CancellationToken ct = default, bool includeCobs = false, bool forceRefreshCobs = false) {
             var overallStopwatch = Stopwatch.StartNew();
             var t = new AstroTime(atDateUtc);
@@ -299,12 +300,21 @@ namespace Perihelion.Astrometry {
             // (never synced on this install, and the live fetch also failed).
             try {
                 var asteroids = await AsteroidOrbits.FetchAsteroidElementsAsync(httpClient, ct).ConfigureAwait(false);
+                // Computed for every fetched candidate, then sorted/capped by the REAL result --
+                // not by H first. H alone is a poor stand-in for "worth showing here": the
+                // candidate pool at any useful threshold includes distant dwarf planets/TNOs
+                // (Pluto, Eris, Makemake...) whose low H reflects sheer size, not current
+                // brightness -- capping on H before computing position would let those crowd out
+                // much fainter-by-H but far brighter-right-now main-belt asteroids. Pure math, no
+                // I/O, so processing the whole pool (thousands of objects even at a generous
+                // threshold) before capping costs single-digit milliseconds, not a real concern.
+                var asteroidResults = new List<BrowseObject>(asteroids.Count);
                 foreach (var asteroid in asteroids) {
                     var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
                     var geo = helio - earth;
                     var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
                     var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
-                    results.Add(new BrowseObject {
+                    asteroidResults.Add(new BrowseObject {
                         Id = asteroid.Id,
                         Name = asteroid.Name,
                         ObjectType = OrbitalObjectType.Asteroid,
@@ -319,6 +329,8 @@ namespace Perihelion.Astrometry {
                         IsEpochStale = AsteroidOrbits.IsEpochStale(asteroid, atDateUtc),
                     });
                 }
+                asteroidResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
+                results.AddRange(asteroidResults.Count > MaxAsteroids ? asteroidResults.GetRange(0, MaxAsteroids) : asteroidResults);
             } catch (Exception ex) {
                 NINA.Core.Utility.Logger.Warning($"Perihelion: could not list asteroids, continuing with comets only: {ex.Message}");
             }
@@ -332,7 +344,7 @@ namespace Perihelion.Astrometry {
                 var comets = await CometOrbits.FetchCometElementsAsync(httpClient, ct).ConfigureAwait(false);
                 elementsStopwatch.Stop();
                 var cometResults = new List<BrowseObject>();
-                // Some real MPC feed entries share the same display Name (e.g. distinct fragments
+                // Some MPC feed entries share the same display Name (e.g. distinct fragments
                 // of a split comet) -- FindByNameAsync/tracking match by Name via FirstOrDefault, so
                 // a later duplicate is functionally indistinguishable from the first for tracking
                 // purposes anyway (both resolve to the same match). Skip it here rather than show
@@ -374,7 +386,7 @@ namespace Perihelion.Astrometry {
                     results.AddRange(trimmedComets);
                     NINA.Core.Utility.Logger.Info($"Perihelion: ListBrowseObjectsAsync timing (COBS excluded) -- comet elements: {elementsStopwatch.ElapsedMilliseconds}ms, total: {overallStopwatch.ElapsedMilliseconds}ms");
                 } else {
-                    // Real observed brightness for each comet, fetched in parallel (capped
+                    // Observed brightness for each comet, fetched in parallel (capped
                     // concurrency, to stay a reasonable citizen of a third-party public API)
                     // rather than sequentially. Only reached for the explicit "Refresh COBS"
                     // action now (includeCobs defaults false) -- see this method's own
@@ -428,7 +440,7 @@ namespace Perihelion.Astrometry {
 
         /// <summary>
         /// One position per day for <paramref name="days"/> days starting at
-        /// <paramref name="fromDateUtc"/> -- the object's real path against the fixed star
+        /// <paramref name="fromDateUtc"/> -- the object's path against the fixed star
         /// background, for the Position &amp; Path tab's finder-chart plot. Null if the object
         /// isn't found.
         /// </summary>

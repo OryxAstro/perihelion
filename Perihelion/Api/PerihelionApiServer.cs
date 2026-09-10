@@ -38,9 +38,9 @@ namespace Perihelion.Api {
 
         /// <summary>
         /// Deliberately does NOT let an exception propagate out of here -- PerihelionPlugin.
-        /// Initialize() calls this directly, and a real startup failure (e.g. port already in
+        /// Initialize() calls this directly, and a startup failure (e.g. port already in
         /// use) throwing out of Initialize() risks NINA treating the whole plugin as failed to
-        /// activate (a real, previously-silent bug: the very first version of this method had
+        /// activate (a previously-silent bug: the very first version of this method had
         /// no logging at all here, so a startup failure was completely invisible -- nothing in
         /// the NINA log, no exception anywhere, just a port that silently never opened).
         /// </summary>

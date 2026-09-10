@@ -72,7 +72,7 @@ namespace Perihelion.Api {
         }
 
         /// <summary>
-        /// Real hardware safety concern, not a hypothetical: on a German Equatorial Mount,
+        /// Hardware safety concern, not a hypothetical: on a German Equatorial Mount,
         /// tracking past the meridian without flipping which side of the pier the tube sits on
         /// eventually swings the OTA/counterweight into the tripod, pier, or mount head. NINA's
         /// own Advanced Sequencer handles this via MeridianFlipTrigger -- but Quick Track has no
@@ -83,7 +83,7 @@ namespace Perihelion.Api {
         /// it's genuinely just the raw pier-flip device command plus a dome-sync wait, NOT a
         /// complete safe sequence. It doesn't stop guiding first, doesn't plate-solve afterward,
         /// and doesn't recenter -- MeridianFlipTrigger orchestrates all of that itself, separately,
-        /// only inside a real sequence. Reimplementing that whole orchestration independently here
+        /// only inside a sequence. Reimplementing that whole orchestration independently here
         /// would mean duplicating safety-critical logic outside the one place it's actually
         /// tested, for a feature explicitly scoped to manual/visual use, not unattended automation
         /// -- so this stops tracking and tells the user to flip manually, the same way a plain
@@ -126,7 +126,7 @@ namespace Perihelion.Api {
         }
 
         private static async void Reapply(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding) {
-            // Same capability check as Track()'s own -- see its doc comment for the real driver
+            // Same capability check as Track()'s own -- see its doc comment for the driver
             // (ASCOM OnStep) that surfaced this. Checked once per tick since a driver's own
             // capability doesn't change mid-session, but re-fetching info.CanSet* rather than
             // caching the original Track() call's result means a mount reconnected with a fixed
@@ -142,13 +142,12 @@ namespace Perihelion.Api {
                     if (trackingItem.LastAppliedRate is OrbitalRate rate) {
                         // Reported immediately, before attempting guiding below -- a guiding
                         // hiccup this tick shouldn't leave the UI showing a stale rate/timestamp
-                        // from several minutes ago when the mount's own rate genuinely was just
-                        // refreshed successfully (an earlier version only reported this after
-                        // BOTH steps succeeded, so a guiding failure silently suppressed a real,
-                        // correct tracking-rate update from ever reaching the panel).
+                        // when the mount's own rate genuinely was just refreshed successfully.
+                        // Reporting only after both steps succeed would let a guiding failure
+                        // silently suppress a correct tracking-rate update from reaching the panel.
                         QuickTrackStatus.Applied(rate);
                         // Info, not Debug -- this was originally Debug and, on a default PINS log
-                        // level, never showed up at all, making a real 15-minute re-apply session
+                        // level, never showed up at all, making a 15-minute re-apply session
                         // look indistinguishable from a silently-dead timer purely because of
                         // log-level filtering. This is the one line that proves the timer is
                         // actually still firing.

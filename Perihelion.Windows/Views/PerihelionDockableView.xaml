@@ -8,46 +8,21 @@
       Perihelion's native dockable panel content — an implicit DataTemplate (no x:Key) keyed by
       DataType, the standard WPF mechanism NINA's own imaging-tab dock host uses to resolve a
       ContentPresenter's content for a given IDockableVM instance. Merged into
-      Application.Current.Resources.MergedDictionaries from PerihelionPlugin's own constructor,
-      the same proven mechanism already used for PerihelionOptionsView.xaml — see that file's
-      own comment, and PerihelionPlugin.RegisterWindowsResources, for why.
+      Application.Current.Resources.MergedDictionaries from PerihelionPlugin's own constructor.
     -->
     <DataTemplate DataType="{x:Type local:PerihelionDockableVM}">
         <DataTemplate.Resources>
             <conv:NullOrEmptyToVisibilityConverter x:Key="NullOrEmptyToVisibility" />
             <conv:MagnitudeDiffBrushConverter x:Key="MagnitudeDiffBrush" />
-            <!-- One shared Button style for the whole panel, rather than repeating Height/
-                 Foreground on every button. BasedOn is required — a bare Style with no BasedOn
-                 replaces NINA's own app-wide implicit Button style (StandardButton's whole
-                 ControlTemplate, including its teal background/hover states) entirely, rather
-                 than adding to it.
-                 Horizontal spacing is NOT handled here — a previous attempt set ContentTemplate
-                 on this style to wrap Content in a Margin'd TextBlock, which turned out to be
-                 just as much a no-op as Padding: StandardButton's own ContentPresenter binds only
-                 Content="{TemplateBinding Content}", never ContentTemplate, confirmed from its
-                 real source (NINA.WPF.Base/Resources/Styles/Button.xaml). The only binding that
-                 actually reaches the button is Content itself — so every button below sets its
-                 own actual Content to a "<TextBlock Text=... Margin="14,0" />" element instead of
-                 a plain string, giving the Margin something real to attach to.
-                 That same nested-TextBlock fix introduced a second real bug: NINA's own global
-                 implicit TextBlock style (NINA.WPF.Base/Resources/Styles/TextBlock.xaml,
-                 "StandardTextBlock") sets Foreground to PrimaryBrush with a plain (non-triggered)
-                 Setter. In WPF's property-value-precedence order, a Style Setter always beats an
-                 inherited value, so that Setter wins over whatever Foreground this Button itself
-                 has, and every nested TextBlock rendered in PrimaryBrush (a dim/secondary color)
-                 no matter what was set here. Confirmed from the same real source file. First fixed
-                 by giving each TextBlock its own explicit Foreground binding to its ancestor
-                 Button's own (mutable) Foreground property — reasoned at the time that this would
-                 "correctly follow" StandardButton's own IsMouseOver trigger. That reasoning was
-                 wrong: reading StandardButton's real ControlTemplate.Triggers (NINA.WPF.Base/
-                 Resources/Styles/Button.xaml) shows IsMouseOver sets BOTH Background AND
-                 Foreground to the exact same brush (ButtonBackgroundSelectedBrush) — so following
-                 the Button's own Foreground on hover made every button's text blend perfectly into
-                 its own highlighted background and disappear (real user report, 2026-09-05: "text
-                 disappears" on hover). Fixed for real by hardcoding each TextBlock's Foreground to
-                 the fixed ButtonForegroundBrush resource instead — never mutated by hover/pressed
-                 triggers, and confirmed as NINA's own designated hover-legible text color (its
-                 BackgroundButton style uses the exact same brush for this exact purpose). -->
+            <conv:RemainingWidthConverter x:Key="RemainingWidth" />
+            <!-- BasedOn is required — a bare Style with no BasedOn replaces NINA's own implicit
+                 Button style entirely rather than extending it. Content is set to a nested
+                 TextBlock (not a plain string) since StandardButton's ContentPresenter ignores
+                 Padding/ContentTemplate — only Content itself reaches the button. Each nested
+                 TextBlock's Foreground is hardcoded to ButtonForegroundBrush rather than bound to
+                 the ancestor Button's own Foreground: StandardButton's IsMouseOver trigger sets
+                 Background AND Foreground to the same brush on hover, so following the button's
+                 Foreground makes the text disappear into its own highlighted background. -->
             <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
                 <Setter Property="Height" Value="30" />
                 <Setter Property="Foreground" Value="{DynamicResource ButtonForegroundBrush}" />
@@ -56,294 +31,253 @@
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="8">
 
-                <!-- Page title — a large heading at the top of the panel, deliberately worded
-                     as "Comet & Asteroid Tracking" rather than a generic "Orbital Elements"
-                     label. -->
                 <TextBlock Text="Comet &amp; Asteroid Tracking" FontSize="18" Margin="0,0,0,4" />
-                <!-- Real user feedback (2026-09-05): kept the two-column Add to Sequence/Quick
-                     Track layout and decided against a mode-select toggle, but still wanted to
-                     make sure a first-time user isn't confused about how the whole panel fits
-                     together. This one line gives that orientation immediately, without reading
-                     anything else; the "How This Works" Expander at the very bottom of the panel
-                     (collapsed by default, so it costs no permanent space) gives the fuller
-                     step-by-step version for anyone who wants it. -->
                 <TextBlock Text="Browse and load a comet or asteroid below, then either add it to a sequence for an unattended run, or Quick Track it right now."
                            TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,8" />
                 <Separator Margin="0,0,0,10" />
 
-                <!-- Browse (left) / Update Sources (right) -->
-                <Grid Margin="0,0,0,10">
+                <!-- Live feeds (MPC comet elements, JPL SBDB, COBS), not a static database. Each
+                     source shares the same fixed 130px label column so every source's buttons
+                     land in the same position regardless of label width. COBS has no Import/
+                     Export/Clear — it's a live per-comet observation cache, not an elements
+                     dataset, so those don't apply to it. -->
+                <Expander Header="Update Sources" IsExpanded="True" Margin="0,0,0,10">
+                <StackPanel Margin="0,8,0,0">
+
+                <Grid Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="36" />
+                        <ColumnDefinition Width="130" />
                         <ColumnDefinition Width="*" />
                     </Grid.ColumnDefinitions>
-
-                    <StackPanel Grid.Column="0">
-                        <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
-                        <!-- Real user feedback (2026-09-05): this whole section was far too wide
-                             (the outer Grid's left column was "2*"), which stretched Refresh and
-                             Search off to the right edge of the panel instead of sitting right
-                             next to their own combo box / search box, and left the Update Sources
-                             column on the right too narrow for its own "Last Updated" text to fit
-                             on one line. Fixed width instead of a stretchy "*" column solves both
-                             at once — this section now takes only the room it actually needs, and
-                             the freed width goes to Update Sources automatically via the outer
-                             Grid's own "*" column (36px gap, up from 20px, per the same feedback's
-                             "move Update Sources right a bit").
-                             One Grid with two rows (not two separate Grids) for the Refresh and
-                             Search rows guarantees their buttons — both fixed Width="90" per the
-                             same feedback ("all buttons the same width ... aligned horizontally
-                             and vertically") — land at the exact same column, so they visually
-                             line up when stacked.
-                             440px, wider than the ListView's own GridViewColumn sum (180+90+130 =
-                             400) on purpose — a follow-up real screenshot showed a horizontal
-                             scrollbar on the ListView at exactly 400px: its vertical scrollbar
-                             (needed since MaxHeight clips a full 27-comet list) eats into the
-                             content area, so column widths summing to the full outer width left
-                             no slack and tipped it into horizontal overflow. The extra ~40px here
-                             is that slack, not a rendered column. -->
-                        <!-- Bottom margin bumped 4 -> 12, real user feedback (2026-09-05): wanted
-                             more breathing room between the Search row and the list below it. -->
-                        <Grid Width="440" HorizontalAlignment="Left" Margin="0,0,0,12">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="90" />
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <ComboBox Grid.Row="0" Grid.Column="0" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,6" />
-                            <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" Margin="0,0,6,6" />
-                            <Button Grid.Row="0" Grid.Column="2" Command="{Binding RefreshBrowseListCommand}" Margin="0,0,0,6"
-                                    ToolTip="Comets and asteroids load automatically when this panel opens (from cache if warm) -- use this to force a fresh pull right now.">
-                                <TextBlock Text="Refresh" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                            </Button>
-
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
-                            <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                                     Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0" />
-                            <Button Grid.Row="1" Grid.Column="2" Command="{Binding SearchCommand}">
-                                <TextBlock Text="Search" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                            </Button>
-                        </Grid>
-                        <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/
-                             ListViewItem globally, not plain ListBox/ListBoxItem (confirmed from
-                             a real resource dump in this app's own log, then from NINA's actual
-                             source — NINA.WPF.Base/Resources/Styles/ListView.xaml). That same
-                             source is why a plain ItemTemplate rendered nothing at all after the
-                             background fix: NINA's global ListViewItem style hardcodes its
-                             content as a bare GridViewRowPresenter with no Columns of its own —
-                             it only draws anything once ListView.View is an actual GridView,
-                             whose GridView.ColumnCollection feeds those columns. A real GridView
-                             here (not a custom ItemTemplate) is what NINA's own theme actually
-                             expects, and its column cells use the app's normal default TextBlock
-                             style automatically, same as any other page text. Width="440" matches
-                             the Refresh/Search Grid above it — same reasoning as that Grid's own
-                             comment (the GridViewColumns below still only sum to 400 — the extra
-                             40px is the scrollbar/border slack that fixes the horizontal
-                             scrollbar). -->
-                        <!-- GridViewColumnHeader defaults to centered content (confirmed from
-                             NINA's own GridViewColumnHeader source — its ContentPresenter binds
-                             HorizontalAlignment to HorizontalContentAlignment via a real
-                             TemplateBinding, unlike Button's Content/Padding, so this override
-                             actually reaches it) while cell content below is left-aligned by
-                             default — real user feedback (2026-09-05): headers didn't line up
-                             with their own column's values. BasedOn preserves NINA's own header
-                             background/border theming, same reasoning as this file's shared
-                             Button style at the top.
-                             Second, smaller misalignment found in a follow-up screenshot after
-                             the fix above: header text still sat 2px left of its own column's
-                             values. Root cause confirmed from NINA's own ListViewItem style
-                             (NINA.WPF.Base/Resources/Styles/ListView.xaml) — every row's
-                             GridViewRowPresenter is wrapped in a Border with Padding="2", which
-                             insets every cell's content by 2px, but the header row (a separate
-                             GridViewHeaderRowPresenter, not a ListViewItem) never gets that same
-                             inset. Matching Padding="2,0,0,0" on the header closes that gap —
-                             confirmed the header's own ContentPresenter is wrapped in a real
-                             Border bound to Control.Padding via TemplateBinding (same source),
-                             so this isn't a repeat of the Button Padding no-op. -->
-                        <ListView Width="440" HorizontalAlignment="Left" ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,4">
-                            <ListView.Resources>
-                                <Style TargetType="GridViewColumnHeader" BasedOn="{StaticResource {x:Type GridViewColumnHeader}}">
-                                    <Setter Property="HorizontalContentAlignment" Value="Left" />
-                                    <Setter Property="Padding" Value="2,0,0,0" />
-                                </Style>
-                            </ListView.Resources>
-                            <ListView.View>
-                                <GridView>
-                                    <GridViewColumn Header="Name" Width="180" DisplayMemberBinding="{Binding Name}" />
-                                    <GridViewColumn Header="Magnitude" Width="90">
-                                        <GridViewColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding Magnitude, StringFormat='mag {0:F1}'}" Opacity="0.7" />
-                                            </DataTemplate>
-                                        </GridViewColumn.CellTemplate>
-                                    </GridViewColumn>
-                                    <!-- Comet-only (null, shown via TargetNullValue below, for an
-                                         asteroid or a comet COBS has no reports for). Filled in
-                                         shortly after the list first renders — see
-                                         EnrichObservedMagnitudesAsync in the VM — not blocking the
-                                         initial Browse population. -->
-                                    <GridViewColumn Header="Observed Mag (COBS)" Width="130">
-                                        <GridViewColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <TextBlock Text="{Binding ObservedMagnitude, StringFormat='mag {0:F1}', TargetNullValue='--'}"
-                                                           ToolTip="{Binding ObservedAverageMagnitude, StringFormat='5-obs avg {0:F2}'}">
-                                                    <TextBlock.Foreground>
-                                                        <MultiBinding Converter="{StaticResource MagnitudeDiffBrush}">
-                                                            <Binding Path="Magnitude" />
-                                                            <Binding Path="ObservedMagnitude" />
-                                                        </MultiBinding>
-                                                    </TextBlock.Foreground>
-                                                </TextBlock>
-                                            </DataTemplate>
-                                        </GridViewColumn.CellTemplate>
-                                    </GridViewColumn>
-                                </GridView>
-                            </ListView.View>
-                        </ListView>
-                        <Button Command="{Binding LoadCommand}" Width="90" HorizontalAlignment="Left">
-                            <TextBlock Text="Load" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding CometsCountText}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" Opacity="0.7">
+                        <Run Text="Last Updated: " /><Run Text="{Binding CometsLastUpdatedText, Mode=OneWay}" />
+                    </TextBlock>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Width="70" Margin="0,0,6,0" Command="{Binding UpdateCometsCommand}"
+                                ToolTip="Re-fetches the comet-elements feed from MPC now, bypassing its normal 6h cache.">
+                            <TextBlock Text="Update" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </Button>
+                        <Button Width="70" Margin="0,0,6,0" Command="{Binding ImportCometsCommand}"
+                                ToolTip="Loads comet elements from a local file already in MPC's own plain CometEls.txt format, replacing the current comet cache entirely.">
+                            <TextBlock Text="Import" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </Button>
+                        <Button Width="70" Margin="0,0,6,0" Command="{Binding ExportCometsCommand}"
+                                ToolTip="Saves the currently cached comet elements to a local file in the same plain MPC CometEls.txt format, e.g. to share with another install.">
+                            <TextBlock Text="Export" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </Button>
+                        <Button Width="70" Command="{Binding ClearCometsCommand}"
+                                ToolTip="Removes all cached comet elements. The Browse list's comets will be empty until the next Update or a fresh Load.">
+                            <TextBlock Text="Clear" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                         </Button>
                     </StackPanel>
-
-                    <!-- "Update Sources", not "Update Databases" — these are live JSON feeds
-                         (MPC's comet-elements file, COBS's observation API), not a database, and
-                         the previous wording implied otherwise. Per-object-type Update/Last
-                         Updated rows with their own real category/count labels (e.g.
-                         "Comets (4108)"), matching this project's existing PINS-side sync
-                         status — explicit, deliberate refresh
-                         actions with their own real "when" (CometOrbits.LastSyncedUtc /
-                         CometActivity.LastFullRefreshUtc, both disk-persisted — see
-                         RefreshLastUpdatedText's own doc comment for how that was verified).
-                         This column is "*", so it picks up all the width freed by the Browse
-                         column's own fixed width above.
-                         One Grid with two rows (not two separate Grids), same technique as the
-                         Refresh/Search Grid above — real user feedback (2026-09-05): the two
-                         Update buttons didn't line up, because the "Comets (960)" label is wider
-                         than "COBS" and each row was its own Grid with an Auto-width label column
-                         sized independently. A single shared Grid with a fixed 130px label column
-                         (Grid.Column="0") guarantees both Update buttons land in the exact same
-                         column — 130px comfortably fits "Comets (9999)" too, so the label growing
-                         to 4 digits won't ever shift the button over. Both Update buttons also
-                         share the Browse section's own Width="90" for the same "all buttons the
-                         same width" reason. -->
-                    <Grid Grid.Column="2">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                        </Grid.RowDefinitions>
-                        <TextBlock Grid.Row="0" Text="Update Sources" FontWeight="Bold" Margin="0,0,0,4" />
-                        <Grid Grid.Row="1" Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding CometsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" Command="{Binding UpdateCometsCommand}"
-                                    ToolTip="Re-fetches the comet-elements feed from MPC now, bypassing its normal 6h cache.">
-                                <TextBlock Text="Update" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                            </Button>
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" TextWrapping="Wrap">
-                                <Run Text="Last Updated: " /><Run Text="{Binding CometsLastUpdatedText, Mode=OneWay}" />
-                            </TextBlock>
-                        </Grid>
-                        <!-- Asteroids used to be a hardcoded table with no refresh at all — now
-                             live-fetched from JPL SBDB the same way comets are live-fetched from
-                             MPC, just on a much longer 24h cache window (main-belt elements barely
-                             move day to day). This button is the same "do it now" bypass as
-                             Update Comets above. -->
-                        <Grid Grid.Row="2" Margin="0,0,0,6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding AsteroidsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" Command="{Binding UpdateAsteroidsCommand}"
-                                    ToolTip="Re-fetches current orbital elements for every tracked asteroid from JPL's Small-Body Database now, bypassing the normal 24h cache.">
-                                <TextBlock Text="Update" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                            </Button>
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" TextWrapping="Wrap">
-                                <Run Text="Last Updated: " /><Run Text="{Binding AsteroidsLastUpdatedText, Mode=OneWay}" />
-                            </TextBlock>
-                        </Grid>
-                        <Grid Grid.Row="3">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="130" />
-                                <ColumnDefinition Width="90" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="{Binding CobsCountText}" VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <Button Grid.Column="1" Command="{Binding UpdateCobsCommand}"
-                                    ToolTip="Refreshes real observed brightness from COBS for every comet in the browse list. Takes several seconds to tens of seconds -- a deliberate, explicit action, not something that runs automatically.">
-                                <TextBlock Text="Update" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                            </Button>
-                            <TextBlock Grid.Column="2" VerticalAlignment="Center" Opacity="0.7" Margin="8,0,0,0" TextWrapping="Wrap">
-                                <Run Text="Last Updated: " /><Run Text="{Binding CobsLastUpdatedText, Mode=OneWay}" />
-                            </TextBlock>
-                        </Grid>
-                        <!-- Real user feedback (2026-09-05): "Updating comet elements from MPC..."
-                             was appearing next to the Browse combo box (StatusText), where it
-                             looked like a Browse-list status rather than what it actually was —
-                             moved to its own property (UpdateSourcesStatusText) and displayed
-                             here instead, directly under the actions it actually reports on. -->
-                        <TextBlock Grid.Row="4" Text="{Binding UpdateSourcesStatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,6,0,0" />
-                    </Grid>
+                    <TextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Opacity="0.55" FontSize="10" Margin="0,4,0,0"
+                               Text="Import accepts a plain MPC CometEls.txt file (from anyone, not just another Perihelion install) and replaces the current cache; Export saves the current cache the same way; Clear removes it until the next Update." />
                 </Grid>
+
+                <!-- Asteroids: live-fetched from JPL SBDB in bulk, filtered by the configured
+                     Magnitude Limit (H), 24h cache (main-belt elements barely move day to day).
+                     Import/Export use Perihelion's own plain JSON list, not a third-party format
+                     — there's no bulk-file equivalent for this threshold-filtered set the way
+                     CometEls.txt covers comets. -->
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding AsteroidsCountText}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" Opacity="0.7">
+                        <Run Text="Last Updated: " /><Run Text="{Binding AsteroidsLastUpdatedText, Mode=OneWay}" />
+                    </TextBlock>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Width="70" Margin="0,0,6,0" Command="{Binding UpdateAsteroidsCommand}"
+                                ToolTip="Re-fetches every asteroid meeting the configured Magnitude Limit from JPL's Small-Body Database now, bypassing the normal 24h cache.">
+                            <TextBlock Text="Update" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </Button>
+                        <Button Width="70" Margin="0,0,6,0" Command="{Binding ImportAsteroidsCommand}"
+                                ToolTip="Loads asteroid elements from a local Perihelion JSON export, replacing the current asteroid cache entirely.">
+                            <TextBlock Text="Import" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </Button>
+                        <Button Width="70" Margin="0,0,6,0" Command="{Binding ExportAsteroidsCommand}"
+                                ToolTip="Saves the currently cached asteroid elements to a local JSON file, e.g. to share with another Perihelion install.">
+                            <TextBlock Text="Export" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </Button>
+                        <Button Width="70" Command="{Binding ClearAsteroidsCommand}"
+                                ToolTip="Removes all cached asteroid elements. The Browse list's asteroids will be empty until the next Update or a fresh Load.">
+                            <TextBlock Text="Clear" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </Button>
+                    </StackPanel>
+                    <TextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Opacity="0.55" FontSize="10" Margin="0,4,0,0"
+                               Text="Import/Export use Perihelion's own JSON format (share it with another Perihelion install); Clear removes the cache until the next Update." />
+                </Grid>
+
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="130" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding CobsCountText}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Row="0" Grid.Column="1" HorizontalAlignment="Left" Opacity="0.7">
+                        <Run Text="Last Updated: " /><Run Text="{Binding CobsLastUpdatedText, Mode=OneWay}" />
+                    </TextBlock>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
+                        <Button Width="70" Command="{Binding UpdateCobsCommand}"
+                                ToolTip="Refreshes observed brightness from COBS for every comet in the browse list. Takes several seconds to tens of seconds -- a deliberate, explicit action, not something that runs automatically.">
+                            <TextBlock Text="Update" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <TextBlock Text="{Binding UpdateSourcesStatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,2,0,0"
+                           Visibility="{Binding UpdateSourcesStatusText, Converter={StaticResource NullOrEmptyToVisibility}}" />
+
+                </StackPanel>
+                </Expander>
+
+                <Separator Margin="0,14,0,10" />
+
+                <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
+                <!-- Dropdown, Refresh, search box and Search button all share one row now —
+                     the search box is the only "*" column, so it's the one control that actually
+                     absorbs extra width on a wider/undocked panel instead of that space sitting
+                     empty past a fixed-width row — capped at 240px, though, so the Search button
+                     doesn't end up a long reach away from wherever the typing cursor actually is
+                     on a really wide panel; any width beyond that just stays unused margin. -->
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" MaxWidth="240" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <!-- Height="30" to match the shared Button style's own Height (set on this
+                         DataTemplate's own Resources at the top of this file) — a plain ComboBox
+                         otherwise renders shorter than the Refresh button next to it. -->
+                    <ComboBox Grid.Column="0" Height="30" VerticalContentAlignment="Center"
+                              ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
+                    <Button Grid.Column="1" Command="{Binding RefreshBrowseListCommand}" Margin="0,0,10,0"
+                            ToolTip="Recomputes each object's current position, brightness and sort order for right now -- useful if this panel's been open a while. Only re-fetches comet/asteroid elements from MPC/JPL if the cache has actually gone stale; for a guaranteed fresh pull, use the Update buttons under Update Sources instead.">
+                        <TextBlock Text="Refresh" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    </Button>
+                    <TextBox Grid.Column="2" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0"
+                             ToolTip="Search by name" />
+                    <Button Grid.Column="3" Command="{Binding SearchCommand}">
+                        <TextBlock Text="Search" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    </Button>
+                </Grid>
+                <!-- Its own full-width line below the dropdown row now, rather than squeezed into
+                     a fixed middle column beside it — a longer status message (e.g. "Framing
+                     captured, rotate to 125°, offset RA ...") used to get cut off mid-sentence. -->
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,10" />
+                <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/ListViewItem
+                     globally. A GridView (not a custom ItemTemplate) is required too — NINA's
+                     global ListViewItem style hardcodes a bare GridViewRowPresenter with no
+                     columns of its own, so it only draws content once ListView.View is an actual
+                     GridView. Header padding "2,0,0,0" matches each row's own 2px inset (from
+                     NINA's ListViewItem Border padding), keeping header/cell text aligned. -->
+                <ListView x:Name="BrowseListView" ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,14">
+                    <ListView.Resources>
+                        <Style TargetType="GridViewColumnHeader" BasedOn="{StaticResource {x:Type GridViewColumnHeader}}">
+                            <Setter Property="HorizontalContentAlignment" Value="Left" />
+                            <Setter Property="Padding" Value="2,0,0,0" />
+                        </Style>
+                    </ListView.Resources>
+                    <ListView.View>
+                        <GridView>
+                            <GridViewColumn Header="Name" Width="180" DisplayMemberBinding="{Binding Name}" />
+                            <GridViewColumn Header="Magnitude" Width="90">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Magnitude, StringFormat='mag {0:F1}'}" Opacity="0.7" />
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                            <!-- Comet-only (null for an asteroid, or a comet COBS has no reports
+                                 for). Filled in shortly after the list first renders — see
+                                 EnrichObservedMagnitudesAsync in the VM. The only flexible column
+                                 (RemainingWidth, offset 300 = Name 180 + Magnitude 90 + ~30 for
+                                 the scrollbar/border) — the ListView itself now stretches with
+                                 the panel (no more HorizontalAlignment="Left"), and this is the
+                                 one column that actually uses the extra space instead of it
+                                 sitting empty to the right. -->
+                            <GridViewColumn Header="Observed Mag (COBS)"
+                                             Width="{Binding ActualWidth, ElementName=BrowseListView, Converter={StaticResource RemainingWidth}, ConverterParameter=300}">
+                                <GridViewColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding ObservedMagnitude, StringFormat='mag {0:F1}', TargetNullValue='--'}"
+                                                   ToolTip="{Binding ObservedAverageMagnitude, StringFormat='5-obs avg {0:F2}'}">
+                                            <TextBlock.Foreground>
+                                                <MultiBinding Converter="{StaticResource MagnitudeDiffBrush}">
+                                                    <Binding Path="Magnitude" />
+                                                    <Binding Path="ObservedMagnitude" />
+                                                </MultiBinding>
+                                            </TextBlock.Foreground>
+                                        </TextBlock>
+                                    </DataTemplate>
+                                </GridViewColumn.CellTemplate>
+                            </GridViewColumn>
+                        </GridView>
+                    </ListView.View>
+                </ListView>
+                <Button Command="{Binding LoadCommand}" Width="90" HorizontalAlignment="Left" Margin="0,0,0,12">
+                    <TextBlock Text="Load" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                </Button>
 
                 <Separator Margin="0,0,0,10" />
 
-                <!-- Tonight's altitude / 10-night path — moved above Position/Orbital Elements,
-                     2026-09-05, real user feedback: these are the actionable "is this worth
-                     shooting tonight" visual checks, more useful as the first thing seen after
-                     loading a target than a wall of orbital-element numbers below. -->
+                <!-- Tonight's Altitude / 10-Night Path share one row; each column is its own
+                     Auto+"*"-row Grid so the shorter one stretches to match the taller one's
+                     height, with no hardcoded height number on either side. The Path column is
+                     "Auto" width (sized to its own fixed-260px canvas) rather than "*", so it
+                     doesn't stretch with empty space around the actual chart. -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
 
-                    <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                        <TextBlock Text="Tonight's Altitude" FontWeight="Bold" Margin="0,0,0,4" />
-                        <!-- NINA's own real AltitudeChart control (proper twilight shading, a
-                             real transit/meridian annotation, moon position, "Now" line) — not
-                             a hand-rolled chart. Its own DataContext is the target itself
-                             (LoadedDso, a real NINA.Astrometry.DeepSkyObject whose Altitudes/
-                             Horizon/MaxAltitude compute themselves once SetDateAndPosition is
-                             called), separate from NighttimeData which drives the twilight/moon
-                             background — exactly the same two-binding pattern NINA's own
-                             FramingAssistantView.xaml uses. -->
-                        <!-- NighttimeData must be bound via RelativeSource, not a plain
-                             {Binding} — DataContext="{Binding LoadedDso}" above overrides the
-                             ambient DataContext for this element to the DSO itself, so a plain
-                             {Binding NighttimeData} would look for that property on the DSO (and
-                             silently fail) rather than on this panel's own VM. Walking back up to
-                             the outer ScrollViewer (whose own DataContext is never overridden)
-                             is the same workaround NINA's own FramingAssistantView.xaml uses
-                             (there via a BindingProxy resource) for this exact situation. -->
-                        <alt:AltitudeChart DataContext="{Binding LoadedDso}"
+                    <Grid Grid.Column="0" Margin="0,0,8,0">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="Tonight's Altitude" FontWeight="Bold" Margin="0,0,0,4" />
+                        <!-- NINA's own AltitudeChart control (twilight shading, transit/meridian
+                             annotation, moon position, "Now" line). DataContext is the target
+                             itself (LoadedDso); NighttimeData drives the twilight/moon background
+                             and must be bound via RelativeSource since DataContext="{Binding
+                             LoadedDso}" above overrides the ambient DataContext for this element. -->
+                        <alt:AltitudeChart Grid.Row="1" DataContext="{Binding LoadedDso}"
                                            NighttimeData="{Binding DataContext.NighttimeData, RelativeSource={RelativeSource AncestorType=ScrollViewer}}"
                                            MinHeight="180" />
-                    </StackPanel>
+                    </Grid>
 
-                    <StackPanel Grid.Column="1">
-                        <TextBlock Text="10-Night Path" FontWeight="Bold" Margin="0,0,0,4" />
-                        <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
+                    <Grid Grid.Column="1">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Grid.Row="0" Text="10-Night Path" FontWeight="Bold" Margin="0,0,0,4" />
+                        <Border Grid.Row="1" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" Padding="4">
                             <StackPanel>
                                 <Canvas Width="{Binding PathViewBoxWidth}" Height="{Binding PathViewBoxHeight}">
-                                    <!-- Light reference grid — a proportion aid only (is the
-                                         curve steep? does it cross a third of the box?), not a
-                                         labeled coordinate readout. Matches Touch-N-Stars' own
-                                         OrbitalPathChart.vue exactly (quarter divisions). Drawn
-                                         first so the path/dots/scale bar render on top of it. -->
+                                    <!-- Light reference grid, a proportion aid only — not a
+                                         labeled coordinate readout. -->
                                     <ItemsControl ItemsSource="{Binding PathGridLines}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
@@ -357,10 +291,6 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <!-- Violet, matching the Framing Composer's own path overlay
-                                         and Touch-N-Stars' own convention exactly, rather than
-                                         the plain foreground color this used before — reads as
-                                         the same "path" visual language everywhere in the app. -->
                                     <Polyline Points="{Binding PathPoints}" Stroke="#A78BFA" StrokeThickness="1.5" Opacity="0.85" />
                                     <ItemsControl ItemsSource="{Binding PathMarkers}">
                                         <ItemsControl.ItemsPanel>
@@ -376,16 +306,9 @@
                                         </ItemsControl.ItemContainerStyle>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <!-- Day 0 (IsTonight) fills solid in the app's
-                                                     selected-accent color; the last night (IsEnd)
-                                                     renders as a larger hollow ring instead of a
-                                                     filled dot, so the chart reads start-to-end
-                                                     at a glance rather than as an undifferentiated
-                                                     string of dots. ToolTip is WPF's native
-                                                     hover-for-detail equivalent of "click a point
-                                                     for info" on a custom vector chart like this
-                                                     one — each dot's own date/RA/Dec, not just
-                                                     an anonymous marker. -->
+                                                <!-- Day 0 fills solid; the last night renders as a
+                                                     hollow ring, so the chart reads start-to-end
+                                                     at a glance. -->
                                                 <Ellipse Width="{Binding Size}" Height="{Binding Size}" ToolTip="{Binding Tooltip}">
                                                     <Ellipse.Style>
                                                         <Style TargetType="Ellipse">
@@ -407,13 +330,8 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-                                    <!-- Real angular scale bar — a reference for the line's own
-                                         length, not a coordinate grid. Ported from Touch-N-Stars'
-                                         own OrbitalPathChart.vue (nice round steps, placed on
-                                         whichever side has more clearance from the whole path).
-                                         Visibility/tick positions all precomputed in the VM (see
-                                         PathScaleBar's own doc comment) rather than via XAML
-                                         converters this project doesn't otherwise have. -->
+                                    <!-- Angular scale bar — a length reference, not a coordinate
+                                         grid. Tick positions precomputed in the VM. -->
                                     <Line Visibility="{Binding PathScaleBarVisibility}"
                                           X1="{Binding PathScaleBarInfo.X1}" Y1="{Binding PathScaleBarInfo.Y}"
                                           X2="{Binding PathScaleBarInfo.X2}" Y2="{Binding PathScaleBarInfo.Y}"
@@ -439,12 +357,11 @@
                                            TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
-                    </StackPanel>
+                    </Grid>
                 </Grid>
 
                 <Separator Margin="0,6,0,10" />
 
-                <!-- Position / rate / elements -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -455,28 +372,40 @@
                         <TextBlock Text="Position" FontWeight="Bold" Margin="0,0,0,2" />
                         <TextBlock Text="{Binding PositionText}" />
                         <TextBlock Text="{Binding RateText}" Margin="0,2,0,0" />
-                        <!-- Real user question, 2026-09-06, after seeing a much bigger number than
-                             they'd actually shoot (617s for a Bortle 6 site with a broadband
-                             UV/IR-cut filter): this figure is a TRACKING ceiling only (seconds
-                             until the target drifts 1px relative to the background stars) — it
-                             has no idea about sky background, light pollution, or your filter, so
-                             it is very often NOT the real limiting factor. A ToolTip is the
-                             lightest fix that doesn't crowd an already-dense Position column. -->
+                        <!-- Max exposure is a tracking ceiling only (seconds before 1px drift) —
+                             it knows nothing about sky background/light pollution/filter, which
+                             is usually the limit on sub length. -->
                         <TextBlock Margin="0,2,0,0"
-                                   ToolTip="Tracking limit only -- seconds before the target drifts 1px relative to the background stars. Doesn't account for sky background/light pollution or your filter, which is usually the real limit on sub length under a broadband filter at a brighter site.">
+                                   ToolTip="Tracking limit only -- seconds before the target drifts 1px relative to the background stars. Doesn't account for sky background/light pollution or your filter, which is usually the limit on sub length under a broadband filter at a brighter site.">
                             <Run Text="Max exposure: " /><Run Text="{Binding MaxExposureText, Mode=OneWay}" />
                         </TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Magnitude: " /><Run Text="{Binding MagnitudeText, Mode=OneWay}" /></TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Observed (COBS): " /><Run Text="{Binding ObservedMagnitudeMainText, Mode=OneWay}" Foreground="{Binding ObservedMagnitudeMainBrush, Mode=OneWay}" FontWeight="Bold" /><Run Text="{Binding ObservedMagnitudeAverageText, Mode=OneWay}" Foreground="{Binding ObservedMagnitudeAverageBrush, Mode=OneWay}" /></TextBlock>
                         <TextBlock Margin="0,2,0,0"><Run Text="Distance now: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
+
+                        <!-- Offset — read-only (HH:MM:SS/DMS), set via the Framing Composer
+                             (Capture Offset from Mount, or dragging the sky map). Sits at the
+                             bottom of this column since Position naturally runs 2 rows shorter
+                             than Orbital Elements' own sub-columns. -->
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="90" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="110" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Offset RA" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock Grid.Column="1" Text="{Binding OffsetRaText, Mode=OneWay}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                            <TextBlock Grid.Column="2" Text="Offset Dec" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBlock Grid.Column="3" Text="{Binding OffsetDecText, Mode=OneWay}" VerticalAlignment="Center" />
+                        </Grid>
                     </StackPanel>
 
                     <StackPanel Grid.Column="1">
                         <TextBlock Text="Orbital Elements" FontWeight="Bold" Margin="0,0,0,2" />
-                        <!-- Two-column elements layout: Epoch and Periapsis are two real,
-                             separate quantities (a comet's own perihelion passage time is not a
-                             substitute for its reference epoch), shown side by side rather than
-                             one-or-the-other. -->
+                        <!-- Epoch and Periapsis are two distinct quantities (a comet's own
+                             perihelion passage time isn't a substitute for its reference epoch),
+                             shown side by side rather than one-or-the-other. -->
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -503,54 +432,15 @@
                                 <TextBlock Margin="0,2,0,0"><Run Text="Distance: " /><Run Text="{Binding DistanceNowText, Mode=OneWay}" /></TextBlock>
                             </StackPanel>
                         </Grid>
-                        <!-- Epoch-staleness warning — see AsteroidOrbits/CometOrbits' own
-                             EpochAgeDays doc comment. Empty text collapses via the same
-                             NullOrEmptyToVisibility convention as the Quick Track status lines
-                             below, rather than a plain always-visible line. -->
                         <TextBlock Text="{Binding EpochStaleWarningText}" TextWrapping="Wrap"
                                    Visibility="{Binding EpochStaleWarningText, Converter={StaticResource NullOrEmptyToVisibility}}"
                                    Foreground="{DynamicResource NotificationWarningBrush}" FontSize="11" Margin="0,6,0,0" />
                     </StackPanel>
                 </Grid>
 
-                <!-- Offset — kept as editable fields (precise manual control is still useful).
-                     Setting it is now the Framing Composer's own job (Frame's Capture Offset from
-                     Mount, or dragging the sky map) — the standalone "Set Offset" button that used
-                     to duplicate that same math directly from this page was removed, 2026-09-05,
-                     real user feedback that it had become redundant now the Composer covers the
-                     same capture with better context (a real sky map, tied into Slew/Rotate).
-                     Read-only, shown as HH:MM:SS/DMS rather than a raw arcsec number. -->
-                <Grid Margin="0,8,0,4">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="90" />
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="110" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Offset RA" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <TextBlock Grid.Column="1" Text="{Binding OffsetRaText, Mode=OneWay}" VerticalAlignment="Center" Margin="0,0,10,0" />
-                    <TextBlock Grid.Column="2" Text="Offset Dec" VerticalAlignment="Center" Margin="0,0,4,0" />
-                    <TextBlock Grid.Column="3" Text="{Binding OffsetDecText, Mode=OneWay}" VerticalAlignment="Center" />
-                </Grid>
-
-                <!-- Action buttons — 5 now (Set Offset removed, see above), still a 3-column
-                     UniformGrid so it just leaves the last cell empty rather than needing a
-                     re-layout. Height/Foreground come from the shared Button style in this
-                     DataTemplate's own Resources (see the top of this file); each button's own
-                     text is a nested TextBlock with a real Margin, not a plain Content string
-                     (see that same comment for why). Slew and Track / Set Guider Shift Rate
-                     removed 2026-09-09 — Touch-N-Stars ships the same workflow (Frame, then
-                     Quick Track or Add to Sequence) with no equivalent of either button at all
-                     (confirmed from its own source: startQuickTrack() only ever calls POST
-                     /track, never slews; no standalone guider-shift action exists anywhere in
-                     it either), so keeping Windows-only shortcuts here wasn't earning their
-                     real cost — sitting in the same button grid as Frame/Set Tracking Rate/
-                     Clear Offset made them look like a required step before Quick Track/Add to
-                     Sequence rather than the optional, narrower-case alternates they actually
-                     were. -->
                 <UniformGrid Columns="3" Margin="0,4,0,0">
                     <Button Command="{Binding FrameCommand}" Margin="0,0,4,0"
-                            ToolTip="Opens the Perihelion Framing Composer -- a real sky/FOV view, Slew and Center, rotation (if a rotator is connected), and offset capture, carried into Add to Sequence and Quick Track.">
+                            ToolTip="Opens the Perihelion Framing Composer -- a sky/FOV view, Slew and Center, rotation (if a rotator is connected), and offset capture, carried into Add to Sequence and Quick Track.">
                         <TextBlock Text="Frame" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                     <Button Command="{Binding SetTrackingRateCommand}" Margin="4,0,4,0">
@@ -563,13 +453,8 @@
 
                 <Separator Margin="0,14,0,14" />
 
-                <!-- Shared between Add to Sequence AND Quick Track — moved up from a checkbox
-                     that used to live only inside Quick Track's own column below, even though
-                     AddToSequenceAction reads this exact same Guiding property too (confirmed
-                     from its own BuildTargetContainer call). A control that affects both had no
-                     business looking like it only belonged to one — same class of scoping bug
-                     already fixed once on the Touch-N-Stars side for the reapply-interval
-                     setting. -->
+                <!-- Shared between Add to Sequence AND Quick Track (both read this same Guiding
+                     property), so it sits above the split rather than looking scoped to one. -->
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                     <TextBlock Text="Include guiding" VerticalAlignment="Center" Margin="0,0,10,0" />
                     <CheckBox IsChecked="{Binding Guiding}" />
@@ -577,21 +462,6 @@
                 <TextBlock Text="Shifts the guider's lock position at the same rate as the tracking rate, so guiding doesn't fight it, and starts guiding if it isn't already running — needed whenever you're actually guiding, otherwise leave it off."
                            TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,-10,0,16" />
 
-                <!-- Add to Sequence (left) / Quick Track (right), with a real vertical rule
-                     between them — real user feedback (2026-09-05): these two sections needed
-                     more room and more even spacing between their own rows, and side by side
-                     (rather than stacked, as before) is a reasonable fit specifically because
-                     NINA is desktop-only software (unlike the Touch-N-Stars mobile panel), and
-                     this same file already uses a two-column layout twice above (Position/
-                     Orbital Elements, Tonight's Altitude/10-Night Path) without issue. Each
-                     column below stacks its own fields label-above-input (matching the existing
-                     Meridian flip/Autofocus convention already used here) rather than the old
-                     wide horizontal row of fixed pixel widths, which assumed close to the full
-                     panel width and would have overflowed a half-width column on a narrower dock.
-                     A Border (not a Separator control — NINA's own Separator style always draws
-                     a horizontal line regardless of the element's own orientation) gives the real
-                     vertical rule, sized to the row's own height via VerticalAlignment="Stretch"
-                     and its own Margin providing the gap either side. -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -601,7 +471,17 @@
 
                     <StackPanel Grid.Column="0" Margin="0,0,8,0">
                         <TextBlock Text="Add to Sequence" FontWeight="Bold" Margin="0,0,0,4" />
-                        <TextBlock Text="Builds a sequence step to slew, center, track, and image this target with the Advanced Sequencer -- for a full unattended run." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,14" />
+                        <TextBlock Text="Builds a sequence step to slew, center, track, and image this target with the Advanced Sequencer -- for a full unattended run." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,4" />
+                        <!-- Every target added here silently gets a PerihelionReapplyTrigger
+                             (not a toggle) — this is what keeps a long unattended run's rate
+                             accurate without anyone there to reapply it manually. Same
+                             Options-page setting Quick Track's own reapply reads, via the shared
+                             ReapplyIntervalSeconds property. -->
+                        <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,0,0,14">
+                            <Run Text="Automatically includes a Reapply Tracking Rate step (not a toggle — always on) that recomputes and resends the rate every " />
+                            <Run Text="{Binding ReapplyIntervalSeconds, Mode=OneWay}" />
+                            <Run Text=" s during the run -- this is what keeps a long, unattended sequence accurate as the object's true rate drifts." />
+                        </TextBlock>
                         <StackPanel Margin="0,0,0,16">
                             <TextBlock Text="Filter" Margin="0,0,0,3" />
                             <ComboBox ItemsSource="{Binding AvailableFilterNames}" SelectedItem="{Binding SelectedFilterName}" />
@@ -621,18 +501,9 @@
                                 <TextBox Text="{Binding FrameCount, UpdateSourceTrigger=PropertyChanged}" />
                             </StackPanel>
                         </Grid>
-                        <!-- NINA's own global CheckBox style is a fixed ON/OFF toggle with no
-                             ContentPresenter at all — Content is silently ignored (confirmed from
-                             NINA.WPF.Base's own CheckBox.xaml), which is exactly why a real-
-                             hardware test showed these with no visible label at all. A separate
-                             TextBlock is the only way to actually label one — placed to its left
-                             in the same row (not stacked above it) per real user feedback
-                             (2026-09-05), to save vertical space.
-                             Rotation is no longer a raw typed angle here (2026-09-05) — it now
-                             comes from the Perihelion Framing Composer (opened via the "Frame"
-                             button below), which drives a real rotate-and-verify against the
-                             mount rather than taking a guessed number. Nothing to bind here for
-                             it; AddToSequenceAction reads CapturedRotationAngle directly. -->
+                        <!-- NINA's global CheckBox style ignores Content entirely, so the label
+                             has to be a separate TextBlock. Rotation comes from the Framing
+                             Composer (via the Frame button below), not a typed angle here. -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <TextBlock Text="Meridian flip" VerticalAlignment="Center" Margin="0,0,10,0" />
                             <CheckBox IsChecked="{Binding MeridianFlip}" />
@@ -654,17 +525,21 @@
                     <StackPanel Grid.Column="2" Margin="8,0,0,0">
                         <TextBlock Text="Quick Track" FontWeight="Bold" Margin="0,0,0,4" />
                         <TextBlock Text="Starts tracking this target right now, independent of any sequence -- for manual framing, visual use, or a target you've already centered." TextWrapping="Wrap" Opacity="0.7" Margin="0,0,0,4" />
-                        <!-- Not a toggle — Quick Track has no MeridianFlipTrigger of its own to
-                             turn on/off (it never runs inside a sequence at all), so this is a
-                             fixed, always-on safety behavior (QuickTrackReapply.CheckMeridian),
-                             not a preference. Purely informational: previously invisible in this
-                             UI even though it was already active on every real Quick Track
-                             session, on both platforms. -->
+                        <!-- Not a toggle — Quick Track never runs inside a sequence, so this
+                             meridian-flip stop is a fixed safety behavior, not a preference. -->
                         <TextBlock Text="Automatically stops tracking (not a toggle — always on) if your mount reports it's reached its meridian flip limit." TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,0,0,14" />
-                        <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                            <TextBlock Text="Auto re-apply every 15 min" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <!-- ReapplyIntervalSeconds is the Options-page value (900 by
+                                 default), not a converted figure — see that property's own doc
+                                 comment. Quick Track is an attended action, so its own reapply
+                                 keeps the rate accurate during THIS session, not an unattended one
+                                 (that's Add to Sequence's own PerihelionReapplyTrigger instead). -->
+                            <TextBlock VerticalAlignment="Center" Margin="0,0,10,0">
+                                <Run Text="Auto re-apply every " /><Run Text="{Binding ReapplyIntervalSeconds, Mode=OneWay}" /><Run Text=" s" />
+                            </TextBlock>
                             <CheckBox IsChecked="{Binding AutoReapply}" />
                         </StackPanel>
+                        <TextBlock Text="Recomputes and re-sends the rate on a timer as the object's true rate drifts during this session." TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,0,0,16" />
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                             <Button Command="{Binding StartQuickTrackCommand}" Margin="0,0,8,0">
                                 <TextBlock Text="Start Quick Track" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
@@ -694,14 +569,6 @@
 
                 <Separator Margin="0,14,0,10" />
 
-                <!-- Collapsed by default — costs no permanent space, but gives a first-time user
-                     the full step-by-step picture on demand (the one-liner under the page title
-                     above is the quick version). NINA's own Expander style (NINA.WPF.Base/
-                     Resources/Styles/Expander.xaml) is used as-is, no overrides needed — its
-                     Header, when a plain string, becomes a real TextBlock in the visual tree same
-                     as everywhere else in this panel, so it already picks up the correct theme
-                     color via NINA's own global implicit TextBlock style (see this file's own
-                     Button-foreground comment above for the full explanation of that mechanism). -->
                 <Expander Header="How This Works" IsExpanded="False">
                     <StackPanel Margin="0,10,0,4">
                         <TextBlock TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,10">

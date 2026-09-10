@@ -9,21 +9,18 @@
         ResizeMode="NoResize"
         Background="{DynamicResource BackgroundBrush}">
     <!--
-      A real popup Window, not a merged DataTemplate like this project's other Windows-only
+      A popup Window, not a merged DataTemplate like this project's other Windows-only
       views — it needs its own code-behind (Confirm/Cancel closing the dialog) that a plain
-      DataTemplate has no way to provide. Runs inside the same WPF Application as real NINA
-      itself, so it automatically inherits NINA's own app-wide implicit styles (Button, TextBlock,
-      etc.) from Application.Current.Resources with no merging of its own needed — only the
-      Window's own Background needs to be set explicitly, since a plain Window defaults to a
-      system/white background otherwise. Same Button-Foreground fix as PerihelionDockableView.xaml
-      applies here for the same reason (NINA's own global implicit TextBlock style otherwise wins
-      over a Button's intended Foreground) — see that file's own comment for the full mechanism.
+      DataTemplate has no way to provide. Runs inside the same WPF Application as NINA
+      itself, so it automatically inherits NINA's own app-wide implicit styles from
+      Application.Current.Resources — only the Window's own Background needs to be set
+      explicitly. Same Button-Foreground fix as PerihelionDockableView.xaml applies here for the
+      same reason — see that file's own comment for the full mechanism.
 
-      Real sky map (left column), not NINA's own Framing Assistant tab and not a custom-drawn
-      abstraction — genuine sky-survey imagery fetched via NINA.WPF.Base.SkySurvey (same
-      plugin-safe assembly AltitudeChart already came from), with an FOV rectangle sized from the
-      user's own real camera/telescope profile settings. See PerihelionFramingComposerVM's own
-      LoadSkyMapAsync doc comment for exactly how.
+      Sky map (left column), not NINA's own Framing Assistant tab and not a custom-drawn
+      abstraction — genuine sky-survey imagery fetched via NINA.WPF.Base.SkySurvey, with an FOV
+      rectangle sized from the user's own camera/telescope profile settings. See
+      PerihelionFramingComposerVM's own LoadSkyMapAsync doc comment for exactly how.
     -->
     <Window.Resources>
         <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -32,11 +29,11 @@
         </Style>
         <conv:TargetLabelLeftConverter x:Key="TargetLabelLeftConverter" />
     </Window.Resources>
-    <!-- ScrollViewer + Window's own MaxHeight (above), real user feedback (2026-09-05): on a
-         shorter screen this window's content was taller than the visible area with no way to
-         reach the rest of it — SizeToContent="Height" alone has no notion of "too tall for this
-         screen". With MaxHeight set, WPF sizes the window to its content up to that cap and this
-         ScrollViewer handles whatever doesn't fit beyond it, rather than silently clipping it. -->
+    <!-- ScrollViewer + Window's own MaxHeight (above): SizeToContent="Height" alone has no
+         notion of "too tall for this screen", so on a shorter display this window's content
+         could exceed the visible area with no way to reach the rest of it. With MaxHeight set,
+         WPF sizes the window to its content up to that cap and this ScrollViewer handles
+         whatever doesn't fit beyond it. -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
     <Grid Margin="16">
         <Grid.ColumnDefinitions>
@@ -59,17 +56,14 @@
             <!-- Fixed size matching PerihelionFramingComposerVM.SkyMapDisplaySize exactly — both
                  need to agree since the VM's own pixelsPerArcmin/FovRectWidth/Height are computed
                  in that same fixed coordinate space.
-                 ONE drag interaction (2026-09-05, corrected after reading Touch-N-Stars' own
-                 FramingOffsetView.vue directly, not guessed a second time): dragging anywhere on
-                 the sky map pans the whole view (SkyMap_*, code-behind, sets ImagePanX/Y) —
-                 real, not cosmetic: ImagePanX/Y's own setters on the VM derive and set the real
-                 offset from the pan distance. The target marker lives INSIDE the same transformed
-                 Grid as the Image (not a fixed overlay), so it moves together with the sky map
-                 when panned, the same way a pin stays attached to a map's own terrain rather than
-                 the viewport — exactly TNS's own behavior. The FOV rectangle is the opposite: it
-                 stays fixed at the viewport's own center always (HorizontalAlignment/
-                 VerticalAlignment=Center, no Canvas position at all), same as TNS's own FOV
-                 overlay — there is no independently-draggable FOV box. -->
+                 ONE drag interaction, matching Touch-N-Stars' own FramingOffsetView.vue: dragging
+                 anywhere on the sky map pans the whole view (SkyMap_*, code-behind, sets
+                 ImagePanX/Y) —, not cosmetic: ImagePanX/Y's own setters on the VM derive and
+                 set the offset from the pan distance. The target marker lives INSIDE the
+                 same transformed Grid as the Image (not a fixed overlay), so it moves together
+                 with the sky map when panned, like a pin attached to a map's own terrain rather
+                 than the viewport. The FOV rectangle is the opposite: it stays fixed at the
+                 viewport's own center always, with no independently-draggable FOV box. -->
             <Border Width="600" Height="600" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"
                     Background="Black" VerticalAlignment="Top" ClipToBounds="True"
                     MouseWheel="SkyMap_MouseWheel" MouseLeftButtonDown="SkyMap_MouseLeftButtonDown"
@@ -85,17 +79,15 @@
                             </TransformGroup>
                         </Grid.RenderTransform>
                         <Image Source="{Binding SkyImage}" Stretch="UniformToFill" />
-                        <!-- 10-night path overlay — real user request (2026-09-06), matching
-                             Touch-N-Stars' own FramingOffsetView.vue (a violet path line plus
-                             dots). Lives in this SAME transformed Grid (not the FOV rectangle's
-                             viewport-fixed one below) since these are real positions on the sky
-                             that should pan/zoom along with the image and target marker — see
-                             PathPolylinePoints/PathMarkers' own doc comment on the projection
-                             math and why day 0 isn't drawn as its own separate dot. -->
-                        <!-- Solid, thin, slightly translucent — matches FramingOffsetView.vue's
-                             own real canvas-drawn values exactly (lineWidth 1.8, no dash, dots
-                             r=2) rather than the bolder dashed/oversized first pass, which read
-                             as too heavy against the sky map (real user feedback, 2026-09-06). -->
+                        <!-- 10-night path overlay, matching Touch-N-Stars' own
+                             FramingOffsetView.vue (a violet path line plus dots). Lives in this
+                             SAME transformed Grid (not the FOV rectangle's viewport-fixed one
+                             below) since these are positions on the sky that should pan/zoom
+                             along with the image and target marker — see PathPolylinePoints/
+                             PathMarkers' own doc comment on the projection math and why day 0
+                             isn't drawn as its own separate dot. Solid, thin, slightly
+                             translucent, matching FramingOffsetView.vue's own canvas-drawn
+                             values. -->
                         <Polyline Points="{Binding PathPolylinePoints}" Stroke="#A78BFA" StrokeThickness="1.2"
                                   Opacity="0.85" IsHitTestVisible="False" />
                         <ItemsControl ItemsSource="{Binding PathMarkers}" IsHitTestVisible="False">
@@ -120,35 +112,27 @@
                                 </Style>
                             </ItemsControl.ItemContainerStyle>
                         </ItemsControl>
-                        <!-- Target marker — a real dot/circle, fixed at the exact center of the
-                             untransformed image (dead center of the Border above, whatever its
-                             own current size is). The target itself
-                             is always centered in the requested sky map image by construction
-                             (LoadSkyMapAsync requests it centered on trueCoordinates), so this
-                             never needs to be computed or bound — only the shared transform
-                             above ever moves it. Sized relative to the FOV rectangle (via
-                             TargetMarkerSize), not a fixed pixel size — see that property's own
-                             doc comment for why. -->
+                        <!-- Target marker — a dot/circle, fixed at the exact center of the
+                             untransformed image. The target itself is always centered in the
+                             requested sky map image by construction (LoadSkyMapAsync requests it
+                             centered on trueCoordinates), so this never needs to be computed or
+                             bound — only the shared transform above ever moves it. Sized relative
+                             to the FOV rectangle (via TargetMarkerSize), not a fixed pixel size —
+                             see that property's own doc comment for why. -->
                         <Ellipse Width="{Binding TargetMarkerSize}" Height="{Binding TargetMarkerSize}"
                                  Fill="{DynamicResource ButtonBackgroundSelectedBrush}"
                                  Stroke="White" StrokeThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Grid>
-                    <!-- Target name — real user request (2026-09-06), matching
-                         FramingOffsetView.vue's own name-tag placement exactly: sits on the
-                         OPPOSITE side from wherever the path continues from the marker (see
-                         TargetLabelOnRight's own doc comment), so it never runs alongside/
-                         through the path line. Lives in this OUTER, untransformed Grid (not the
-                         image/marker/path's own transformed one above) and computes its own
-                         screen position directly from ImagePanX/Y instead — a real bug found
-                         from a real screenshot: living inside the zoom-scaled Grid made the font
-                         render at ImageZoom times its real size (2.5x too big at the default
-                         zoom), where FramingOffsetView.vue's own canvas-drawn label stays a fixed
-                         screen size regardless of the view's own zoom. See TargetLabelScreenX/Y's
-                         own doc comment for why dropping ImageZoom from the position is exact,
-                         not an approximation. Canvas.Left still needs the label's own rendered
-                         width (WPF has no SVG-style text-anchor), hence the MultiBinding pulling
-                         in ActualWidth via a self-reference rather than something precomputed in
-                         the VM. -->
+                    <!-- Target name, matching FramingOffsetView.vue's own name-tag placement:
+                         sits on the OPPOSITE side from wherever the path continues from the
+                         marker (see TargetLabelOnRight's own doc comment), so it never runs
+                         alongside/through the path line. Lives in this OUTER, untransformed Grid
+                         (not the image/marker/path's own transformed one above) and computes its
+                         own screen position directly from ImagePanX/Y — see TargetLabelScreenX/Y's
+                         own doc comment for why dropping ImageZoom from the position is exact.
+                         Canvas.Left needs the label's own rendered width (WPF has no SVG-style
+                         text-anchor), hence the MultiBinding pulling in ActualWidth via a
+                         self-reference rather than something precomputed in the VM. -->
                     <Canvas IsHitTestVisible="False">
                         <TextBlock Text="{Binding TargetName}" Foreground="White" FontSize="11"
                                    Canvas.Top="{Binding TargetLabelScreenY}">
@@ -163,14 +147,12 @@
                         </TextBlock>
                     </Canvas>
                     <!-- FOV rectangle — always screen-centered (never part of the pan/zoom
-                         TranslateTransform above, matching TNS's own fixed FOV overlay), but it
-                         DOES need its own ScaleTransform tied to ImageZoom: FovRectWidth/Height
-                         are computed once from the image's real FoVWidth at zoom=1, so as the
-                         background is scaled up/down to show more/less real sky, the box
+                         TranslateTransform above, matching Touch-N-Stars' own fixed FOV overlay),
+                         but it DOES need its own ScaleTransform tied to ImageZoom: FovRectWidth/
+                         Height are computed once from the image's FoVWidth at zoom=1, so as
+                         the background is scaled up/down to show more/less sky, the box
                          representing the camera's fixed angular FOV against that same background
-                         has to scale by the same factor to stay physically accurate — real user
-                         feedback (2026-09-05): zoom worked but the FOV box stayed a fixed pixel
-                         size regardless. -->
+                         has to scale by the same factor to stay physically accurate. -->
                     <Rectangle Width="{Binding FovRectWidth}" Height="{Binding FovRectHeight}"
                                HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5"
                                IsHitTestVisible="False"
@@ -188,7 +170,7 @@
 
                     <!-- Legend + live center readout — viewport-fixed overlays (siblings of the
                          FOV rectangle, not inside the panned/zoomed Grid), matching Touch-N-Stars'
-                         own FramingOffsetView.vue top-left/top-right pill overlays exactly. -->
+                         own FramingOffsetView.vue top-left/top-right pill overlays. -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Top"
                                 Margin="8" IsHitTestVisible="False">
                         <Border Background="#80000000" CornerRadius="3" Padding="6,3">
@@ -207,7 +189,7 @@
                     </Border>
                 </Grid>
             </Border>
-            <TextBlock Text="Scroll to zoom, drag to pan and reframe -- the marker is the real target position, the dashed box is your camera's FOV." TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,6,0,0" />
+            <TextBlock Text="Scroll to zoom, drag to pan and reframe -- the marker is the target position, the dashed box is your camera's FOV." TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,6,0,0" />
         </StackPanel>
 
         <!-- Controls -->
@@ -219,13 +201,11 @@
                 <TextBlock Text="Rotator" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBlock VerticalAlignment="Center">
                     <TextBlock.Style>
-                        <!-- BasedOn is required here — same real bug already caught once in this
-                             project's main panel Button style: a bare inline Style with no
-                             BasedOn completely REPLACES NINA's own app-wide implicit TextBlock
-                             style (which sets Foreground to PrimaryBrush) rather than adding to
-                             it, so this TextBlock fell back to WPF's true framework default
-                             (plain black) instead — confirmed as the real cause of the black
-                             text in a real screenshot. -->
+                        <!-- BasedOn is required — a bare inline Style with no BasedOn completely
+                             REPLACES NINA's own app-wide implicit TextBlock style (which sets
+                             Foreground to PrimaryBrush) rather than adding to it, so this
+                             TextBlock would otherwise fall back to WPF's true framework default
+                             (plain black). -->
                         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                             <Setter Property="Text" Value="Not connected" />
                             <Setter Property="Opacity" Value="0.6" />
@@ -239,29 +219,22 @@
                     </TextBlock.Style>
                 </TextBlock>
             </StackPanel>
-            <!-- No longer gated on RotatorConnected (real user feedback, 2026-09-05: "if the user
-                 has no rotator then it doesn't matter, they don't have to use it, and Determine
-                 Rotation from Camera will tell them their framing view anyway rotation-wise") —
-                 toggling this on without a rotator is harmless: SlewButtonLabel/SlewAndCenterAction
-                 both check RotatorConnected too, not just UseRotation, so without one, Slew and
-                 Center transparently falls back to plain centering (no CenterAndRotate attempted
-                 against hardware that isn't there) while RotationAngle still drives the FOV
-                 rectangle's own on-screen preview for reference. -->
+            <!-- Not gated on RotatorConnected — toggling this on without a rotator is harmless:
+                 SlewButtonLabel/SlewAndCenterAction both check RotatorConnected too, not just
+                 UseRotation, so without one, Slew and Center transparently falls back to plain
+                 centering (no CenterAndRotate attempted against hardware that isn't there) while
+                 RotationAngle still drives the FOV rectangle's own on-screen preview for
+                 reference. -->
             <StackPanel Margin="0,0,0,10">
                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                     <TextBlock Text="Rotate to" VerticalAlignment="Center" Margin="0,0,10,0" />
                     <CheckBox IsChecked="{Binding UseRotation}" />
                 </StackPanel>
-                <!-- A real slider, not just a typed number — matches Touch-N-Stars' own
-                     rotation control (FramingOffsetView.vue's <input type="range" min="0"
-                     max="360">) exactly, since the FOV rectangle's own on-screen rotation gives
-                     immediate visual feedback as you drag it, which a bare TextBox doesn't.
-                     Rebuilt (2026-09-05, real user feedback "looks awful") to match real NINA's
-                     OWN proven rotation Slider usage exactly — NINA/View/FramingAssistantView.xaml
-                     puts its own rotation Slider in a Grid's star-sized column (so it stretches to
-                     fill, rather than a fixed pixel Width inside a StackPanel, which is what this
-                     control used before) and sets IsSnapToTickEnabled/TickFrequency for real tick
-                     marks — copying that layout instead of guessing a second time. -->
+                <!-- A slider, not just a typed number — matches Touch-N-Stars' own rotation
+                     control (FramingOffsetView.vue's <input type="range">) and NINA's own
+                     proven rotation Slider usage (NINA/View/FramingAssistantView.xaml): a Grid's
+                     star-sized column so it stretches to fill, plus IsSnapToTickEnabled/
+                     TickFrequency for tick marks. -->
                 <Grid IsEnabled="{Binding UseRotation}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
@@ -276,11 +249,11 @@
                 </Grid>
             </StackPanel>
 
-            <!-- Real plate-solve rotation readout — works with or without a rotator connected;
+            <!-- Plate-solve rotation readout — works with or without a rotator connected;
                  see PerihelionFramingComposerVM.DetermineRotationAction's own doc comment for the
-                 full reasoning and the real NINA source this was ported from. -->
+                 full reasoning and the NINA source this was ported from. -->
             <Button Command="{Binding DetermineRotationCommand}" HorizontalAlignment="Left" Margin="0,0,0,10"
-                    ToolTip="Captures a frame right now and plate-solves it to read the camera's real current rotation -- works with or without a rotator; if a rotator IS connected, it's also synced to the measured value.">
+                    ToolTip="Captures a frame right now and plate-solves it to read the camera's current rotation -- works with or without a rotator; if a rotator IS connected, it's also synced to the measured value.">
                 <TextBlock Text="Determine Rotation from Camera" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
             </Button>
 
@@ -293,7 +266,7 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <Button Grid.Column="0" Command="{Binding SlewAndCenterCommand}"
-                        ToolTip="Runs a real slew (and plate-solve center / rotate, depending on the cog's own options) against the mount right now -- the same NINA sequence items Add to Sequence itself uses.">
+                        ToolTip="Runs a slew (and plate-solve center / rotate, depending on the cog's own options) against the mount right now -- the same NINA sequence items Add to Sequence itself uses.">
                     <TextBlock Text="{Binding SlewButtonLabel}" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                 </Button>
                 <Button Grid.Column="2" Name="SlewOptionsCogButton" Command="{Binding ToggleSlewOptionsCommand}"
@@ -344,10 +317,8 @@
             <TextBlock Text="Use This Framing sets the offset (and rotation, if used) in the plugin, for Add to Sequence and Quick Track to pick up -- it doesn't slew or start anything by itself."
                        TextWrapping="Wrap" Opacity="0.7" FontSize="11" Margin="0,0,0,4" />
             <!-- Reset's own confirmation lands here, not in the shared StatusText TextBlock up
-                 near Slew and Center — real user feedback (2026-09-05): that text showed up in
-                 the wrong place, under Slew and Center, when Reset is really a bottom-row action.
-                 Empty (and so invisible — TextBlock collapses to zero height with no text) until
-                 Reset is actually clicked. -->
+                 near Slew and Center, since Reset is really a bottom-row action, not something
+                 Slew and Center reports on. Empty (and so invisible) until Reset is clicked. -->
             <TextBlock Text="{Binding FooterStatusText}" TextWrapping="Wrap" Opacity="0.85" Margin="0,0,0,10" />
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
                 <Button Name="ConfirmButton" Click="ConfirmButton_Click" Margin="0,0,8,0"

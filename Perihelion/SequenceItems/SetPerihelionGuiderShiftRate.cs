@@ -78,16 +78,13 @@ namespace Perihelion.SequenceItems {
         public OrbitalRate? LastAppliedRate { get; private set; }
 
         public override async Task Execute(IProgress<ApplicationStatus> progress, CancellationToken token) {
-            // Real gap found from a real hardware review, 2026-09-06: SetPerihelionTrackingRate's
-            // own AtPark/Unpark check (see its own doc comment) only runs when the mount CAN take
-            // a custom base rate directly -- QuickTrackEngine's own canSetBaseRate branch skips
-            // constructing that item entirely otherwise, relying purely on this guider-shift item
-            // as the whole tracking mechanism (the "guiding-only fallback" case). A parked mount
-            // in exactly that situation would never get unparked by either item. Same check,
-            // duplicated rather than shared, for the same reason SetPerihelionTrackingRate's own
-            // doc comment gives -- this needs to work identically whether run inside a real
-            // sequence (which normally has its own explicit UnparkScope item first) or directly
-            // via Quick Track (which has none).
+            // SetPerihelionTrackingRate's own AtPark/Unpark check only runs when the mount CAN
+            // take a custom base rate directly -- QuickTrackEngine's own canSetBaseRate branch
+            // skips constructing that item entirely otherwise, relying purely on this
+            // guider-shift item as the whole tracking mechanism (the "guiding-only fallback"
+            // case). Same check, duplicated rather than shared, since this needs to work
+            // identically whether run inside a sequence (which normally has its own
+            // explicit UnparkScope item first) or directly via Quick Track (which has none).
             if (telescopeMediator.GetInfo().AtPark) {
                 if (!await telescopeMediator.UnparkTelescope(progress, token)) {
                     throw new SequenceEntityFailedException("Mount is parked and could not be unparked");

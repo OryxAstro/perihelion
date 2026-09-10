@@ -6,7 +6,7 @@ namespace Perihelion.Api {
     /// The one HttpClient shared by every part of Perihelion that talks to an external feed (MPC,
     /// eventually COBS) -- consolidates what used to be three separate static instances (one each
     /// in SetPerihelionTrackingRate, SetPerihelionGuiderShiftRate, PerihelionApiController), and
-    /// gives every outbound request a real User-Agent identifying the plugin, which none of them
+    /// gives every outbound request a User-Agent identifying the plugin, which none of them
     /// previously sent (neither does OryxAstro's own equivalent website fetch -- worth being a
     /// better API citizen here regardless).
     /// </summary>
