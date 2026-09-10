@@ -167,7 +167,7 @@ First public release, shipping two independent front ends on one shared tracking
 
 - Official listing in NINA's own in-app Plugin Manager — not yet submitted; until then, the
   Windows build is a manual install from the GitHub release only.
-- Touch-N-Stars: the combined "All" filter's Sync Now syncing both comets and asteroids together
-  (currently comets only there), and a contextual suggestion when the connected mount's own
-  driver name looks EQMOD-driven — both written, sitting in open PRs against
-  `Touch-N-Stars/Touch-N-Stars`, not yet merged.
+- Touch-N-Stars: periodic tracking-rate reapply for Add to Sequence (mirroring the Windows-side
+  `PerihelionReapplyTrigger`) — written, open as
+  [Touch-N-Stars/Touch-N-Stars#1385](https://github.com/Touch-N-Stars/Touch-N-Stars/pull/1385),
+  not yet merged.
