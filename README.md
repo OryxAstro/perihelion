@@ -1,6 +1,6 @@
 # Perihelion
 
-Non-sidereal tracking for comets and asteroids across three front ends: [PINS](https://github.com/nitr57/pins) (the Raspberry Pi fork of N.I.N.A.) with its [Touch-N-Stars](https://github.com/Touch-N-Stars/Touch-N-Stars) companion app, and a separate **native build for Windows N.I.N.A.** — a dockable panel plus a standalone Framing Composer window, for users who never touch PINS at all. One shared orbital-mechanics/tracking core; two independent UI layers on top of it.
+Non-sidereal tracking for comets and asteroids, with two front ends sharing one orbital-mechanics/tracking core: a [Touch-N-Stars](https://github.com/Touch-N-Stars/Touch-N-Stars) panel for [PINS](https://github.com/nitr57/pins) (the Raspberry Pi fork of N.I.N.A., which renders no UI of its own), and a separate **native build for Windows N.I.N.A.** — a dockable panel plus a standalone Framing Composer window, for users who never touch PINS at all.
 
 ## Why this exists
 
