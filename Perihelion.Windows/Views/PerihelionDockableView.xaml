@@ -149,22 +149,21 @@
                 <Separator Margin="0,14,0,10" />
 
                 <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
-                <!-- Middle column sized so the Refresh/Search buttons' own right edge lands
-                     exactly at the ListView's right edge below (90 combo + 220 = 310 start, +90
-                     button width = 400, matching the GridViewColumns' own 180+90+130 sum). A "*"
-                     column would instead stretch to the panel's full width. -->
+                <!-- Refresh sits right next to the dropdown now rather than at a fixed column
+                     matching the ListView's own right edge (that alignment applied to the Search
+                     row below, not this one) — a wide near-empty middle column read as dead
+                     space between the two controls. -->
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="90" />
-                        <ColumnDefinition Width="220" />
-                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <!-- Height="30" to match the shared Button style's own Height (set on this
                          DataTemplate's own Resources at the top of this file) — a plain ComboBox
                          otherwise renders shorter than the Refresh button next to it. -->
                     <ComboBox Grid.Column="0" Height="30" VerticalContentAlignment="Center"
                               ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
-                    <Button Grid.Column="2" Command="{Binding RefreshBrowseListCommand}"
+                    <Button Grid.Column="1" Command="{Binding RefreshBrowseListCommand}"
                             ToolTip="Recomputes each object's current position, brightness and sort order for right now -- useful if this panel's been open a while. Only re-fetches comet/asteroid elements from MPC/JPL if the cache has actually gone stale; for a guaranteed fresh pull, use the Update buttons under Update Sources instead.">
                         <TextBlock Text="Refresh" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
