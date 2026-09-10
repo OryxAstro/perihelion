@@ -3,7 +3,7 @@
                     xmlns:local="clr-namespace:Perihelion">
 
     <!--
-      Windows-only (NINA) settings page for Perihelion, shown under Options > Plugins.
+      Windows-only settings page for Perihelion, shown under Options > Plugins.
       Looked up by NINA itself via NINA.ViewModel.Plugins.PluginOptionsDataTemplateSelector,
       keyed "{plugin.Name}_Options" — see PerihelionPlugin.RegisterOptionsTemplate's own
       comment for exactly how this gets registered, and why this same page can never appear on
