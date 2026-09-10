@@ -142,7 +142,8 @@
                     </StackPanel>
                 </Grid>
 
-                <TextBlock Text="{Binding UpdateSourcesStatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,2,0,0" />
+                <TextBlock Text="{Binding UpdateSourcesStatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,2,0,0"
+                           Visibility="{Binding UpdateSourcesStatusText, Converter={StaticResource NullOrEmptyToVisibility}}" />
 
                 </StackPanel>
                 </Expander>
@@ -152,13 +153,15 @@
                 <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
                 <!-- Dropdown, Refresh, search box and Search button all share one row now —
                      the search box is the only "*" column, so it's the one control that actually
-                     absorbs whatever extra width a wider/undocked panel has, instead of that
-                     space sitting empty past a fixed-width row. -->
+                     absorbs extra width on a wider/undocked panel instead of that space sitting
+                     empty past a fixed-width row — capped at 240px, though, so the Search button
+                     doesn't end up a long reach away from wherever the typing cursor actually is
+                     on a really wide panel; any width beyond that just stays unused margin. -->
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="90" />
                         <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="*" MaxWidth="240" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <!-- Height="30" to match the shared Button style's own Height (set on this
