@@ -14,6 +14,7 @@
         <DataTemplate.Resources>
             <conv:NullOrEmptyToVisibilityConverter x:Key="NullOrEmptyToVisibility" />
             <conv:MagnitudeDiffBrushConverter x:Key="MagnitudeDiffBrush" />
+            <conv:RemainingWidthConverter x:Key="RemainingWidth" />
             <!-- BasedOn is required — a bare Style with no BasedOn replaces NINA's own implicit
                  Button style entirely rather than extending it. Content is set to a nested
                  TextBlock (not a plain string) since StandardButton's ContentPresenter ignores
@@ -149,13 +150,15 @@
                 <Separator Margin="0,14,0,10" />
 
                 <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
-                <!-- Refresh sits right next to the dropdown now rather than at a fixed column
-                     matching the ListView's own right edge (that alignment applied to the Search
-                     row below, not this one) — a wide near-empty middle column read as dead
-                     space between the two controls. -->
+                <!-- Dropdown, Refresh, search box and Search button all share one row now —
+                     the search box is the only "*" column, so it's the one control that actually
+                     absorbs whatever extra width a wider/undocked panel has, instead of that
+                     space sitting empty past a fixed-width row. -->
                 <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <!-- Height="30" to match the shared Button style's own Height (set on this
@@ -163,35 +166,28 @@
                          otherwise renders shorter than the Refresh button next to it. -->
                     <ComboBox Grid.Column="0" Height="30" VerticalContentAlignment="Center"
                               ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
-                    <Button Grid.Column="1" Command="{Binding RefreshBrowseListCommand}"
+                    <Button Grid.Column="1" Command="{Binding RefreshBrowseListCommand}" Margin="0,0,10,0"
                             ToolTip="Recomputes each object's current position, brightness and sort order for right now -- useful if this panel's been open a while. Only re-fetches comet/asteroid elements from MPC/JPL if the cache has actually gone stale; for a guaranteed fresh pull, use the Update buttons under Update Sources instead.">
                         <TextBlock Text="Refresh" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
+                    </Button>
+                    <TextBox Grid.Column="2" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                             Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0"
+                             ToolTip="Search by name" />
+                    <Button Grid.Column="3" Command="{Binding SearchCommand}">
+                        <TextBlock Text="Search" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                 </Grid>
                 <!-- Its own full-width line below the dropdown row now, rather than squeezed into
                      a fixed middle column beside it — a longer status message (e.g. "Framing
                      captured, rotate to 125°, offset RA ...") used to get cut off mid-sentence. -->
                 <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,10" />
-                <Grid Margin="0,0,0,14">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="90" />
-                        <ColumnDefinition Width="220" />
-                        <ColumnDefinition Width="90" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
-                             Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0" />
-                    <Button Grid.Column="2" Command="{Binding SearchCommand}">
-                        <TextBlock Text="Search" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
-                    </Button>
-                </Grid>
                 <!-- ListView, not ListBox: NINA's own theme only re-styles ListView/ListViewItem
                      globally. A GridView (not a custom ItemTemplate) is required too — NINA's
                      global ListViewItem style hardcodes a bare GridViewRowPresenter with no
                      columns of its own, so it only draws content once ListView.View is an actual
                      GridView. Header padding "2,0,0,0" matches each row's own 2px inset (from
                      NINA's ListViewItem Border padding), keeping header/cell text aligned. -->
-                <ListView ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,14" HorizontalAlignment="Left">
+                <ListView x:Name="BrowseListView" ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,14">
                     <ListView.Resources>
                         <Style TargetType="GridViewColumnHeader" BasedOn="{StaticResource {x:Type GridViewColumnHeader}}">
                             <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -210,8 +206,14 @@
                             </GridViewColumn>
                             <!-- Comet-only (null for an asteroid, or a comet COBS has no reports
                                  for). Filled in shortly after the list first renders — see
-                                 EnrichObservedMagnitudesAsync in the VM. -->
-                            <GridViewColumn Header="Observed Mag (COBS)" Width="130">
+                                 EnrichObservedMagnitudesAsync in the VM. The only flexible column
+                                 (RemainingWidth, offset 300 = Name 180 + Magnitude 90 + ~30 for
+                                 the scrollbar/border) — the ListView itself now stretches with
+                                 the panel (no more HorizontalAlignment="Left"), and this is the
+                                 one column that actually uses the extra space instead of it
+                                 sitting empty to the right. -->
+                            <GridViewColumn Header="Observed Mag (COBS)"
+                                             Width="{Binding ActualWidth, ElementName=BrowseListView, Converter={StaticResource RemainingWidth}, ConverterParameter=300}">
                                 <GridViewColumn.CellTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding ObservedMagnitude, StringFormat='mag {0:F1}', TargetNullValue='--'}"
