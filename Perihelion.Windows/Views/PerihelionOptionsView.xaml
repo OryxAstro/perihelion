@@ -118,6 +118,40 @@
                 allows through -- raise both together if you want to see all of them.
             </TextBlock>
 
+            <Separator Margin="0,0,0,10" />
+            <TextBlock Text="Asteroid Browse List" FontWeight="Bold" Margin="0,0,0,6" />
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Magnitude Limit (H)" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Text="{Binding AsteroidMagnitudeThreshold, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
+                Default 9.0. Unlike the comet limit above, this filters on absolute magnitude (H,
+                a fixed measure of an asteroid's own intrinsic brightness) rather than today's
+                apparent brightness -- JPL's own bulk catalog query only supports filtering on H.
+                Lower H means intrinsically brighter; clamped to 12.0 regardless of what's entered
+                here, to keep a sync from downloading an unreasonably large candidate set. Takes
+                effect on the next Sync Now (a plain Refresh reuses whatever is already cached).
+            </TextBlock>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="100" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="Max Asteroids Shown" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Text="{Binding MaxAsteroids, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
+                Default 30. Applied after every candidate's real, current apparent magnitude is
+                computed and the list sorted by it -- not by Magnitude Limit (H) directly, which
+                alone would favor intrinsically huge but distant objects over closer, brighter
+                ones.
+            </TextBlock>
+
             <!-- Same idea as Advanced API's own "Network adresses" section — shows ActualPort
                  (the port really bound this session), not the Port setting above (which may be
                  a pending change for next restart, or may not match if a conflict pushed the

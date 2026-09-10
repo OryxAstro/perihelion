@@ -134,6 +134,12 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public int MaxComets { get; set; }
+
+        [JsonProperty]
+        public double AsteroidMagnitudeThreshold { get; set; }
+
+        [JsonProperty]
+        public int MaxAsteroids { get; set; }
     }
 
     internal class SyncStatusResponse {
@@ -514,14 +520,14 @@ namespace Perihelion.Api {
         }
 
         /// <summary>
-        /// EqmodRaRateCorrection, QuickTrackReapplyIntervalSeconds, CometMagnitudeThreshold, and
-        /// MaxComets, all persisted via PerihelionPlugin's own PluginOptionsAccessor -- PINS has
-        /// no reachable settings UI of its own (no WPF shell renders there at all), so the
-        /// Touch-N-Stars panel reads and writes these through this route instead of the
-        /// Windows-only Options page. Unlike Port, all four are read fresh on every use (not
-        /// baked into a fixed binding at startup), so a change here takes effect on the very
-        /// next Quick Track start, tracking-rate application, or Browse list refresh -- no
-        /// restart needed.
+        /// EqmodRaRateCorrection, QuickTrackReapplyIntervalSeconds, CometMagnitudeThreshold,
+        /// MaxComets, AsteroidMagnitudeThreshold, and MaxAsteroids, all persisted via
+        /// PerihelionPlugin's own PluginOptionsAccessor -- PINS has no reachable settings UI of
+        /// its own (no WPF shell renders there at all), so the Touch-N-Stars panel reads and
+        /// writes these through this route instead of the Windows-only Options page. Unlike Port,
+        /// all six are read fresh on every use (not baked into a fixed binding at startup), so a
+        /// change here takes effect on the very next Quick Track start, tracking-rate
+        /// application, or Browse list refresh -- no restart needed.
         /// </summary>
         [Route(HttpVerbs.Get, "/settings")]
         public Task GetSettings() {
@@ -530,6 +536,8 @@ namespace Perihelion.Api {
                 QuickTrackReapplyIntervalSeconds = PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds ?? 900,
                 CometMagnitudeThreshold = PerihelionPlugin.Instance?.CometMagnitudeThreshold ?? 16.0,
                 MaxComets = PerihelionPlugin.Instance?.MaxComets ?? 30,
+                AsteroidMagnitudeThreshold = PerihelionPlugin.Instance?.AsteroidMagnitudeThreshold ?? 9.0,
+                MaxAsteroids = PerihelionPlugin.Instance?.MaxAsteroids ?? 30,
             };
             return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
         }
@@ -544,6 +552,8 @@ namespace Perihelion.Api {
                     PerihelionPlugin.Instance.QuickTrackReapplyIntervalSeconds = request.QuickTrackReapplyIntervalSeconds;
                     PerihelionPlugin.Instance.CometMagnitudeThreshold = request.CometMagnitudeThreshold;
                     PerihelionPlugin.Instance.MaxComets = request.MaxComets;
+                    PerihelionPlugin.Instance.AsteroidMagnitudeThreshold = request.AsteroidMagnitudeThreshold;
+                    PerihelionPlugin.Instance.MaxAsteroids = request.MaxAsteroids;
                 }
                 await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = true }), "application/json", Encoding.UTF8);
             } catch (Exception ex) {

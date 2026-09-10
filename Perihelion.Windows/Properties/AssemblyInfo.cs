@@ -30,8 +30,8 @@ using System.Runtime.InteropServices;
 [assembly: ComVisible(false)]
 [assembly: Guid("263c5e4b-47d6-4ce1-83b8-b7b0b14ac6c9")]
 
-[assembly: AssemblyVersion("1.1.0.5")]
-[assembly: AssemblyFileVersion("1.1.0.5")]
+[assembly: AssemblyVersion("1.1.0.6")]
+[assembly: AssemblyFileVersion("1.1.0.6")]
 
 // NINA's own version family this build actually targets -- NINA.Plugin 3.2.0.9001 is the
 // exact pinned package version Perihelion.Windows.csproj references (see its own comment for
@@ -88,5 +88,5 @@ Object Types
 
 * Comets — live elements from the Minor Planet Center's public comet-elements feed, with
   observed brightness from COBS.
-* Numbered asteroids — a curated list of bright, well-known asteroids (not the full MPC
-  catalog).")]
+* Asteroids — live elements from JPL's Small-Body Database, filtered to a configurable
+  brightness threshold (not the full minor-planet catalog).")]

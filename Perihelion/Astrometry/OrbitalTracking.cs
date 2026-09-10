@@ -118,6 +118,7 @@ namespace Perihelion.Astrometry {
         // call site below unchanged in shape, just no longer a compile-time constant.
         private static double CometMagnitudeThreshold => PerihelionPlugin.Instance?.CometMagnitudeThreshold ?? 16.0;
         private static int MaxComets => PerihelionPlugin.Instance?.MaxComets ?? 30;
+        private static int MaxAsteroids => PerihelionPlugin.Instance?.MaxAsteroids ?? 30;
         /// <summary>Angular separation from the Sun as seen from Earth -- the angle at Earth
         /// between the Sun-Earth line and the Earth-object line. Sun-Earth = -earth (Earth's own
         /// heliocentric vector, negated); Earth-object = geo (already the geocentric vector every
@@ -299,12 +300,21 @@ namespace Perihelion.Astrometry {
             // (never synced on this install, and the live fetch also failed).
             try {
                 var asteroids = await AsteroidOrbits.FetchAsteroidElementsAsync(httpClient, ct).ConfigureAwait(false);
+                // Computed for every fetched candidate, then sorted/capped by the REAL result --
+                // not by H first. H alone is a poor stand-in for "worth showing here": the
+                // candidate pool at any useful threshold includes distant dwarf planets/TNOs
+                // (Pluto, Eris, Makemake...) whose low H reflects sheer size, not current
+                // brightness -- capping on H before computing position would let those crowd out
+                // much fainter-by-H but far brighter-right-now main-belt asteroids. Pure math, no
+                // I/O, so processing the whole pool (thousands of objects even at a generous
+                // threshold) before capping costs single-digit milliseconds, not a real concern.
+                var asteroidResults = new List<BrowseObject>(asteroids.Count);
                 foreach (var asteroid in asteroids) {
                     var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
                     var geo = helio - earth;
                     var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
                     var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
-                    results.Add(new BrowseObject {
+                    asteroidResults.Add(new BrowseObject {
                         Id = asteroid.Id,
                         Name = asteroid.Name,
                         ObjectType = OrbitalObjectType.Asteroid,
@@ -319,6 +329,8 @@ namespace Perihelion.Astrometry {
                         IsEpochStale = AsteroidOrbits.IsEpochStale(asteroid, atDateUtc),
                     });
                 }
+                asteroidResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
+                results.AddRange(asteroidResults.Count > MaxAsteroids ? asteroidResults.GetRange(0, MaxAsteroids) : asteroidResults);
             } catch (Exception ex) {
                 NINA.Core.Utility.Logger.Warning($"Perihelion: could not list asteroids, continuing with comets only: {ex.Message}");
             }

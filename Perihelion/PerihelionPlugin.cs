@@ -155,6 +155,34 @@ namespace Perihelion {
             }
         }
 
+        /// <summary>The Browse list's own asteroid cutoff -- filters on absolute magnitude (H),
+        /// not the true apparent magnitude CometMagnitudeThreshold filters comets by. JPL's bulk
+        /// query API (AsteroidOrbits' own live source, replacing a fixed 13-object table) can
+        /// only filter server-side on H, not on a distance-dependent apparent magnitude that
+        /// varies with today's date -- see AsteroidOrbits.HardCapH for the practical ceiling this
+        /// is clamped to regardless of what's configured here. Default 9.0 comfortably covers the
+        /// old curated list's own brightest-to-faintest span (H ~3.3-7.6) with headroom.</summary>
+        public double AsteroidMagnitudeThreshold {
+            get => pluginSettings.GetValueDouble("AsteroidMagnitudeThreshold", 9.0);
+            set {
+                pluginSettings.SetValueDouble("AsteroidMagnitudeThreshold", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AsteroidMagnitudeThreshold)));
+            }
+        }
+
+        /// <summary>Caps ListBrowseObjectsAsync's own response size for asteroids, same reasoning
+        /// as MaxComets -- applied after every candidate's real current apparent magnitude is
+        /// computed and sorted by, since AsteroidMagnitudeThreshold alone (an H, not apparent-
+        /// magnitude, cutoff) can still let through far more candidates than are worth
+        /// displaying.</summary>
+        public int MaxAsteroids {
+            get => pluginSettings.GetValueInt32("MaxAsteroids", 30);
+            set {
+                pluginSettings.SetValueInt32("MaxAsteroids", value);
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MaxAsteroids)));
+            }
+        }
+
         /// <summary>The port actually bound this session -- distinct from the Port setting above,
         /// which is only what's configured for the *next* restart and may not match if
         /// GetNearestAvailablePort had to shift away from a conflict. The three address

@@ -79,10 +79,11 @@
                                Text="Import accepts a plain MPC CometEls.txt file (from anyone, not just another Perihelion install) and replaces the current cache; Export saves the current cache the same way; Clear removes it until the next Update." />
                 </Grid>
 
-                <!-- Asteroids: live-fetched from JPL SBDB per object, 24h cache (main-belt
-                     elements barely move day to day). Import/Export use Perihelion's own plain
-                     JSON list, not a third-party format — there's no bulk-file equivalent for
-                     this curated, per-object-fetched set the way CometEls.txt covers comets. -->
+                <!-- Asteroids: live-fetched from JPL SBDB in bulk, filtered by the configured
+                     Magnitude Limit (H), 24h cache (main-belt elements barely move day to day).
+                     Import/Export use Perihelion's own plain JSON list, not a third-party format
+                     — there's no bulk-file equivalent for this threshold-filtered set the way
+                     CometEls.txt covers comets. -->
                 <Grid Margin="0,0,0,14">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="130" />
@@ -99,7 +100,7 @@
                     </TextBlock>
                     <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0">
                         <Button Width="70" Margin="0,0,6,0" Command="{Binding UpdateAsteroidsCommand}"
-                                ToolTip="Re-fetches current orbital elements for every tracked asteroid from JPL's Small-Body Database now, bypassing the normal 24h cache.">
+                                ToolTip="Re-fetches every asteroid meeting the configured Magnitude Limit from JPL's Small-Body Database now, bypassing the normal 24h cache.">
                             <TextBlock Text="Update" Margin="6,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                         </Button>
                         <Button Width="70" Margin="0,0,6,0" Command="{Binding ImportAsteroidsCommand}"

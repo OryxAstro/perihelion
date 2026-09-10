@@ -273,7 +273,7 @@ namespace Perihelion.ViewModels {
         private string asteroidsLastUpdatedText = "Never";
         public string AsteroidsLastUpdatedText => asteroidsLastUpdatedText;
 
-        /// <summary>"Comets (4108)"/"Asteroids (13)"/"COBS (37)" -- per-category count labels.
+        /// <summary>"Comets (4108)"/"Asteroids (6761)"/"COBS (37)" -- per-category count labels.
         /// All three *Orbits/*Activity CachedCount properties are cheap synchronous reads of
         /// whatever's already in memory/on disk, never a live fetch. COBS counts comets with an
         /// actual cached observation, not every comet ever checked -- see
@@ -293,9 +293,8 @@ namespace Perihelion.ViewModels {
         /// Comets accept/produce MPC's own CometEls.txt format directly (so anyone, not
         /// just another Perihelion install, can produce a compatible file); asteroids use
         /// Perihelion's own plain JSON list instead, since there's no external universal bulk
-        /// format for a small, curated, live-per-object-fetched set like this one -- see
-        /// CometOrbits/AsteroidOrbits' own ImportFromFileAsync doc comments for the full
-        /// reasoning. COBS deliberately has none of these three: it's a live per-comet
+        /// format for this data -- see CometOrbits/AsteroidOrbits' own ImportFromFileAsync doc
+        /// comments for the full reasoning. COBS deliberately has none of these three: it's a live per-comet
         /// observation cache, not an elements dataset, and doesn't fit the same import/export
         /// story.</summary>
         public AsyncRelayCommand ImportCometsCommand { get; }

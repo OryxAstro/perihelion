@@ -3,6 +3,31 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.6] — 2026-09-10
+
+### Changed
+
+- **Asteroids are now a live, magnitude-filtered list from JPL's Small-Body Database**,
+  replacing the fixed 13-object table — mirrors how comets already work. A new "Asteroid
+  Browse List" section (Options → Plugins → Perihelion, Windows only for now) exposes a
+  Magnitude Limit and a Max Asteroids Shown cap, same shape as the existing comet settings.
+  The magnitude limit filters on absolute magnitude (H) rather than apparent brightness,
+  since JPL's bulk catalog query only supports filtering on H; the Browse list itself still
+  sorts and caps by each candidate's real, current apparent magnitude, so intrinsically huge
+  but distant objects (dwarf planets, trans-Neptunian objects) don't crowd out closer,
+  brighter asteroids just because they qualify by H.
+- **Import/Export/Clear for both comets and asteroids**, with a reworked Update Sources
+  section (moved above Browse, collapsible, default expanded). Comets accept/produce MPC's
+  own CometEls.txt format directly; asteroids use Perihelion's own JSON format, since no
+  external bulk format fits a threshold-filtered live query the way it fits a flat feed file.
+- Fixed the Reapply Interval display not updating live when changed in Options without
+  restarting NINA — the Windows dockable panel had no signal to know the setting changed.
+
+### Added
+
+- Asteroid record count (matching the existing Comets/COBS counts) now reflects the live,
+  threshold-filtered total rather than a fixed 13.
+
 ## [1.1.0.5] — 2026-09-09
 
 ### Added
