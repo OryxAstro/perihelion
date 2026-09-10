@@ -148,32 +148,40 @@
                 <Separator Margin="0,14,0,10" />
 
                 <TextBlock Text="Browse" FontWeight="Bold" Margin="0,0,0,4" />
-                <!-- Middle column fixed width (originally 268px, matching the "Clear" buttons'
-                     own start X above; widened to 300px on request to give the status/search
-                     text a bit more breathing room before Refresh/Search, since a long status
-                     message could otherwise run right up against the button). A "*" column would
-                     instead stretch to the panel's full width. -->
-                <Grid Margin="0,0,0,12">
+                <!-- Middle column sized so the Refresh/Search buttons' own right edge lands
+                     exactly at the ListView's right edge below (90 combo + 220 = 310 start, +90
+                     button width = 400, matching the GridViewColumns' own 180+90+130 sum). A "*"
+                     column would instead stretch to the panel's full width. -->
+                <Grid Margin="0,0,0,10">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="90" />
-                        <ColumnDefinition Width="300" />
+                        <ColumnDefinition Width="220" />
                         <ColumnDefinition Width="90" />
                     </Grid.ColumnDefinitions>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="Auto" />
-                    </Grid.RowDefinitions>
-                    <ComboBox Grid.Row="0" Grid.Column="0" ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,6" />
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatusText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Opacity="0.8" Margin="0,0,6,6" />
-                    <Button Grid.Row="0" Grid.Column="2" Command="{Binding RefreshBrowseListCommand}" Margin="0,0,0,6"
+                    <!-- Height="30" to match the shared Button style's own Height (set on this
+                         DataTemplate's own Resources at the top of this file) — a plain ComboBox
+                         otherwise renders shorter than the Refresh button next to it. -->
+                    <ComboBox Grid.Column="0" Height="30" VerticalContentAlignment="Center"
+                              ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
+                    <Button Grid.Column="2" Command="{Binding RefreshBrowseListCommand}"
                             ToolTip="Comets and asteroids load automatically when this panel opens (from cache if warm) -- use this to force a fresh pull right now.">
                         <TextBlock Text="Refresh" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
-
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
-                    <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                </Grid>
+                <!-- Its own full-width line below the dropdown row now, rather than squeezed into
+                     a fixed middle column beside it — a longer status message (e.g. "Framing
+                     captured, rotate to 125°, offset RA ...") used to get cut off mid-sentence. -->
+                <TextBlock Text="{Binding StatusText}" TextWrapping="Wrap" Opacity="0.8" Margin="0,0,0,10" />
+                <Grid Margin="0,0,0,14">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="220" />
+                        <ColumnDefinition Width="90" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Search" VerticalAlignment="Center" Margin="0,0,6,0" />
+                    <TextBox Grid.Column="1" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                              Height="26" VerticalContentAlignment="Center" Margin="0,0,6,0" />
-                    <Button Grid.Row="1" Grid.Column="2" Command="{Binding SearchCommand}">
+                    <Button Grid.Column="2" Command="{Binding SearchCommand}">
                         <TextBlock Text="Search" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                 </Grid>
@@ -183,7 +191,7 @@
                      columns of its own, so it only draws content once ListView.View is an actual
                      GridView. Header padding "2,0,0,0" matches each row's own 2px inset (from
                      NINA's ListViewItem Border padding), keeping header/cell text aligned. -->
-                <ListView ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,12" HorizontalAlignment="Left">
+                <ListView ItemsSource="{Binding BrowseObjects}" SelectedItem="{Binding SelectedBrowseObject}" MaxHeight="140" Margin="0,0,0,14" HorizontalAlignment="Left">
                     <ListView.Resources>
                         <Style TargetType="GridViewColumnHeader" BasedOn="{StaticResource {x:Type GridViewColumnHeader}}">
                             <Setter Property="HorizontalContentAlignment" Value="Left" />
