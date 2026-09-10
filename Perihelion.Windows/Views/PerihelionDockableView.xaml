@@ -165,7 +165,7 @@
                     <ComboBox Grid.Column="0" Height="30" VerticalContentAlignment="Center"
                               ItemsSource="{Binding ObjectTypes}" SelectedItem="{Binding SelectedObjectType}" Margin="0,0,6,0" />
                     <Button Grid.Column="2" Command="{Binding RefreshBrowseListCommand}"
-                            ToolTip="Comets and asteroids load automatically when this panel opens (from cache if warm) -- use this to force a fresh pull right now.">
+                            ToolTip="Recomputes each object's current position, brightness and sort order for right now -- useful if this panel's been open a while. Only re-fetches comet/asteroid elements from MPC/JPL if the cache has actually gone stale; for a guaranteed fresh pull, use the Update buttons under Update Sources instead.">
                         <TextBlock Text="Refresh" Margin="14,0" Foreground="{DynamicResource ButtonForegroundBrush}" />
                     </Button>
                 </Grid>
