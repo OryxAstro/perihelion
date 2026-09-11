@@ -300,7 +300,7 @@ namespace Perihelion.Astrometry {
             // (never synced on this install, and the live fetch also failed).
             try {
                 var asteroids = await AsteroidOrbits.FetchAsteroidElementsAsync(httpClient, ct).ConfigureAwait(false);
-                // Computed for every fetched candidate, then sorted/capped by the REAL result --
+                // Computed for every fetched candidate, then sorted/capped by that result --
                 // not by H first. H alone is a poor stand-in for "worth showing here": the
                 // candidate pool at any useful threshold includes distant dwarf planets/TNOs
                 // (Pluto, Eris, Makemake...) whose low H reflects sheer size, not current
