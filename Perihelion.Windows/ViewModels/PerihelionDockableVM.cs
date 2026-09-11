@@ -1459,7 +1459,11 @@ namespace Perihelion.ViewModels {
         private static string FormatDuration(TimeSpan span) {
             var seconds = Math.Max(0, span.TotalSeconds);
             if (seconds < 60) return $"{(int)Math.Round(seconds)}s";
-            if (seconds < 3600) return $"{(int)(seconds / 60)}m";
+            if (seconds < 3600) {
+                var m = (int)(seconds / 60);
+                var s = (int)Math.Round(seconds % 60);
+                return s > 0 ? $"{m}m {s}s" : $"{m}m";
+            }
             var hours = (int)(seconds / 3600);
             var minutes = (int)(seconds % 3600 / 60);
             return $"{hours}h {minutes:00}m";
@@ -1478,7 +1482,11 @@ namespace Perihelion.ViewModels {
             var nextAt = lastAppliedUtc.AddSeconds(autoReapplySeconds);
             var remaining = nextAt - DateTime.UtcNow;
             if (remaining <= TimeSpan.Zero) return null;
-            return $"Next re-apply in {FormatDuration(remaining)}";
+            // Always raw seconds, not FormatDuration's minutes/hours breakdown -- this counts
+            // down within a bound the reapply interval itself sets, and that interval is always
+            // seconds now (no /60 conversion anywhere else in this feature), so the countdown
+            // shouldn't introduce one either. Matches Touch-N-Stars' own nextReapplyIn exactly.
+            return $"Next re-apply in {Math.Max(0, (int)Math.Round(remaining.TotalSeconds))}s";
         }
 
         public override void Hide(object o) {
