@@ -3,6 +3,19 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.7] — 2026-09-11
+
+### Fixed
+
+- **Quick Track's reapply interval now genuinely supports sub-minute values.** Both the
+  auto-reapply timer and Add to Sequence's own Perihelion Reapply Tracking Rate trigger
+  previously floored the configured interval to a whole minute before actually using it, even
+  though the setting itself has always been stored in seconds -- a 30-second interval for a
+  fast-moving object silently became a full minute the moment either mechanism actually ran.
+  Both now share one 5-second floor instead of two different, disagreeing ones (60s and a full
+  minute). Touch-N-Stars' own auto re-apply toggle and status footer no longer round a
+  sub-minute interval into a misleading "1 min" label either.
+
 ## [1.1.0.6] — 2026-09-10
 
 ### Changed
