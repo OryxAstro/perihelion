@@ -115,6 +115,13 @@ namespace Perihelion {
             }
         }
 
+        /// <summary>Floor for QuickTrackReapplyIntervalSeconds -- both Quick Track's own reapply
+        /// timer and Add to Sequence's own PerihelionReapplyTrigger read this same setting, and
+        /// both clamp to it rather than each hardcoding their own (they used to disagree: Quick
+        /// Track floored to a whole minute, the sequence trigger to 60s -- a 30-second setting
+        /// silently became two different actual intervals depending which one you used).</summary>
+        public const int MinReapplyIntervalSeconds = 5;
+
         /// <summary>How often Quick Track's auto-reapply timer recomputes and resends the
         /// tracking rate, in seconds -- default 900 (15 minutes). Seconds, not minutes, to
         /// match the granularity real-world use might need (a comet close to Earth moving fast
@@ -123,7 +130,7 @@ namespace Perihelion {
         public int QuickTrackReapplyIntervalSeconds {
             get => pluginSettings.GetValueInt32("QuickTrackReapplyIntervalSeconds", 900);
             set {
-                pluginSettings.SetValueInt32("QuickTrackReapplyIntervalSeconds", value);
+                pluginSettings.SetValueInt32("QuickTrackReapplyIntervalSeconds", Math.Max(MinReapplyIntervalSeconds, value));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QuickTrackReapplyIntervalSeconds)));
             }
         }

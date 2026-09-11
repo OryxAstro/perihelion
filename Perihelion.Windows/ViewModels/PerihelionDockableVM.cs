@@ -148,10 +148,6 @@ namespace Perihelion.ViewModels {
             RefreshLastUpdatedText();
 
             PathPoints = new PointCollection();
-            // Reads the configured global default (Options page, seconds) and converts to
-            // whole minutes -- Quick Track's own reapply timer only works in minutes. Default
-            // 900s / 60 = 15, identical to the previous hardcoded value.
-            AutoReapplyMinutes = Math.Max(1, PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds / 60 ?? 15);
             // ReapplyIntervalSeconds itself always reads the live value with no caching, but a
             // plain property read alone doesn't refresh anything already bound in the UI -- WPF
             // only re-reads a binding when it's told to. Subscribing here means an Options-page
@@ -1326,17 +1322,11 @@ namespace Perihelion.ViewModels {
             set { autoReapply = value; RaisePropertyChanged(); }
         }
 
-        public int AutoReapplyMinutes { get; }
-
-        /// <summary>The unconverted Options-page value (QuickTrackReapplyIntervalSeconds,
-        /// default 900) -- for display only, read fresh each time rather than cached at
-        /// construction like AutoReapplyMinutes is, so it reflects a mid-session Options change.
-        /// Deliberately NOT the same number AutoReapplyMinutes*60 would give: AutoReapplyMinutes
-        /// exists only because Quick Track's own reapply wire call takes whole minutes (a
-        /// documented limitation -- see AutoReapplyMinutes' own use in StartQuickTrackAction),
-        /// while PerihelionReapplyTrigger (Add to Sequence's own reapply, a separate consumer of
-        /// this exact same setting) reads this raw seconds value directly with no such
-        /// rounding.</summary>
+        /// <summary>The Options-page value (QuickTrackReapplyIntervalSeconds, default 900) --
+        /// read fresh each time rather than cached, so it reflects a mid-session Options change.
+        /// The same value both Quick Track's own reapply timer and PerihelionReapplyTrigger
+        /// (Add to Sequence's own reapply) use directly -- there's no separate minutes-only
+        /// variant anymore, since QuickTrackReapply's own timer now works in seconds too.</summary>
         public int ReapplyIntervalSeconds => PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds ?? 900;
 
         private bool quickTrackActive;
@@ -1398,7 +1388,7 @@ namespace Perihelion.ViewModels {
                 var result = await QuickTrackEngine.StartAsync(
                     telescopeMediator, guiderMediator, profileService,
                     Loaded.ObjectType, Loaded.Name, Guiding,
-                    AutoReapply ? AutoReapplyMinutes : null,
+                    AutoReapply ? ReapplyIntervalSeconds : null,
                     CancellationToken.None);
                 QuickTrackStatusText = result.Message;
                 if (result.Success) {
@@ -1439,8 +1429,8 @@ namespace Perihelion.ViewModels {
                 QuickTrackAppliedAgoText = s.LastAppliedUtc is DateTime lastApplied
                     ? $"Applied {FormatRelativeTime(lastApplied)}"
                     : null;
-                QuickTrackNextReapplyText = s.AutoReapplyMinutes is int mins && s.LastAppliedUtc is DateTime lastAppliedForReapply
-                    ? FormatNextReapply(lastAppliedForReapply, mins)
+                QuickTrackNextReapplyText = s.AutoReapplySeconds is int secs && s.LastAppliedUtc is DateTime lastAppliedForReapply
+                    ? FormatNextReapply(lastAppliedForReapply, secs)
                     : null;
                 // Deliberately independent of each other, same as the Touch-N-Stars card --
                 // LastError describes only the mount's own tracking-rate application, GuidingError
@@ -1468,7 +1458,7 @@ namespace Perihelion.ViewModels {
         /// given elapsed time reads the same on both frontends.</summary>
         private static string FormatDuration(TimeSpan span) {
             var seconds = Math.Max(0, span.TotalSeconds);
-            if (seconds < 60) return "under a minute";
+            if (seconds < 60) return $"{(int)Math.Round(seconds)}s";
             if (seconds < 3600) return $"{(int)(seconds / 60)}m";
             var hours = (int)(seconds / 3600);
             var minutes = (int)(seconds % 3600 / 60);
@@ -1484,8 +1474,8 @@ namespace Perihelion.ViewModels {
             return $"{(int)(seconds / 86400)}d ago";
         }
 
-        private static string? FormatNextReapply(DateTime lastAppliedUtc, int autoReapplyMinutes) {
-            var nextAt = lastAppliedUtc.AddMinutes(autoReapplyMinutes);
+        private static string? FormatNextReapply(DateTime lastAppliedUtc, int autoReapplySeconds) {
+            var nextAt = lastAppliedUtc.AddSeconds(autoReapplySeconds);
             var remaining = nextAt - DateTime.UtcNow;
             if (remaining <= TimeSpan.Zero) return null;
             return $"Next re-apply in {FormatDuration(remaining)}";

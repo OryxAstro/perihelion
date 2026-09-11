@@ -31,9 +31,9 @@ namespace Perihelion.Api {
             OrbitalObjectType objectType,
             string targetName,
             bool guiding,
-            int? autoReapplyMinutes,
+            int? autoReapplySeconds,
             CancellationToken ct) {
-            QuickTrackStatus.Started(objectType, targetName, guiding, autoReapplyMinutes is > 0 ? autoReapplyMinutes : null);
+            QuickTrackStatus.Started(objectType, targetName, guiding, autoReapplySeconds is > 0 ? autoReapplySeconds : null);
 
             // Some mount drivers don't support a custom base tracking rate at all --
             // confirmed case: an ASCOM OnStep driver build reporting
@@ -108,18 +108,18 @@ namespace Perihelion.Api {
 
                 QuickTrackStatus.SetGuidingOnlyFallback(guidingOnlyFallback);
 
-                // Unconditional now, not just when autoReapplyMinutes is set -- QuickTrackReapply
+                // Unconditional now, not just when autoReapplySeconds is set -- QuickTrackReapply
                 // always runs its own meridian safety cutoff regardless of that setting (Quick
                 // Track has no sequence/trigger infrastructure either way), and only starts the
                 // optional reapply sub-timer when a positive interval is actually given.
-                QuickTrackReapply.Start(telescopeMediator, guiderMediator, profileService, objectType, targetName, guiding, autoReapplyMinutes is > 0 ? autoReapplyMinutes : null);
+                QuickTrackReapply.Start(telescopeMediator, guiderMediator, profileService, objectType, targetName, guiding, autoReapplySeconds is > 0 ? autoReapplySeconds : null);
 
                 var message = guidingOnlyFallback
                     ? "Quick Track started via guiding only (mount does not support a custom tracking rate)"
                     : guidingError != null
                         ? $"Quick Track started, but guiding could not be started: {guidingError}"
-                        : autoReapplyMinutes is > 0
-                            ? $"Quick Track started, re-applying every {autoReapplyMinutes} min"
+                        : autoReapplySeconds is > 0
+                            ? $"Quick Track started, re-applying every {FormatInterval(autoReapplySeconds.Value)}"
                             : "Quick Track started";
                 return new Result(true, message, guidingOnlyFallback);
             } catch (SequenceEntityFailedException ex) {
@@ -147,5 +147,11 @@ namespace Perihelion.Api {
                 return new Result(false, $"Unexpected error: {ex.Message}", false);
             }
         }
+
+        /// <summary>"30 sec"/"15 min" for a status message -- whole minutes read oddly below 60s
+        /// (rounds to "0 min" or "1 min"), which matters now that the reapply interval genuinely
+        /// supports sub-minute values for a fast-moving object.</summary>
+        private static string FormatInterval(int seconds) =>
+            seconds < 60 ? $"{seconds} sec" : $"{seconds / 60} min";
     }
 }

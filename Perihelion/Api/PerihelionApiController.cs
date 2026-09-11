@@ -32,7 +32,7 @@ namespace Perihelion.Api {
 
         /// <summary>Null/omitted/&lt;=0 disables it. Otherwise, re-applies the rate on this interval -- see QuickTrackReapply.</summary>
         [JsonProperty]
-        public int? AutoReapplyMinutes { get; set; }
+        public int? AutoReapplySeconds { get; set; }
     }
 
     internal class TrackResponse {
@@ -57,7 +57,7 @@ namespace Perihelion.Api {
         public bool Guiding { get; set; }
 
         [JsonProperty]
-        public int? AutoReapplyMinutes { get; set; }
+        public int? AutoReapplySeconds { get; set; }
 
         [JsonProperty]
         public DateTime? StartedUtc { get; set; }
@@ -496,7 +496,7 @@ namespace Perihelion.Api {
                 } else {
                     var result = await QuickTrackEngine.StartAsync(
                         TelescopeMediator, GuiderMediator, ProfileService!,
-                        request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplyMinutes,
+                        request.ObjectType, request.TargetName, request.Guiding, request.AutoReapplySeconds,
                         HttpContext.CancellationToken);
                     response.Success = result.Success;
                     response.Message = result.Message;
@@ -577,7 +577,7 @@ namespace Perihelion.Api {
                 ObjectType = s.ObjectType,
                 TargetName = s.TargetName,
                 Guiding = s.Guiding,
-                AutoReapplyMinutes = s.AutoReapplyMinutes,
+                AutoReapplySeconds = s.AutoReapplySeconds,
                 StartedUtc = s.StartedUtc,
                 LastAppliedUtc = s.LastAppliedUtc,
                 LastRaArcsecPerSec = s.LastRaArcsecPerSec,

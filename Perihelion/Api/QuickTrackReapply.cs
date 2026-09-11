@@ -12,7 +12,7 @@ namespace Perihelion.Api {
 
     /// <summary>
     /// Owns Quick Track's ongoing background behavior: the optional "auto re-apply every N
-    /// minutes" timer, and an always-on meridian safety cutoff (see CheckMeridian). State is
+    /// seconds" timer, and an always-on meridian safety cutoff (see CheckMeridian). State is
     /// static/module-level, not instance state, because EmbedIO constructs a new
     /// PerihelionApiController instance per request -- same reason TelescopeMediator/
     /// GuiderMediator on that controller are static fields rather than constructor-injected.
@@ -34,18 +34,18 @@ namespace Perihelion.Api {
         // without hammering the mount driver with property reads.
         private static readonly TimeSpan MeridianCheckInterval = TimeSpan.FromSeconds(60);
 
-        public static void Start(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding, int? reapplyIntervalMinutes) {
+        public static void Start(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding, int? reapplyIntervalSeconds) {
             lock (Gate) {
                 StopLocked();
 
-                if (reapplyIntervalMinutes is > 0) {
-                    var interval = TimeSpan.FromMinutes(Math.Max(1, reapplyIntervalMinutes.Value));
+                if (reapplyIntervalSeconds is > 0) {
+                    var interval = TimeSpan.FromSeconds(Math.Max(PerihelionPlugin.MinReapplyIntervalSeconds, reapplyIntervalSeconds.Value));
                     reapplyTimer = new Timer(
                         _ => Reapply(telescopeMediator, guiderMediator, profileService, objectType, targetName, guiding),
                         null,
                         interval,
                         interval);
-                    Logger.Info($"Perihelion: auto re-apply enabled for {targetName} every {interval.TotalMinutes:0} min");
+                    Logger.Info($"Perihelion: auto re-apply enabled for {targetName} every {interval.TotalSeconds:0} sec");
                 }
 
                 // Unconditional -- runs whether or not auto re-apply is on, since Quick Track has

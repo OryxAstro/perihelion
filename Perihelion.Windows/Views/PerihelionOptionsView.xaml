@@ -83,9 +83,9 @@
                 How often Quick Track, and Add to Sequence's own Perihelion Reapply Tracking Rate
                 trigger, recompute and resend the tracking rate while running. Default 900s
                 (15 minutes) suits comets and asteroids, whose true rate drifts on a timescale of
-                minutes to hours -- shorten this for an object moving unusually fast. Takes
-                effect the next time Quick Track starts, or the next time a sequence built with
-                Add to Sequence reaches this trigger.
+                minutes to hours -- shorten this for an object moving unusually fast (down to a
+                5-second floor). Takes effect the next time Quick Track starts, or the next time
+                a sequence built with Add to Sequence reaches this trigger.
             </TextBlock>
 
             <Separator Margin="0,0,0,10" />

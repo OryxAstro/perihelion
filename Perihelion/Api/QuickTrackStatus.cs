@@ -19,7 +19,7 @@ namespace Perihelion.Api {
             string? ObjectType,
             string? TargetName,
             bool Guiding,
-            int? AutoReapplyMinutes,
+            int? AutoReapplySeconds,
             DateTime? StartedUtc,
             DateTime? LastAppliedUtc,
             double? LastRaArcsecPerSec,
@@ -34,13 +34,13 @@ namespace Perihelion.Api {
 
         public static Snapshot Current => current;
 
-        public static void Started(OrbitalObjectType objectType, string targetName, bool guiding, int? autoReapplyMinutes) {
+        public static void Started(OrbitalObjectType objectType, string targetName, bool guiding, int? autoReapplySeconds) {
             current = current with {
                 Active = true,
                 ObjectType = objectType.ToString(),
                 TargetName = targetName,
                 Guiding = guiding,
-                AutoReapplyMinutes = autoReapplyMinutes,
+                AutoReapplySeconds = autoReapplySeconds,
                 StartedUtc = DateTime.UtcNow,
                 // A previous session's automatic-stop reason (e.g. the meridian safety cutoff)
                 // means nothing for this new one -- without clearing it here, `with` semantics

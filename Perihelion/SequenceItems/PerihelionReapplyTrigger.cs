@@ -88,7 +88,7 @@ namespace Perihelion.SequenceItems {
             // this is that guard.
             if (trackingItem.LastAppliedRate == null) return false;
 
-            var intervalSeconds = Math.Max(60, PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds ?? 900);
+            var intervalSeconds = Math.Max(PerihelionPlugin.MinReapplyIntervalSeconds, PerihelionPlugin.Instance?.QuickTrackReapplyIntervalSeconds ?? 900);
             return (DateTime.UtcNow - lastAppliedUtc) >= TimeSpan.FromSeconds(intervalSeconds);
         }
 
