@@ -3,6 +3,7 @@ using EmbedIO;
 using EmbedIO.Routing;
 using EmbedIO.WebApi;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using NINA.Astrometry;
 using NINA.Core.Model;
 using NINA.Core.Utility;
@@ -546,14 +547,34 @@ namespace Perihelion.Api {
         public async Task PostSettings() {
             try {
                 var body = await HttpContext.GetRequestBodyAsStringAsync();
-                var request = JsonConvert.DeserializeObject<SettingsResponse>(body) ?? new SettingsResponse();
+                var json = JObject.Parse(body);
+                // Partial update -- only touches fields the caller actually included, rather than
+                // deserializing into a fully-populated SettingsResponse and writing back all six
+                // unconditionally (a real bug this replaces: Touch-N-Stars' own saveSettings()
+                // only ever sends EqmodRaRateCorrection/QuickTrackReapplyIntervalSeconds, so every
+                // call was silently zeroing CometMagnitudeThreshold/MaxComets/
+                // AsteroidMagnitudeThreshold/MaxAsteroids to C#'s own numeric default -- and
+                // MaxComets/MaxAsteroids = 0 caps the Browse list to nothing regardless of what's
+                // actually fetched).
                 if (PerihelionPlugin.Instance != null) {
-                    PerihelionPlugin.Instance.EqmodRaRateCorrection = request.EqmodRaRateCorrection;
-                    PerihelionPlugin.Instance.QuickTrackReapplyIntervalSeconds = request.QuickTrackReapplyIntervalSeconds;
-                    PerihelionPlugin.Instance.CometMagnitudeThreshold = request.CometMagnitudeThreshold;
-                    PerihelionPlugin.Instance.MaxComets = request.MaxComets;
-                    PerihelionPlugin.Instance.AsteroidMagnitudeThreshold = request.AsteroidMagnitudeThreshold;
-                    PerihelionPlugin.Instance.MaxAsteroids = request.MaxAsteroids;
+                    if (json.TryGetValue(nameof(SettingsResponse.EqmodRaRateCorrection), out var eqmod)) {
+                        PerihelionPlugin.Instance.EqmodRaRateCorrection = eqmod.Value<bool>();
+                    }
+                    if (json.TryGetValue(nameof(SettingsResponse.QuickTrackReapplyIntervalSeconds), out var reapplySeconds)) {
+                        PerihelionPlugin.Instance.QuickTrackReapplyIntervalSeconds = reapplySeconds.Value<int>();
+                    }
+                    if (json.TryGetValue(nameof(SettingsResponse.CometMagnitudeThreshold), out var cometMag)) {
+                        PerihelionPlugin.Instance.CometMagnitudeThreshold = cometMag.Value<double>();
+                    }
+                    if (json.TryGetValue(nameof(SettingsResponse.MaxComets), out var maxComets)) {
+                        PerihelionPlugin.Instance.MaxComets = maxComets.Value<int>();
+                    }
+                    if (json.TryGetValue(nameof(SettingsResponse.AsteroidMagnitudeThreshold), out var asteroidMag)) {
+                        PerihelionPlugin.Instance.AsteroidMagnitudeThreshold = asteroidMag.Value<double>();
+                    }
+                    if (json.TryGetValue(nameof(SettingsResponse.MaxAsteroids), out var maxAsteroids)) {
+                        PerihelionPlugin.Instance.MaxAsteroids = maxAsteroids.Value<int>();
+                    }
                 }
                 await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = true }), "application/json", Encoding.UTF8);
             } catch (Exception ex) {
