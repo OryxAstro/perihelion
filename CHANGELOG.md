@@ -3,6 +3,21 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.8] — 2026-09-11
+
+### Fixed
+
+- **Saving settings from Touch-N-Stars no longer silently zeroes the ones it doesn't send.**
+  `POST /settings` used to deserialize the request body into a fully-typed settings object and
+  write back all six fields unconditionally -- any field the caller omitted became its numeric
+  default (0/0.0) and got persisted as if intentionally cleared. Touch-N-Stars' own settings
+  save has only ever sent two of the six fields, so every save was zeroing
+  CometMagnitudeThreshold/MaxComets/AsteroidMagnitudeThreshold/MaxAsteroids --
+  MaxComets/MaxAsteroids = 0 caps the Browse list to nothing, which is what broke tracking on a
+  real Pi despite comets/asteroids still reporting as synced. Settings are now applied as a
+  partial update: only a field actually present in the request body is touched, so any caller
+  sending a subset is safe by construction.
+
 ## [1.1.0.7] — 2026-09-11
 
 ### Fixed
