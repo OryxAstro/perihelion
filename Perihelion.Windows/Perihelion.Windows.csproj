@@ -43,6 +43,7 @@
     <Compile Include="..\Perihelion\Api\**\*.cs" />
     <Compile Include="..\Perihelion\Astrometry\**\*.cs" />
     <Compile Include="..\Perihelion\SequenceItems\**\*.cs" />
+    <Compile Include="..\Perihelion\Sequencing\**\*.cs" />
     <Compile Include="..\Perihelion\Utility\**\*.cs" />
     <Compile Include="..\Perihelion\PerihelionPlugin.cs" />
     <!-- Shared deliberately, not just the source — same GUID, name, description, license

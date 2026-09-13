@@ -11,8 +11,10 @@ using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Profile.Interfaces;
 using Perihelion.Astrometry;
+using Perihelion.Sequencing;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -175,6 +177,63 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public DateTime? AsteroidsLastSyncedUtc { get; set; }
+    }
+
+    internal class AddToSequenceExposureRequest {
+        [JsonProperty]
+        public string? FilterName { get; set; }
+
+        [JsonProperty]
+        public double ExposureSeconds { get; set; }
+
+        [JsonProperty]
+        public int FrameCount { get; set; } = 1;
+    }
+
+    internal class AddToSequenceRequest {
+        [JsonProperty]
+        [JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
+        public OrbitalObjectType ObjectType { get; set; }
+
+        [JsonProperty]
+        public string TargetName { get; set; } = string.Empty;
+
+        [JsonProperty]
+        public double RaHours { get; set; }
+
+        [JsonProperty]
+        public double DecDeg { get; set; }
+
+        /// <summary>Null means slew to RaHours/DecDeg exactly.</summary>
+        [JsonProperty]
+        public double? FrameOffsetRaDeg { get; set; }
+
+        [JsonProperty]
+        public double? FrameOffsetDecDeg { get; set; }
+
+        /// <summary>Null means plain Center; CenterAndRotate needs a rotator.</summary>
+        [JsonProperty]
+        public double? RotationAngle { get; set; }
+
+        [JsonProperty]
+        public bool Guiding { get; set; }
+
+        [JsonProperty]
+        public bool MeridianFlip { get; set; }
+
+        [JsonProperty]
+        public double? AutofocusMinutes { get; set; }
+
+        [JsonProperty]
+        public AddToSequenceExposureRequest Exposure { get; set; } = new();
+    }
+
+    internal class AddToSequenceResponse {
+        [JsonProperty]
+        public bool Success { get; set; }
+
+        [JsonProperty]
+        public string Message { get; set; } = string.Empty;
     }
 
     internal class ImportResponse {
@@ -642,6 +701,71 @@ namespace Perihelion.Api {
         public async Task Stop() {
             var result = await QuickTrackEngine.StopAsync(TelescopeMediator, GuiderMediator, HttpContext.CancellationToken);
             var response = new TrackResponse { Success = result.Success, Message = result.Message };
+            var json = JsonConvert.SerializeObject(response);
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>Appends one target to the loaded Advanced Sequence via ISequenceMediator.AddAdvancedTarget -- unlike ninaAPI's POST /sequence/load, this never replaces it.</summary>
+        [Route(HttpVerbs.Post, "/sequence/add-target")]
+        public async Task AddTargetToSequence() {
+            var response = new AddToSequenceResponse();
+            try {
+                var body = await HttpContext.GetRequestBodyAsStringAsync();
+                var request = JsonConvert.DeserializeObject<AddToSequenceRequest>(body) ?? new AddToSequenceRequest();
+
+                var sequenceMediator = PerihelionPlugin.SequenceMediator;
+                if (sequenceMediator == null) {
+                    response.Message = "Perihelion: sequencer not available yet.";
+                } else if (!sequenceMediator.Initialized) {
+                    response.Message = "Perihelion: Advanced Sequencer not started yet.";
+                } else {
+                    var factory = PerihelionSequenceBuilder.ResolveFactory(sequenceMediator);
+                    if (factory == null) {
+                        response.Message = "Perihelion: could not reach the sequencer's item factory.";
+                        Logger.Error("Perihelion: AddTargetToSequence -- ResolveFactory returned null with Initialized true");
+                    } else {
+                        var trueCoordinates = new Coordinates(request.RaHours, request.DecDeg, Epoch.J2000, Coordinates.RAType.Hours);
+                        var slewCoordinates = request.FrameOffsetRaDeg is double offsetRa && request.FrameOffsetDecDeg is double offsetDec
+                            ? new Coordinates(offsetRa / 15.0, offsetDec, Epoch.J2000, Coordinates.RAType.Hours)
+                            : trueCoordinates;
+
+                        NINA.Core.Model.Equipment.FilterInfo? filter = null;
+                        if (!string.IsNullOrEmpty(request.Exposure.FilterName)) {
+                            filter = ProfileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters
+                                ?.FirstOrDefault(f => f.Name == request.Exposure.FilterName);
+                        }
+
+                        var container = PerihelionSequenceBuilder.BuildTargetContainer(
+                            factory,
+                            request.ObjectType,
+                            request.TargetName,
+                            trueCoordinates,
+                            slewCoordinates,
+                            request.Guiding,
+                            request.RotationAngle,
+                            request.AutofocusMinutes,
+                            new PerihelionSequenceBuilder.ExposureSettings(filter, request.Exposure.ExposureSeconds, request.Exposure.FrameCount));
+
+                        sequenceMediator.AddAdvancedTarget(container);
+
+                        if (request.MeridianFlip) {
+                            var root = PerihelionSequenceBuilder.ResolveSequenceRoot(sequenceMediator);
+                            if (root != null) {
+                                PerihelionSequenceBuilder.EnsureGlobalMeridianFlipTrigger(factory, root);
+                            } else {
+                                Logger.Warning("Perihelion: added target to sequence, but could not reach the sequence root for the global Meridian Flip trigger");
+                            }
+                        }
+
+                        response.Success = true;
+                        response.Message = $"Added {request.TargetName} to the Advanced Sequencer.";
+                    }
+                }
+            } catch (Exception ex) {
+                response.Message = $"Unexpected error: {ex.Message}";
+                Logger.Error("Perihelion: AddTargetToSequence failed", ex);
+            }
+
             var json = JsonConvert.SerializeObject(response);
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
