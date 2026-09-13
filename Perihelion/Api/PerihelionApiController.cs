@@ -152,6 +152,15 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public DateTime? CobsLastRefreshedUtc { get; set; }
+
+        [JsonProperty]
+        public int CometsCachedCount { get; set; }
+
+        [JsonProperty]
+        public int AsteroidsCachedCount { get; set; }
+
+        [JsonProperty]
+        public int CobsCachedCount { get; set; }
     }
 
     internal class SyncResponse {
@@ -338,6 +347,9 @@ namespace Perihelion.Api {
                 CometsLastSyncedUtc = CometOrbits.LastSyncedUtc,
                 AsteroidsLastSyncedUtc = AsteroidOrbits.LastSyncedUtc,
                 CobsLastRefreshedUtc = CometActivity.LastFullRefreshUtc,
+                CometsCachedCount = CometOrbits.CachedCount,
+                AsteroidsCachedCount = AsteroidOrbits.CachedCount,
+                CobsCachedCount = CometActivity.CachedCount,
             });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
