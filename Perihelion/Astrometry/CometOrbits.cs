@@ -267,6 +267,17 @@ namespace Perihelion.Astrometry {
         /// </summary>
         public static async Task<int> ImportFromFileAsync(string filePath, CancellationToken ct = default) {
             var rawText = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+            return await ImportFromTextAsync(rawText, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Same import as ImportFromFileAsync, from an already-read-in string rather than a local
+        /// file path -- the shared core both that method and Perihelion's own HTTP
+        /// POST /import/comets route (Touch-N-Stars has no local filesystem access to a Windows-
+        /// style OpenFileDialog, just whatever a browser file picker or paste hands over as text)
+        /// delegate to, so the parsing/caching logic exists exactly once.
+        /// </summary>
+        public static async Task<int> ImportFromTextAsync(string rawText, CancellationToken ct = default) {
             var parsed = ParseCometElementsText(rawText);
             await CacheLock.WaitAsync(ct).ConfigureAwait(false);
             try {
@@ -290,14 +301,27 @@ namespace Perihelion.Astrometry {
         /// genuinely no cache yet on this install -- distinct from a file with zero comets in it.
         /// </summary>
         public static async Task<bool> ExportToFileAsync(string filePath, CancellationToken ct = default) {
+            var rawText = await ExportToTextAsync(ct).ConfigureAwait(false);
+            if (rawText == null) return false;
+            await File.WriteAllTextAsync(filePath, rawText, ct).ConfigureAwait(false);
+            return true;
+        }
+
+        /// <summary>
+        /// Same export as ExportToFileAsync, returning the raw text directly rather than writing
+        /// it to a local file -- the shared core both that method and Perihelion's own HTTP
+        /// GET /export/comets route (which streams this straight into the HTTP response body)
+        /// delegate to. Null (not empty string) distinguishes "nothing cached yet" from a
+        /// genuinely empty cache, same as ExportToFileAsync's own false/true return.
+        /// </summary>
+        public static async Task<string?> ExportToTextAsync(CancellationToken ct = default) {
             await CacheLock.WaitAsync(ct).ConfigureAwait(false);
             try {
                 LoadDiskCacheIfNeeded();
-                if (_cache == null || !File.Exists(CacheFilePath)) return false;
+                if (_cache == null || !File.Exists(CacheFilePath)) return null;
                 var disk = Newtonsoft.Json.JsonConvert.DeserializeObject<DiskCache>(await File.ReadAllTextAsync(CacheFilePath, ct).ConfigureAwait(false));
-                if (disk == null || string.IsNullOrEmpty(disk.RawText)) return false;
-                await File.WriteAllTextAsync(filePath, disk.RawText, ct).ConfigureAwait(false);
-                return true;
+                if (disk == null || string.IsNullOrEmpty(disk.RawText)) return null;
+                return disk.RawText;
             } finally {
                 CacheLock.Release();
             }

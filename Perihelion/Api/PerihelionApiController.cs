@@ -168,6 +168,17 @@ namespace Perihelion.Api {
         public DateTime? AsteroidsLastSyncedUtc { get; set; }
     }
 
+    internal class ImportResponse {
+        [JsonProperty]
+        public bool Success { get; set; }
+
+        [JsonProperty]
+        public string Message { get; set; } = string.Empty;
+
+        [JsonProperty]
+        public int Count { get; set; }
+    }
+
     internal class CometActivityResponse {
         [JsonProperty]
         public bool Available { get; set; }
@@ -363,6 +374,99 @@ namespace Perihelion.Api {
                 AsteroidsLastSyncedUtc = AsteroidOrbits.LastSyncedUtc,
             };
             var json = JsonConvert.SerializeObject(response);
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Accepts a plain MPC CometEls.txt body directly (the same format the live sync fetches
+        /// and Export below produces) -- lets Touch-N-Stars offer the same "distribute a synced
+        /// file to an install behind a blocked network" workflow the Windows dockable panel
+        /// already has via a local file dialog, since a browser has no equivalent file-path API
+        /// and instead hands over whatever a file picker/paste read as text.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/import/comets")]
+        public async Task ImportComets() {
+            try {
+                var rawText = await HttpContext.GetRequestBodyAsStringAsync();
+                var count = await CometOrbits.ImportFromTextAsync(rawText, HttpContext.CancellationToken);
+                var json = JsonConvert.SerializeObject(new ImportResponse { Success = true, Message = $"Imported {count} comet(s)", Count = count });
+                await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = false, Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
+
+        /// <summary>
+        /// Returns the currently cached comet elements as the exact raw MPC CometEls.txt they
+        /// were parsed from -- a convenience re-share, not a requirement, since Import above
+        /// already accepts MPC's own file directly. 404 (not an empty 200) when nothing has ever
+        /// been synced on this install, distinct from a cache that's merely empty.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/export/comets")]
+        public async Task ExportComets() {
+            var rawText = await CometOrbits.ExportToTextAsync(HttpContext.CancellationToken);
+            if (rawText == null) {
+                HttpContext.Response.StatusCode = 404;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = "Comet elements have never been synced on this install." }), "application/json", Encoding.UTF8);
+                return;
+            }
+            await HttpContext.SendStringAsync(rawText, "text/plain", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Wipes both the in-memory and on-disk comet cache -- the next lookup does a full live
+        /// fetch instead of using anything currently held.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/clear/comets")]
+        public async Task ClearComets() {
+            await CometOrbits.ClearAsync(HttpContext.CancellationToken);
+            var json = JsonConvert.SerializeObject(new { Success = true, Message = "Comet cache cleared" });
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Accepts Perihelion's own asteroid-elements JSON directly (the same format Export below
+        /// produces) -- see AsteroidOrbits.ImportFromTextAsync's own doc comment for why this uses
+        /// Perihelion's own format rather than an MPC-compatible one (no universal third-party
+        /// bulk format exists for asteroid elements the way CometEls.txt does for comets).
+        /// </summary>
+        [Route(HttpVerbs.Post, "/import/asteroids")]
+        public async Task ImportAsteroids() {
+            try {
+                var json = await HttpContext.GetRequestBodyAsStringAsync();
+                var count = await AsteroidOrbits.ImportFromTextAsync(json, HttpContext.CancellationToken);
+                var response = JsonConvert.SerializeObject(new ImportResponse { Success = true, Message = $"Imported {count} asteroid(s)", Count = count });
+                await HttpContext.SendStringAsync(response, "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = false, Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
+
+        /// <summary>
+        /// Returns the currently cached asteroid elements as Perihelion's own JSON list -- 404
+        /// (not an empty 200) when nothing has ever been synced on this install.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/export/asteroids")]
+        public async Task ExportAsteroids() {
+            var json = await AsteroidOrbits.ExportToTextAsync(HttpContext.CancellationToken);
+            if (json == null) {
+                HttpContext.Response.StatusCode = 404;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = "Asteroid elements have never been synced on this install." }), "application/json", Encoding.UTF8);
+                return;
+            }
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Wipes both the in-memory and on-disk asteroid cache -- the next lookup does a full
+        /// live re-fetch from JPL at the currently configured threshold.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/clear/asteroids")]
+        public async Task ClearAsteroids() {
+            await AsteroidOrbits.ClearAsync(HttpContext.CancellationToken);
+            var json = JsonConvert.SerializeObject(new { Success = true, Message = "Asteroid cache cleared" });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
 
