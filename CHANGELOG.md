@@ -3,6 +3,28 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.9] — 2026-09-13
+
+### Added
+
+- HTTP Import/Export/Clear routes for cached comet and asteroid orbital elements
+  (`/import`, `/export`, `/clear` for `/comets` and `/asteroids`), plus `POST
+  /clear/cobs`. Backs Touch-N-Stars' new Settings tab.
+- `GET /sync/status` reports cached-object counts (`CometsCachedCount`,
+  `AsteroidsCachedCount`, `CobsCachedCount`).
+- `POST /sequence/add-target`: appends one target to the currently-loaded
+  Advanced Sequence instead of replacing it, via the same in-process
+  `AddAdvancedTarget` mechanism the Windows dockable panel's Add to Sequence
+  already used. Verified on both PINS and Windows NINA.
+
+### Fixed
+
+- The Windows dockable panel now notices sync/import changes made externally
+  (e.g. from Touch-N-Stars) while it's open, instead of only refreshing on its
+  own actions.
+- A single comet or asteroid with degenerate geometry no longer takes down the
+  whole Browse list for that request.
+
 ## [1.1.0.8] — 2026-09-11
 
 ### Fixed

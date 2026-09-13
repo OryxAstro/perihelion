@@ -281,6 +281,16 @@ namespace Perihelion.Astrometry {
         /// </summary>
         public static async Task<int> ImportFromFileAsync(string filePath, CancellationToken ct = default) {
             var json = await File.ReadAllTextAsync(filePath, ct).ConfigureAwait(false);
+            return await ImportFromTextAsync(json, ct).ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Same import as ImportFromFileAsync, from an already-read-in JSON string rather than a
+        /// local file path -- the shared core both that method and Perihelion's own HTTP
+        /// POST /import/asteroids route delegate to, so the parsing/caching logic exists exactly
+        /// once.
+        /// </summary>
+        public static async Task<int> ImportFromTextAsync(string json, CancellationToken ct = default) {
             var elements = Newtonsoft.Json.JsonConvert.DeserializeObject<List<AsteroidElements>>(json)
                 ?? throw new InvalidOperationException("File did not contain a recognizable Perihelion asteroid elements list.");
             await CacheLock.WaitAsync(ct).ConfigureAwait(false);
@@ -302,13 +312,24 @@ namespace Perihelion.Astrometry {
         /// cache yet on this install.
         /// </summary>
         public static async Task<bool> ExportToFileAsync(string filePath, CancellationToken ct = default) {
+            var json = await ExportToTextAsync(ct).ConfigureAwait(false);
+            if (json == null) return false;
+            await File.WriteAllTextAsync(filePath, json, ct).ConfigureAwait(false);
+            return true;
+        }
+
+        /// <summary>
+        /// Same export as ExportToFileAsync, returning the JSON directly rather than writing it
+        /// to a local file -- the shared core both that method and Perihelion's own HTTP
+        /// GET /export/asteroids route (which streams this straight into the HTTP response body)
+        /// delegate to. Null distinguishes "nothing cached yet" from a genuinely empty cache.
+        /// </summary>
+        public static async Task<string?> ExportToTextAsync(CancellationToken ct = default) {
             await CacheLock.WaitAsync(ct).ConfigureAwait(false);
             try {
                 LoadDiskCacheIfNeeded();
-                if (_cache == null) return false;
-                var json = Newtonsoft.Json.JsonConvert.SerializeObject(_cache, Newtonsoft.Json.Formatting.Indented);
-                await File.WriteAllTextAsync(filePath, json, ct).ConfigureAwait(false);
-                return true;
+                if (_cache == null) return null;
+                return Newtonsoft.Json.JsonConvert.SerializeObject(_cache, Newtonsoft.Json.Formatting.Indented);
             } finally {
                 CacheLock.Release();
             }

@@ -196,9 +196,15 @@ namespace Perihelion.ViewModels {
             StopQuickTrackCommand.RegisterPropertyChangeNotification(this, nameof(QuickTrackActive));
 
             statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
-            statusTimer.Tick += (_, _) => RefreshQuickTrackStatus();
+            statusTimer.Tick += (_, _) => {
+                RefreshQuickTrackStatus();
+                CheckForExternalDataUpdates();
+            };
             statusTimer.Start();
             RefreshQuickTrackStatus();
+            lastKnownCometsSyncedUtc = CometOrbits.LastSyncedUtc;
+            lastKnownAsteroidsSyncedUtc = AsteroidOrbits.LastSyncedUtc;
+            lastKnownCobsRefreshedUtc = CometActivity.LastFullRefreshUtc;
 
             // Auto-populate on open rather than waiting for an explicit Refresh click, so a
             // warm cache shows results immediately. Fire-and-forget is safe here:
@@ -331,6 +337,38 @@ namespace Perihelion.ViewModels {
             RaisePropertyChanged(nameof(AsteroidsLastUpdatedText));
             RaisePropertyChanged(nameof(AsteroidsCountText));
             RaisePropertyChanged(nameof(CobsCountText));
+        }
+
+        // Comets/AsteroidOrbits/CometActivity are static, in-process state -- Perihelion's own
+        // HTTP server (Touch-N-Stars' actual target) runs in this same NINA process, so a sync
+        // triggered from a phone updates the exact same statics this panel reads, it just never
+        // told this already-open panel to look again. Caching the last-seen timestamps and
+        // diffing on each 5s tick (piggybacking on the existing Quick Track status timer rather
+        // than a second one) means an untouched panel does zero extra work, and only an actual
+        // external change -- not just the clock ticking -- triggers anything.
+        private DateTime? lastKnownCometsSyncedUtc;
+        private DateTime? lastKnownAsteroidsSyncedUtc;
+        private DateTime? lastKnownCobsRefreshedUtc;
+
+        private void CheckForExternalDataUpdates() {
+            var cometsChanged = CometOrbits.LastSyncedUtc != lastKnownCometsSyncedUtc;
+            var asteroidsChanged = AsteroidOrbits.LastSyncedUtc != lastKnownAsteroidsSyncedUtc;
+            var cobsChanged = CometActivity.LastFullRefreshUtc != lastKnownCobsRefreshedUtc;
+            if (!cometsChanged && !asteroidsChanged && !cobsChanged) return;
+
+            lastKnownCometsSyncedUtc = CometOrbits.LastSyncedUtc;
+            lastKnownAsteroidsSyncedUtc = AsteroidOrbits.LastSyncedUtc;
+            lastKnownCobsRefreshedUtc = CometActivity.LastFullRefreshUtc;
+            RefreshLastUpdatedText();
+
+            // Only the heavier full list rebuild (network round-trip, clears/repopulates
+            // BrowseObjects) is gated on comets/asteroids specifically, and skipped entirely
+            // while the panel is already busy with something else -- a COBS-only refresh updates
+            // via EnrichObservedMagnitudesAsync's own existing path on the next Load/Refresh, not
+            // worth a full rebuild on its own.
+            if ((cometsChanged || asteroidsChanged) && !IsBusy) {
+                _ = RefreshBrowseListAction();
+            }
         }
 
         private async Task UpdateCometsAction() {

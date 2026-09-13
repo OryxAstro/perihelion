@@ -163,6 +163,24 @@ namespace Perihelion.Astrometry {
             }
         }
 
+        /// <summary>Explicit "Clear" action, mirroring CometOrbits.ClearAsync/AsteroidOrbits.
+        /// ClearAsync -- wipes both the in-memory and on-disk cache, so the next Browse-tab open
+        /// re-fetches every comet's observed brightness from COBS fresh.</summary>
+        public static async Task ClearAsync(CancellationToken ct = default) {
+            await CacheLock.WaitAsync(ct).ConfigureAwait(false);
+            try {
+                _cache.Clear();
+                _lastFullRefreshUtc = null;
+                try {
+                    if (File.Exists(CacheFilePath)) File.Delete(CacheFilePath);
+                } catch (Exception ex) {
+                    NINA.Core.Utility.Logger.Warning($"Perihelion: could not delete comet-activity disk cache: {ex.Message}");
+                }
+            } finally {
+                CacheLock.Release();
+            }
+        }
+
         private static string ParseFixed(string line, int startCol1, int endCol1) {
             var start = startCol1 - 1;
             var len = Math.Min(endCol1, line.Length) - start;

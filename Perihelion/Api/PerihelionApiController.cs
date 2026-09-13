@@ -11,8 +11,10 @@ using NINA.Equipment.Interfaces;
 using NINA.Equipment.Interfaces.Mediator;
 using NINA.Profile.Interfaces;
 using Perihelion.Astrometry;
+using Perihelion.Sequencing;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -152,6 +154,15 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public DateTime? CobsLastRefreshedUtc { get; set; }
+
+        [JsonProperty]
+        public int CometsCachedCount { get; set; }
+
+        [JsonProperty]
+        public int AsteroidsCachedCount { get; set; }
+
+        [JsonProperty]
+        public int CobsCachedCount { get; set; }
     }
 
     internal class SyncResponse {
@@ -166,6 +177,74 @@ namespace Perihelion.Api {
 
         [JsonProperty]
         public DateTime? AsteroidsLastSyncedUtc { get; set; }
+    }
+
+    internal class AddToSequenceExposureRequest {
+        [JsonProperty]
+        public string? FilterName { get; set; }
+
+        [JsonProperty]
+        public double ExposureSeconds { get; set; }
+
+        [JsonProperty]
+        public int FrameCount { get; set; } = 1;
+    }
+
+    internal class AddToSequenceRequest {
+        [JsonProperty]
+        [JsonConverter(typeof(Newtonsoft.Json.Converters.StringEnumConverter))]
+        public OrbitalObjectType ObjectType { get; set; }
+
+        [JsonProperty]
+        public string TargetName { get; set; } = string.Empty;
+
+        [JsonProperty]
+        public double RaHours { get; set; }
+
+        [JsonProperty]
+        public double DecDeg { get; set; }
+
+        /// <summary>Null means slew to RaHours/DecDeg exactly.</summary>
+        [JsonProperty]
+        public double? FrameOffsetRaDeg { get; set; }
+
+        [JsonProperty]
+        public double? FrameOffsetDecDeg { get; set; }
+
+        /// <summary>Null means plain Center; CenterAndRotate needs a rotator.</summary>
+        [JsonProperty]
+        public double? RotationAngle { get; set; }
+
+        [JsonProperty]
+        public bool Guiding { get; set; }
+
+        [JsonProperty]
+        public bool MeridianFlip { get; set; }
+
+        [JsonProperty]
+        public double? AutofocusMinutes { get; set; }
+
+        [JsonProperty]
+        public AddToSequenceExposureRequest Exposure { get; set; } = new();
+    }
+
+    internal class AddToSequenceResponse {
+        [JsonProperty]
+        public bool Success { get; set; }
+
+        [JsonProperty]
+        public string Message { get; set; } = string.Empty;
+    }
+
+    internal class ImportResponse {
+        [JsonProperty]
+        public bool Success { get; set; }
+
+        [JsonProperty]
+        public string Message { get; set; } = string.Empty;
+
+        [JsonProperty]
+        public int Count { get; set; }
     }
 
     internal class CometActivityResponse {
@@ -327,6 +406,9 @@ namespace Perihelion.Api {
                 CometsLastSyncedUtc = CometOrbits.LastSyncedUtc,
                 AsteroidsLastSyncedUtc = AsteroidOrbits.LastSyncedUtc,
                 CobsLastRefreshedUtc = CometActivity.LastFullRefreshUtc,
+                CometsCachedCount = CometOrbits.CachedCount,
+                AsteroidsCachedCount = AsteroidOrbits.CachedCount,
+                CobsCachedCount = CometActivity.CachedCount,
             });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
@@ -363,6 +445,109 @@ namespace Perihelion.Api {
                 AsteroidsLastSyncedUtc = AsteroidOrbits.LastSyncedUtc,
             };
             var json = JsonConvert.SerializeObject(response);
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Accepts a plain MPC CometEls.txt body directly (the same format the live sync fetches
+        /// and Export below produces) -- lets Touch-N-Stars offer the same "distribute a synced
+        /// file to an install behind a blocked network" workflow the Windows dockable panel
+        /// already has via a local file dialog, since a browser has no equivalent file-path API
+        /// and instead hands over whatever a file picker/paste read as text.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/import/comets")]
+        public async Task ImportComets() {
+            try {
+                var rawText = await HttpContext.GetRequestBodyAsStringAsync();
+                var count = await CometOrbits.ImportFromTextAsync(rawText, HttpContext.CancellationToken);
+                var json = JsonConvert.SerializeObject(new ImportResponse { Success = true, Message = $"Imported {count} comet(s)", Count = count });
+                await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = false, Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
+
+        /// <summary>
+        /// Returns the currently cached comet elements as the exact raw MPC CometEls.txt they
+        /// were parsed from -- a convenience re-share, not a requirement, since Import above
+        /// already accepts MPC's own file directly. 404 (not an empty 200) when nothing has ever
+        /// been synced on this install, distinct from a cache that's merely empty.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/export/comets")]
+        public async Task ExportComets() {
+            var rawText = await CometOrbits.ExportToTextAsync(HttpContext.CancellationToken);
+            if (rawText == null) {
+                HttpContext.Response.StatusCode = 404;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = "Comet elements have never been synced on this install." }), "application/json", Encoding.UTF8);
+                return;
+            }
+            await HttpContext.SendStringAsync(rawText, "text/plain", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Wipes both the in-memory and on-disk comet cache -- the next lookup does a full live
+        /// fetch instead of using anything currently held.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/clear/comets")]
+        public async Task ClearComets() {
+            await CometOrbits.ClearAsync(HttpContext.CancellationToken);
+            var json = JsonConvert.SerializeObject(new { Success = true, Message = "Comet cache cleared" });
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Accepts Perihelion's own asteroid-elements JSON directly (the same format Export below
+        /// produces) -- see AsteroidOrbits.ImportFromTextAsync's own doc comment for why this uses
+        /// Perihelion's own format rather than an MPC-compatible one (no universal third-party
+        /// bulk format exists for asteroid elements the way CometEls.txt does for comets).
+        /// </summary>
+        [Route(HttpVerbs.Post, "/import/asteroids")]
+        public async Task ImportAsteroids() {
+            try {
+                var json = await HttpContext.GetRequestBodyAsStringAsync();
+                var count = await AsteroidOrbits.ImportFromTextAsync(json, HttpContext.CancellationToken);
+                var response = JsonConvert.SerializeObject(new ImportResponse { Success = true, Message = $"Imported {count} asteroid(s)", Count = count });
+                await HttpContext.SendStringAsync(response, "application/json", Encoding.UTF8);
+            } catch (Exception ex) {
+                HttpContext.Response.StatusCode = 500;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = false, Message = ex.Message }), "application/json", Encoding.UTF8);
+            }
+        }
+
+        /// <summary>
+        /// Returns the currently cached asteroid elements as Perihelion's own JSON list -- 404
+        /// (not an empty 200) when nothing has ever been synced on this install.
+        /// </summary>
+        [Route(HttpVerbs.Get, "/export/asteroids")]
+        public async Task ExportAsteroids() {
+            var json = await AsteroidOrbits.ExportToTextAsync(HttpContext.CancellationToken);
+            if (json == null) {
+                HttpContext.Response.StatusCode = 404;
+                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = "Asteroid elements have never been synced on this install." }), "application/json", Encoding.UTF8);
+                return;
+            }
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Wipes both the in-memory and on-disk asteroid cache -- the next lookup does a full
+        /// live re-fetch from JPL at the currently configured threshold.
+        /// </summary>
+        [Route(HttpVerbs.Post, "/clear/asteroids")]
+        public async Task ClearAsteroids() {
+            await AsteroidOrbits.ClearAsync(HttpContext.CancellationToken);
+            var json = JsonConvert.SerializeObject(new { Success = true, Message = "Asteroid cache cleared" });
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>Wipes the COBS observed-brightness cache -- no Import/Export for this one,
+        /// unlike comets/asteroids: it's a per-comet, on-demand cache with a 2h TTL, not a
+        /// distributable bulk dataset. Clear alone covers "reset a corrupt cache."</summary>
+        [Route(HttpVerbs.Post, "/clear/cobs")]
+        public async Task ClearCobs() {
+            await CometActivity.ClearAsync(HttpContext.CancellationToken);
+            var json = JsonConvert.SerializeObject(new { Success = true, Message = "COBS cache cleared" });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
 
@@ -516,6 +701,71 @@ namespace Perihelion.Api {
         public async Task Stop() {
             var result = await QuickTrackEngine.StopAsync(TelescopeMediator, GuiderMediator, HttpContext.CancellationToken);
             var response = new TrackResponse { Success = result.Success, Message = result.Message };
+            var json = JsonConvert.SerializeObject(response);
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>Appends one target to the loaded Advanced Sequence via ISequenceMediator.AddAdvancedTarget -- unlike ninaAPI's POST /sequence/load, this never replaces it.</summary>
+        [Route(HttpVerbs.Post, "/sequence/add-target")]
+        public async Task AddTargetToSequence() {
+            var response = new AddToSequenceResponse();
+            try {
+                var body = await HttpContext.GetRequestBodyAsStringAsync();
+                var request = JsonConvert.DeserializeObject<AddToSequenceRequest>(body) ?? new AddToSequenceRequest();
+
+                var sequenceMediator = PerihelionPlugin.SequenceMediator;
+                if (sequenceMediator == null) {
+                    response.Message = "Perihelion: sequencer not available yet.";
+                } else if (!sequenceMediator.Initialized) {
+                    response.Message = "Perihelion: Advanced Sequencer not started yet.";
+                } else {
+                    var factory = PerihelionSequenceBuilder.ResolveFactory(sequenceMediator);
+                    if (factory == null) {
+                        response.Message = "Perihelion: could not reach the sequencer's item factory.";
+                        Logger.Error("Perihelion: AddTargetToSequence -- ResolveFactory returned null with Initialized true");
+                    } else {
+                        var trueCoordinates = new Coordinates(request.RaHours, request.DecDeg, Epoch.J2000, Coordinates.RAType.Hours);
+                        var slewCoordinates = request.FrameOffsetRaDeg is double offsetRa && request.FrameOffsetDecDeg is double offsetDec
+                            ? new Coordinates(offsetRa / 15.0, offsetDec, Epoch.J2000, Coordinates.RAType.Hours)
+                            : trueCoordinates;
+
+                        NINA.Core.Model.Equipment.FilterInfo? filter = null;
+                        if (!string.IsNullOrEmpty(request.Exposure.FilterName)) {
+                            filter = ProfileService?.ActiveProfile?.FilterWheelSettings?.FilterWheelFilters
+                                ?.FirstOrDefault(f => f.Name == request.Exposure.FilterName);
+                        }
+
+                        var container = PerihelionSequenceBuilder.BuildTargetContainer(
+                            factory,
+                            request.ObjectType,
+                            request.TargetName,
+                            trueCoordinates,
+                            slewCoordinates,
+                            request.Guiding,
+                            request.RotationAngle,
+                            request.AutofocusMinutes,
+                            new PerihelionSequenceBuilder.ExposureSettings(filter, request.Exposure.ExposureSeconds, request.Exposure.FrameCount));
+
+                        sequenceMediator.AddAdvancedTarget(container);
+
+                        if (request.MeridianFlip) {
+                            var root = PerihelionSequenceBuilder.ResolveSequenceRoot(sequenceMediator);
+                            if (root != null) {
+                                PerihelionSequenceBuilder.EnsureGlobalMeridianFlipTrigger(factory, root);
+                            } else {
+                                Logger.Warning("Perihelion: added target to sequence, but could not reach the sequence root for the global Meridian Flip trigger");
+                            }
+                        }
+
+                        response.Success = true;
+                        response.Message = $"Added {request.TargetName} to the Advanced Sequencer.";
+                    }
+                }
+            } catch (Exception ex) {
+                response.Message = $"Unexpected error: {ex.Message}";
+                Logger.Error("Perihelion: AddTargetToSequence failed", ex);
+            }
+
             var json = JsonConvert.SerializeObject(response);
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }

@@ -310,24 +310,31 @@ namespace Perihelion.Astrometry {
                 // threshold) before capping costs single-digit milliseconds, not a concern.
                 var asteroidResults = new List<BrowseObject>(asteroids.Count);
                 foreach (var asteroid in asteroids) {
-                    var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
-                    var geo = helio - earth;
-                    var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
-                    var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
-                    asteroidResults.Add(new BrowseObject {
-                        Id = asteroid.Id,
-                        Name = asteroid.Name,
-                        ObjectType = OrbitalObjectType.Asteroid,
-                        Magnitude = AsteroidOrbits.ApparentMagnitude(asteroid, helio, earth),
-                        RaHours = raHours,
-                        DecDeg = decDeg,
-                        SunDistanceAu = helio.Length(),
-                        EarthDistanceAu = geo.Length(),
-                        SolarElongationDeg = SolarElongationDeg(earth, geo),
-                        ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
-                        EpochAgeDays = AsteroidOrbits.EpochAgeDays(asteroid, atDateUtc),
-                        IsEpochStale = AsteroidOrbits.IsEpochStale(asteroid, atDateUtc),
-                    });
+                    // Per-object, not just per-fetch -- one asteroid with degenerate elements
+                    // (e.g. NaN RA/Dec, which crashes Astronomy.Constellation) used to take the
+                    // whole asteroid list down instead of just that one object.
+                    try {
+                        var helio = AsteroidOrbits.HeliocentricEcliptic(asteroid, t);
+                        var geo = helio - earth;
+                        var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
+                        var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
+                        asteroidResults.Add(new BrowseObject {
+                            Id = asteroid.Id,
+                            Name = asteroid.Name,
+                            ObjectType = OrbitalObjectType.Asteroid,
+                            Magnitude = AsteroidOrbits.ApparentMagnitude(asteroid, helio, earth),
+                            RaHours = raHours,
+                            DecDeg = decDeg,
+                            SunDistanceAu = helio.Length(),
+                            EarthDistanceAu = geo.Length(),
+                            SolarElongationDeg = SolarElongationDeg(earth, geo),
+                            ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
+                            EpochAgeDays = AsteroidOrbits.EpochAgeDays(asteroid, atDateUtc),
+                            IsEpochStale = AsteroidOrbits.IsEpochStale(asteroid, atDateUtc),
+                        });
+                    } catch (Exception ex) {
+                        NINA.Core.Utility.Logger.Warning($"Perihelion: skipped asteroid {asteroid.Name} (bad geometry): {ex.Message}");
+                    }
                 }
                 asteroidResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
                 results.AddRange(asteroidResults.Count > MaxAsteroids ? asteroidResults.GetRange(0, MaxAsteroids) : asteroidResults);
@@ -356,25 +363,31 @@ namespace Perihelion.Astrometry {
                     var mag = CometOrbits.PredictedMagnitude(comet, atDateUtc, t);
                     if (mag == null || mag > CometMagnitudeThreshold) continue;
 
-                    var helio = CometOrbits.HeliocentricEcliptic(comet, atDateUtc);
-                    var geo = helio - earth;
-                    var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
-                    var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
-                    cometResults.Add(new BrowseObject {
-                        Id = comet.Designation,
-                        Name = comet.Name,
-                        ObjectType = OrbitalObjectType.Comet,
-                        Magnitude = mag,
-                        RaHours = raHours,
-                        DecDeg = decDeg,
-                        SunDistanceAu = helio.Length(),
-                        EarthDistanceAu = geo.Length(),
-                        SolarElongationDeg = SolarElongationDeg(earth, geo),
-                        ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
-                        PerihelionDateUtc = comet.PerihelionDate,
-                        EpochAgeDays = CometOrbits.EpochAgeDays(comet, atDateUtc),
-                        IsEpochStale = CometOrbits.IsEpochStale(comet, atDateUtc),
-                    });
+                    // Per-object, matching the same defensive isolation as the asteroid loop
+                    // above -- one comet with degenerate elements shouldn't blank the whole list.
+                    try {
+                        var helio = CometOrbits.HeliocentricEcliptic(comet, atDateUtc);
+                        var geo = helio - earth;
+                        var raHours = OrbitalMechanics.GeocentricRightAscensionHours(geo, t);
+                        var decDeg = OrbitalMechanics.GeocentricDeclinationDeg(geo, t);
+                        cometResults.Add(new BrowseObject {
+                            Id = comet.Designation,
+                            Name = comet.Name,
+                            ObjectType = OrbitalObjectType.Comet,
+                            Magnitude = mag,
+                            RaHours = raHours,
+                            DecDeg = decDeg,
+                            SunDistanceAu = helio.Length(),
+                            EarthDistanceAu = geo.Length(),
+                            SolarElongationDeg = SolarElongationDeg(earth, geo),
+                            ConstellationName = Astronomy.Constellation(raHours, decDeg).Name,
+                            PerihelionDateUtc = comet.PerihelionDate,
+                            EpochAgeDays = CometOrbits.EpochAgeDays(comet, atDateUtc),
+                            IsEpochStale = CometOrbits.IsEpochStale(comet, atDateUtc),
+                        });
+                    } catch (Exception ex) {
+                        NINA.Core.Utility.Logger.Warning($"Perihelion: skipped comet {comet.Name} (bad geometry): {ex.Message}");
+                    }
                 }
                 cometResults.Sort((a, b) => Nullable.Compare(a.Magnitude, b.Magnitude));
                 var trimmedComets = cometResults.GetRange(0, Math.Min(MaxComets, cometResults.Count));
