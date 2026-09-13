@@ -482,6 +482,16 @@ namespace Perihelion.Api {
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
 
+        /// <summary>Wipes the COBS observed-brightness cache -- no Import/Export for this one,
+        /// unlike comets/asteroids: it's a per-comet, on-demand cache with a 2h TTL, not a
+        /// distributable bulk dataset. Clear alone covers "reset a corrupt cache."</summary>
+        [Route(HttpVerbs.Post, "/clear/cobs")]
+        public async Task ClearCobs() {
+            await CometActivity.ClearAsync(HttpContext.CancellationToken);
+            var json = JsonConvert.SerializeObject(new { Success = true, Message = "COBS cache cleared" });
+            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
         /// <summary>
         /// One position per day for the requested number of nights -- backs the Position &amp;
         /// Path tab's finder-chart plot (the object's path against the fixed stars, not
