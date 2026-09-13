@@ -3,6 +3,15 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.11] — 2026-09-13
+
+### Fixed
+
+- `POST /import/comets` and `/import/asteroids` no longer return HTTP 500 on a
+  parse failure -- the same interceptor-discards-the-body issue fixed for
+  the Export routes in 1.1.0.10 applied here too. Both routes now always
+  answer 200, with `Success: false` and the real parse-error message.
+
 ## [1.1.0.10] — 2026-09-13
 
 ### Fixed

@@ -17,6 +17,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Perihelion.Api {
@@ -456,25 +457,15 @@ namespace Perihelion.Api {
         /// and instead hands over whatever a file picker/paste read as text.
         /// </summary>
         [Route(HttpVerbs.Post, "/import/comets")]
-        public async Task ImportComets() {
-            try {
-                var rawText = await HttpContext.GetRequestBodyAsStringAsync();
-                var count = await CometOrbits.ImportFromTextAsync(rawText, HttpContext.CancellationToken);
-                var json = JsonConvert.SerializeObject(new ImportResponse { Success = true, Message = $"Imported {count} comet(s)", Count = count });
-                await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
-            } catch (Exception ex) {
-                HttpContext.Response.StatusCode = 500;
-                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = false, Message = ex.Message }), "application/json", Encoding.UTF8);
-            }
-        }
+        public Task ImportComets() => RunImport(CometOrbits.ImportFromTextAsync, "comet(s)");
 
         /// <summary>
         /// Returns the currently cached comet elements as the exact raw MPC CometEls.txt they
         /// were parsed from -- a convenience re-share, not a requirement, since Import above
         /// already accepts MPC's own file directly. Always 200 (an empty body means nothing has
-        /// ever been synced) -- a non-2xx status here gets its real body discarded by Touch-N-
-        /// Stars' own global axios error interceptor, which replaces it with a generic message
-        /// before this route's caller ever sees it.
+        /// ever been synced) -- a non-2xx status here gets its response body discarded by
+        /// Touch-N-Stars' own global axios error interceptor, which replaces it with a generic
+        /// message before this route's caller ever sees it.
         /// </summary>
         [Route(HttpVerbs.Get, "/export/comets")]
         public async Task ExportComets() {
@@ -487,11 +478,7 @@ namespace Perihelion.Api {
         /// fetch instead of using anything currently held.
         /// </summary>
         [Route(HttpVerbs.Post, "/clear/comets")]
-        public async Task ClearComets() {
-            await CometOrbits.ClearAsync(HttpContext.CancellationToken);
-            var json = JsonConvert.SerializeObject(new { Success = true, Message = "Comet cache cleared" });
-            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
-        }
+        public Task ClearComets() => RunClear(CometOrbits.ClearAsync, "Comet cache cleared");
 
         /// <summary>
         /// Accepts Perihelion's own asteroid-elements JSON directly (the same format Export below
@@ -500,17 +487,7 @@ namespace Perihelion.Api {
         /// bulk format exists for asteroid elements the way CometEls.txt does for comets).
         /// </summary>
         [Route(HttpVerbs.Post, "/import/asteroids")]
-        public async Task ImportAsteroids() {
-            try {
-                var json = await HttpContext.GetRequestBodyAsStringAsync();
-                var count = await AsteroidOrbits.ImportFromTextAsync(json, HttpContext.CancellationToken);
-                var response = JsonConvert.SerializeObject(new ImportResponse { Success = true, Message = $"Imported {count} asteroid(s)", Count = count });
-                await HttpContext.SendStringAsync(response, "application/json", Encoding.UTF8);
-            } catch (Exception ex) {
-                HttpContext.Response.StatusCode = 500;
-                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = false, Message = ex.Message }), "application/json", Encoding.UTF8);
-            }
-        }
+        public Task ImportAsteroids() => RunImport(AsteroidOrbits.ImportFromTextAsync, "asteroid(s)");
 
         /// <summary>
         /// Returns the currently cached asteroid elements as Perihelion's own JSON list -- always
@@ -528,19 +505,34 @@ namespace Perihelion.Api {
         /// live re-fetch from JPL at the currently configured threshold.
         /// </summary>
         [Route(HttpVerbs.Post, "/clear/asteroids")]
-        public async Task ClearAsteroids() {
-            await AsteroidOrbits.ClearAsync(HttpContext.CancellationToken);
-            var json = JsonConvert.SerializeObject(new { Success = true, Message = "Asteroid cache cleared" });
-            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
-        }
+        public Task ClearAsteroids() => RunClear(AsteroidOrbits.ClearAsync, "Asteroid cache cleared");
 
         /// <summary>Wipes the COBS observed-brightness cache -- no Import/Export for this one,
         /// unlike comets/asteroids: it's a per-comet, on-demand cache with a 2h TTL, not a
         /// distributable bulk dataset. Clear alone covers "reset a corrupt cache."</summary>
         [Route(HttpVerbs.Post, "/clear/cobs")]
-        public async Task ClearCobs() {
-            await CometActivity.ClearAsync(HttpContext.CancellationToken);
-            var json = JsonConvert.SerializeObject(new { Success = true, Message = "COBS cache cleared" });
+        public Task ClearCobs() => RunClear(CometActivity.ClearAsync, "COBS cache cleared");
+
+        /// <summary>Shared body for every Import route -- always 200, even on failure, so
+        /// Touch-N-Stars' own global axios interceptor never discards the real Message (see
+        /// ExportComets's own doc comment for the full reasoning).</summary>
+        private async Task RunImport(Func<string, CancellationToken, Task<int>> importFn, string label) {
+            var response = new ImportResponse();
+            try {
+                var body = await HttpContext.GetRequestBodyAsStringAsync();
+                response.Count = await importFn(body, HttpContext.CancellationToken);
+                response.Success = true;
+                response.Message = $"Imported {response.Count} {label}";
+            } catch (Exception ex) {
+                response.Message = ex.Message;
+            }
+            await HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>Shared body for every Clear route.</summary>
+        private async Task RunClear(Func<CancellationToken, Task> clearFn, string successMessage) {
+            await clearFn(HttpContext.CancellationToken);
+            var json = JsonConvert.SerializeObject(new { Success = true, Message = successMessage });
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
         }
 
