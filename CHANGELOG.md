@@ -3,6 +3,16 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.10] — 2026-09-13
+
+### Fixed
+
+- `GET /export/comets` and `/export/asteroids` no longer use HTTP 404 for "nothing synced
+  yet" -- Touch-N-Stars' own global axios error interceptor discards a failed request's real
+  body, so a fresh install's very first Export attempt could download a garbage
+  `[object Object]` file instead of showing "Nothing to export." Both routes now always answer
+  200, with an empty body meaning nothing's synced.
+
 ## [1.1.0.9] — 2026-09-13
 
 ### Added

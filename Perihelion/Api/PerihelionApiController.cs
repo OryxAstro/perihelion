@@ -471,18 +471,15 @@ namespace Perihelion.Api {
         /// <summary>
         /// Returns the currently cached comet elements as the exact raw MPC CometEls.txt they
         /// were parsed from -- a convenience re-share, not a requirement, since Import above
-        /// already accepts MPC's own file directly. 404 (not an empty 200) when nothing has ever
-        /// been synced on this install, distinct from a cache that's merely empty.
+        /// already accepts MPC's own file directly. Always 200 (an empty body means nothing has
+        /// ever been synced) -- a non-2xx status here gets its real body discarded by Touch-N-
+        /// Stars' own global axios error interceptor, which replaces it with a generic message
+        /// before this route's caller ever sees it.
         /// </summary>
         [Route(HttpVerbs.Get, "/export/comets")]
         public async Task ExportComets() {
             var rawText = await CometOrbits.ExportToTextAsync(HttpContext.CancellationToken);
-            if (rawText == null) {
-                HttpContext.Response.StatusCode = 404;
-                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = "Comet elements have never been synced on this install." }), "application/json", Encoding.UTF8);
-                return;
-            }
-            await HttpContext.SendStringAsync(rawText, "text/plain", Encoding.UTF8);
+            await HttpContext.SendStringAsync(rawText ?? string.Empty, "text/plain", Encoding.UTF8);
         }
 
         /// <summary>
@@ -516,18 +513,14 @@ namespace Perihelion.Api {
         }
 
         /// <summary>
-        /// Returns the currently cached asteroid elements as Perihelion's own JSON list -- 404
-        /// (not an empty 200) when nothing has ever been synced on this install.
+        /// Returns the currently cached asteroid elements as Perihelion's own JSON list -- always
+        /// 200 (an empty body means nothing has ever been synced), same reasoning as
+        /// ExportComets's own doc comment.
         /// </summary>
         [Route(HttpVerbs.Get, "/export/asteroids")]
         public async Task ExportAsteroids() {
             var json = await AsteroidOrbits.ExportToTextAsync(HttpContext.CancellationToken);
-            if (json == null) {
-                HttpContext.Response.StatusCode = 404;
-                await HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Message = "Asteroid elements have never been synced on this install." }), "application/json", Encoding.UTF8);
-                return;
-            }
-            await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+            await HttpContext.SendStringAsync(json ?? string.Empty, "application/json", Encoding.UTF8);
         }
 
         /// <summary>
