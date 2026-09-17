@@ -8,6 +8,7 @@ using NINA.Equipment.Interfaces.Mediator;
 using NINA.Profile.Interfaces;
 using NINA.Sequencer.Container;
 using NINA.Sequencer.SequenceItem;
+using NINA.Sequencer.SequenceItem.Platesolving;
 using NINA.Sequencer.Validations;
 using Perihelion.Api;
 using Perihelion.Astrometry;
@@ -127,11 +128,11 @@ namespace Perihelion.SequenceItems {
                 throw new SequenceEntityFailedException($"Could not find current orbital elements for {ObjectType} '{TargetName}'");
             }
 
-            // Numerically, arcsec/sec == degrees/hour (3600 arcsec/deg ÷ 3600 sec/hour == 1) --
-            // see OrbitalRate's doc comment -- so these plug straight into Create() with no
-            // conversion. SiderealShiftTrackingRate itself then applies the ASCOM RA/sidereal-
+            // RaCoordinateArcsecPerSec, not RaArcsecPerSec -- the mount's custom RA rate wants
+            // the raw coordinate rate, not the cos(dec)-compensated on-sky rate (see OrbitalRate's
+            // doc comment). SiderealShiftTrackingRate itself then applies the ASCOM RA/sidereal-
             // rate conversion internally when TelescopeVM hands it to the driver.
-            var raArcsecPerSec = rate.Value.RaArcsecPerSec;
+            var raArcsecPerSec = rate.Value.RaCoordinateArcsecPerSec;
             if (PerihelionPlugin.Instance?.EqmodRaRateCorrection == true) {
                 // EQMOD's own driver reads RightAscensionRate as raw arcsec/sec rather than the
                 // ASCOM-standard seconds-of-RA-per-sidereal-second NINA converts to before
@@ -186,7 +187,14 @@ namespace Perihelion.SequenceItems {
             try {
                 var position = await OrbitalTracking.ComputeApparentPositionAsync(HttpClient, ObjectType, TargetName, DateTime.UtcNow, CurrentObserver(), ct);
                 if (position is (double raHours, double decDeg)) {
-                    container.Target.InputCoordinates.Coordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
+                    var coordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
+                    container.Target.InputCoordinates.Coordinates = coordinates;
+                    // Center/CenterAndRotate run with Inherited = false (see
+                    // PerihelionSequenceBuilder) to keep the framing offset, so they never resync
+                    // from Target above on their own -- refresh their own Coordinates directly too.
+                    foreach (var center in container.Items.OfType<Center>().Where(c => !c.Inherited)) {
+                        center.Coordinates.Coordinates = coordinates;
+                    }
                 }
             } catch (Exception ex) {
                 // Logged, not thrown -- this runs unattended on a background loop with nothing

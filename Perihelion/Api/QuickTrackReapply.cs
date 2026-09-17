@@ -107,7 +107,7 @@ namespace Perihelion.Api {
                 if (info.TimeToMeridianFlip > 0) return;
 
                 StopLocked();
-                telescopeMediator.SetTrackingMode(TrackingMode.Sidereal);
+                telescopeMediator.SetTrackingEnabled(false);
                 if (guiderMediator != null) {
                     await guiderMediator.StopShifting(CancellationToken.None).ConfigureAwait(false);
                 }

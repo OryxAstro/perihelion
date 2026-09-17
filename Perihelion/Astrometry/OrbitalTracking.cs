@@ -15,22 +15,25 @@ namespace Perihelion.Astrometry {
     }
 
     /// <summary>
-    /// True on-sky linear rate: RA is already cos(dec)-compensated (ΔRA·cos(dec), not raw ΔRA)
-    /// -- needed because NINA's own shift-rate mediator calls combine RA/Dec via
-    /// sqrt(RA² + Dec²) directly (SetTelescopeShiftRate/SetGuiderShiftRate on both sequence
-    /// items here), which only makes sense if RA is already linear. By a unit coincidence
-    /// (3600 arcsec/deg ÷ 3600 sec/hour = 1), these arcsec/sec values are numerically identical
-    /// to degrees/hour, so they plug directly into
-    /// NINA.Astrometry.SiderealShiftTrackingRate.Create(raDegPerHour, decDegPerHour)
-    /// with no conversion.
+    /// RaArcsecPerSec is the true on-sky linear rate (ΔRA·cos(dec)) -- what PHD2's guide-star
+    /// shift rate wants (arcsec/hr on the sky) and what magnitude/max-exposure displays want.
+    /// RaCoordinateArcsecPerSec is the raw RA coordinate rate (ΔRA, no cos(dec)) -- what NINA's
+    /// own SiderealShiftTrackingRate/SetCustomTrackingRate wants, confirmed against
+    /// SiderealShiftTrackingRate.Create(start, end, between) in NINA's own source, which derives
+    /// its RA rate from a plain coordinate difference. Using the compensated value there under-
+    /// commands the mount at any declination away from the equator. By a unit coincidence (3600
+    /// arcsec/deg ÷ 3600 sec/hour = 1), both are numerically arcsec/sec == degrees/hour, so
+    /// either plugs straight into SiderealShiftTrackingRate.Create with no conversion.
     /// </summary>
     public readonly struct OrbitalRate {
         public readonly double RaArcsecPerSec;
         public readonly double DecArcsecPerSec;
+        public readonly double RaCoordinateArcsecPerSec;
 
-        public OrbitalRate(double raArcsecPerSec, double decArcsecPerSec) {
+        public OrbitalRate(double raArcsecPerSec, double decArcsecPerSec, double raCoordinateArcsecPerSec) {
             RaArcsecPerSec = raArcsecPerSec;
             DecArcsecPerSec = decArcsecPerSec;
+            RaCoordinateArcsecPerSec = raCoordinateArcsecPerSec;
         }
     }
 
@@ -239,7 +242,8 @@ namespace Perihelion.Astrometry {
 
             return new OrbitalRate(
                 raArcsecPerSec: dRaDeg * Math.Cos(decRad) * 3600 / dtSec,
-                decArcsecPerSec: (p2.decDeg - p1.decDeg) * 3600 / dtSec
+                decArcsecPerSec: (p2.decDeg - p1.decDeg) * 3600 / dtSec,
+                raCoordinateArcsecPerSec: dRaDeg * 3600 / dtSec
             );
         }
 
