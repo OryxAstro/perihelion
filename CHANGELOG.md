@@ -3,6 +3,31 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.12] — 2026-09-17
+
+### Fixed
+
+- Quick Track's automatic meridian-limit stop now actually stops the mount
+  (`SetTrackingEnabled(false)`) instead of switching to sidereal tracking, which
+  left it moving past the meridian.
+- The mount's custom RA tracking rate no longer includes a `cos(dec)` factor --
+  it was undercommanding the rate at any declination away from the equator,
+  worst near the poles. The guider shift-rate path was already correct and is
+  unchanged.
+- Add to Sequence's live coordinate refresh now also updates the actual
+  Center/CenterAndRotate step, not just the container's Target, which it never
+  read.
+
+### Added
+
+- The standalone HTTP API now requires a token on every request
+  (`X-Perihelion-Token`). Touch-N-Stars pairs with a fresh install
+  automatically on first contact; a second device is paired by typing the
+  token in once. Windows' Options page shows the token with
+  Regenerate/Clear controls.
+- `ApiEnabled` now defaults on for PINS (no other interface exists there) and
+  off for Windows (the native panel doesn't need it).
+
 ## [1.1.0.11] — 2026-09-13
 
 ### Fixed
