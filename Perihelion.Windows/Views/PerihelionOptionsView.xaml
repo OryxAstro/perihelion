@@ -17,6 +17,12 @@
     <DataTemplate x:Key="Perihelion_Options" DataType="{x:Type local:PerihelionPlugin}">
         <DataTemplate.Resources>
             <BooleanToVisibilityConverter x:Key="BoolToVis" />
+            <!-- Without this, NINA's own StandardButton style makes hover text invisible
+                 (Background and Foreground both switch to the same brush) — same fix as
+                 PerihelionDockableView.xaml, see its own comment for the full mechanism. -->
+            <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                <Setter Property="Foreground" Value="{DynamicResource ButtonForegroundBrush}" />
+            </Style>
         </DataTemplate.Resources>
         <StackPanel Margin="10" HorizontalAlignment="Stretch">
             <TextBlock Text="Perihelion" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
@@ -34,6 +40,25 @@
             <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,0,0,12">
                 Turn off if you only use the native panel and don't need Touch-N-Stars or Quick
                 Track's remote API at all. Takes effect on the next restart.
+            </TextBlock>
+
+            <Grid Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="API Token" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBox Grid.Column="1" Text="{Binding ApiToken, UpdateSourceTrigger=PropertyChanged}" IsReadOnly="True" />
+                <Button Grid.Column="2" Content="Regenerate" Margin="6,0,0,0" Command="{Binding RegenerateApiTokenCommand}" />
+                <Button Grid.Column="3" Content="Clear" Margin="6,0,0,0" Command="{Binding ClearApiTokenCommand}" />
+            </Grid>
+            <TextBlock TextWrapping="Wrap" Opacity="0.6" FontSize="11" Margin="0,4,0,12">
+                Required by every request to the API -- copy this into Touch-N-Stars' Perihelion
+                settings. Regenerate replaces it and reopens pairing for a new client; Clear locks
+                out every client entirely until you Regenerate again. Takes effect on the next
+                restart.
             </TextBlock>
 
             <Grid Margin="0,0,0,4">

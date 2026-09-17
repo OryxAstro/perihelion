@@ -327,6 +327,7 @@ namespace Perihelion.Api {
         internal static ITelescopeMediator? TelescopeMediator;
         internal static IGuiderMediator? GuiderMediator;
         internal static IProfileService? ProfileService;
+        internal static string? ApiToken;
 
         // One shared HttpClient across the whole plugin (PerihelionHttpClient.cs).
         private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
@@ -753,6 +754,34 @@ namespace Perihelion.Api {
 
             var json = JsonConvert.SerializeObject(response);
             await HttpContext.SendStringAsync(json, "application/json", Encoding.UTF8);
+        }
+
+        /// <summary>
+        /// Hands out ApiToken to whichever client asks first, then refuses everyone after --
+        /// deliberately the only unauthenticated route (see PerihelionAuthModule's own
+        /// exemption), so Touch-N-Stars can pair with a fresh install with nothing typed in by
+        /// hand. A second device gets the token by having it typed in manually instead (visible
+        /// on the first device's own Settings tab, or the Windows Options page).
+        /// </summary>
+        private static readonly object PairLock = new object();
+
+        [Route(HttpVerbs.Post, "/pair")]
+        public Task Pair() {
+            var plugin = PerihelionPlugin.Instance;
+            if (plugin == null) {
+                return HttpContext.SendStringAsync(JsonConvert.SerializeObject(new { Success = false, Message = "Plugin not ready yet" }), "application/json", Encoding.UTF8);
+            }
+
+            string? token = null;
+            lock (PairLock) {
+                if (!plugin.ApiTokenClaimed) {
+                    token = plugin.ApiToken;
+                    plugin.ApiTokenClaimed = true;
+                }
+            }
+
+            var response = new { Success = token != null, Token = token, Message = token != null ? null : "Already paired with another client" };
+            return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
         }
 
         /// <summary>

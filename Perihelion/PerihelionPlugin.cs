@@ -12,6 +12,7 @@ using System.ComponentModel;
 using System.ComponentModel.Composition;
 using System.Net;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using System.Threading.Tasks;
 
 namespace Perihelion {
@@ -68,9 +69,34 @@ namespace Perihelion {
                 Logger.Info($"Perihelion: port {configuredPort} unavailable, using {port} instead");
             }
             ActualPort = port;
-            apiServer = new PerihelionApiServer(telescopeMediator, guiderMediator, profileService, port);
+
+            // Generated once, here, rather than lazily on every ApiToken read -- a getter with a
+            // side effect fought with the Options page's own live WPF binding (clearing the field
+            // immediately re-triggered the getter via PropertyChanged, regenerating before the
+            // user could see it cleared at all). RegenerateApiTokenCommand/ClearApiTokenCommand
+            // below are the only other ways ApiToken changes after this.
+            if (string.IsNullOrEmpty(ApiToken)) {
+                ApiToken = GenerateApiToken();
+            }
+            RegenerateApiTokenCommand = new RelayCommand(() => ApiToken = GenerateApiToken());
+            ClearApiTokenCommand = new RelayCommand(() => ApiToken = string.Empty);
+
+            apiServer = new PerihelionApiServer(telescopeMediator, guiderMediator, profileService, ApiToken, port);
 
             RegisterWindowsResources();
+        }
+
+        /// <summary>Minimal ICommand, not CommunityToolkit.Mvvm.Input.RelayCommand -- this class
+        /// compiles into the PINS build too (net10.0, no WPF), and pulling in a WPF-flavored MVVM
+        /// package there just for two buttons that only ever render on Windows isn't worth it.
+        /// NINA.Core.Utility.RelayCommand exists and would also work, but it's marked
+        /// [Obsolete].</summary>
+        private sealed class RelayCommand : System.Windows.Input.ICommand {
+            private readonly Action execute;
+            public RelayCommand(Action execute) => this.execute = execute;
+            public event EventHandler? CanExecuteChanged { add { } remove { } }
+            public bool CanExecute(object? parameter) => true;
+            public void Execute(object? parameter) => execute();
         }
 
         /// <summary>The configured port, persisted per-profile via PluginOptionsAccessor -- the
@@ -87,17 +113,77 @@ namespace Perihelion {
             }
         }
 
-        /// <summary>Whether the standalone HTTP server should start at all -- someone using only
-        /// the native Windows panel has no need for Touch-N-Stars/Quick Track's remote API and
-        /// the open port that comes with it. Defaults true so existing installs keep working
-        /// unchanged. Same "takes effect on next restart" convention as Port -- doesn't attempt
-        /// to stop/start the already-running server live.</summary>
+        /// <summary>Whether the standalone HTTP server should start at all. Defaults to on for
+        /// PINS, off for Windows -- PINS has no other interface to Perihelion at all (no WPF
+        /// shell renders there), so leaving it off by default with no UI to turn it on would just
+        /// strand every PINS/Touch-N-Stars user with no way in. Windows has a real alternative
+        /// (the native dockable panel), so there it stays opt-in. Either way this is no longer
+        /// the actual security boundary -- ApiToken/PerihelionAuthModule are -- so defaulting on
+        /// for PINS doesn't reopen the gap this was originally added to close. Same "takes effect
+        /// on next restart" convention as Port -- doesn't attempt to stop/start the
+        /// already-running server live.</summary>
         public bool ApiEnabled {
-            get => pluginSettings.GetValueBoolean("ApiEnabled", true);
+            get => pluginSettings.GetValueBoolean("ApiEnabled", DefaultApiEnabled);
             set {
                 pluginSettings.SetValueBoolean("ApiEnabled", value);
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ApiEnabled)));
             }
+        }
+
+        private static readonly bool DefaultApiEnabled = !RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+        /// <summary>Shared secret every request to the standalone HTTP API must present (see
+        /// PerihelionAuthModule) -- without it, anyone on the same network could unpark the
+        /// mount, slew, or change tracking with no authorization at all. Generated once when the
+        /// plugin first constructs (see the constructor), never lazily from this getter -- a
+        /// generate-on-read getter fought with the Options page's own live binding. PINS has no
+        /// UI to set this by hand -- instead, Touch-N-Stars claims it automatically on first
+        /// contact via POST /pair (see ApiTokenClaimed below), so a PINS user never has to see it.
+        /// Windows users see it here, and can Regenerate or Clear it with the buttons next to the
+        /// field.</summary>
+        public string ApiToken {
+            get => pluginSettings.GetValueString("ApiToken", string.Empty);
+            set {
+                pluginSettings.SetValueString("ApiToken", value);
+                if (string.IsNullOrEmpty(value)) {
+                    // Clearing is also how a user asks to reopen pairing (Regenerate does this
+                    // too) -- otherwise a freshly-generated replacement token would stay stuck
+                    // unclaimed forever if ApiTokenClaimed was already true from before.
+                    ApiTokenClaimed = false;
+                }
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ApiToken)));
+            }
+        }
+
+        /// <summary>Regenerates ApiToken and reopens pairing -- use when a wrong client claimed
+        /// pairing first, or just to rotate the secret. Bound to the Options page's Regenerate
+        /// button.</summary>
+        public System.Windows.Input.ICommand RegenerateApiTokenCommand { get; }
+
+        /// <summary>Wipes ApiToken entirely -- every request is refused (PerihelionAuthModule
+        /// never matches an empty expected token) until Regenerate is used. A deliberate lockout,
+        /// e.g. if an unexpected client claimed pairing and you want to cut it off immediately
+        /// rather than just rotate. Bound to the Options page's Clear button.</summary>
+        public System.Windows.Input.ICommand ClearApiTokenCommand { get; }
+
+        /// <summary>Whether ApiToken has already been handed out via POST /pair -- the pairing
+        /// route is intentionally unauthenticated (it exists to hand out the token to a client
+        /// that doesn't have it yet), so it can only ever succeed once, for whichever client asks
+        /// first. Every later pairing attempt is refused; a second device gets the token by
+        /// having it typed in manually (Touch-N-Stars' own Settings tab shows it once the first
+        /// device is paired). Editing ApiToken directly (Windows Options page, or hand-editing
+        /// this profile's plugin-settings XML on PINS) does not reset this -- if a wrong client
+        /// claims pairing first, recovery is to also clear ApiToken so a new token gets generated
+        /// alongside a fresh, reopened pairing window.</summary>
+        public bool ApiTokenClaimed {
+            get => pluginSettings.GetValueBoolean("ApiTokenClaimed", false);
+            set => pluginSettings.SetValueBoolean("ApiTokenClaimed", value);
+        }
+
+        private static string GenerateApiToken() {
+            Span<byte> bytes = stackalloc byte[24];
+            RandomNumberGenerator.Fill(bytes);
+            return Convert.ToHexString(bytes);
         }
 
         /// <summary>EQMOD's own ASCOM driver doesn't follow the standard RA tracking-rate

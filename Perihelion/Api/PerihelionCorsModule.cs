@@ -16,7 +16,7 @@ namespace Perihelion.Api {
         protected override async Task OnRequestAsync(IHttpContext context) {
             context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
             context.Response.Headers.Add("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-            context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type");
+            context.Response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, X-Perihelion-Token");
 
             if (context.Request.HttpVerb == HttpVerbs.Options) {
                 context.Response.StatusCode = 200;

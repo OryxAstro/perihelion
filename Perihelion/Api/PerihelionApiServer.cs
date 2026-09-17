@@ -29,11 +29,12 @@ namespace Perihelion.Api {
         private Thread? serverThread;
         private CancellationTokenSource? cts;
 
-        public PerihelionApiServer(ITelescopeMediator telescopeMediator, IGuiderMediator guiderMediator, IProfileService profileService, int port = DefaultPort) {
+        public PerihelionApiServer(ITelescopeMediator telescopeMediator, IGuiderMediator guiderMediator, IProfileService profileService, string apiToken, int port = DefaultPort) {
             this.port = port;
             PerihelionApiController.TelescopeMediator = telescopeMediator;
             PerihelionApiController.GuiderMediator = guiderMediator;
             PerihelionApiController.ProfileService = profileService;
+            PerihelionApiController.ApiToken = apiToken;
         }
 
         /// <summary>
@@ -50,6 +51,7 @@ namespace Perihelion.Api {
                         .WithUrlPrefix($"http://*:{port}")
                         .WithMode(HttpListenerMode.EmbedIO))
                     .WithModule(new PerihelionCorsModule())
+                    .WithModule(new PerihelionAuthModule())
                     .WithWebApi("/perihelion/api", m => m.WithController<PerihelionApiController>());
             } catch (Exception ex) {
                 Logger.Error($"Perihelion: failed to construct API server on port {port}: {ex}");
