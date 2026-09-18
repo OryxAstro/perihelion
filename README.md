@@ -1,122 +1,156 @@
 # Perihelion
 
-Non-sidereal tracking for comets and asteroids, with two front ends sharing one orbital-mechanics/tracking core: a [Touch-N-Stars](https://github.com/Touch-N-Stars/Touch-N-Stars) panel for [PINS](https://github.com/nitr57/pins) (the Raspberry Pi fork of N.I.N.A., which renders no UI of its own), and a separate **native build for Windows N.I.N.A.** — a dockable panel plus a standalone Framing Composer window, for users who never touch PINS at all.
+Non-sidereal tracking for comets and asteroids in N.I.N.A. Computes a live custom RA/Dec
+tracking rate from current orbital elements and drives the mount/guider directly — no
+Orbitals-plugin dependency, no shared cache format, no external service.
+
+Two front ends share one core:
+
+- **Touch-N-Stars panel**, for [PINS](https://github.com/nitr57/pins) (the Raspberry Pi fork of
+  N.I.N.A., which renders no UI shell of its own) — talks to Perihelion over its own standalone
+  HTTP API.
+- **Perihelion.Windows**, a native plugin for Windows N.I.N.A. — a dockable panel plus a popup
+  Framing Composer window, running in-process, no HTTP involved.
 
 ## Why this exists
 
-NINA's own [Orbitals plugin](https://github.com/ghilios/NINA.Joko.Plugin.Orbitals) already does non-sidereal tracking, and works well on Windows NINA. Its database-download screen is a WPF panel, though — and PINS renders no WPF UI shell at all, by design. That specific screen has no path to PINS, and neither `ninaAPI` nor Touch-N-Stars expose an equivalent route to fill the gap.
+N.I.N.A.'s own [Orbitals plugin](https://github.com/ghilios/NINA.Joko.Plugin.Orbitals) already
+does non-sidereal tracking on Windows, but its database-download screen is a WPF panel — and
+PINS renders no WPF UI shell at all. That screen has no path to PINS, and neither `ninaAPI` nor
+Touch-N-Stars expose an equivalent route. Perihelion closes that gap with an independent
+implementation: its own namespace, its own cache format, tracking rates computed in-process.
 
-Perihelion closes that gap for PINS with no shared code, cache format, or namespace with Orbitals — computing tracking rates in-process (no external service, no internet dependency for the tracking math itself) and shipping its own Touch-N-Stars panel. The same core also ships as a native Windows plugin for Windows NINA users, independent of PINS entirely — see [Native Windows NINA plugin](#native-windows-nina-plugin) below.
-
-## What it does
-
-The orbital mechanics itself isn't reinvented for this plugin — it's a direct C# port of OryxAstro's own comet/asteroid math (the same Kepler and universal-variable solvers, the same finite-difference tracking-rate calculation), built on [`CosineKitty.AstronomyEngine`](https://github.com/cosinekitty/astronomy), the official C# port of the exact `astronomy-engine` npm package the website uses — pinned to the same version on both sides, so the two stay in step rather than drifting into two independently-maintained implementations of the same math.
-
-### Tracking & sequencing
-
-- **Custom tracking rate**, computed live from current orbital elements and corrected for light-time, stellar aberration, and the observer's own site (topocentric parallax, not just Earth's center) — not a naive instantaneous-position snapshot. Also handles the RA/sidereal-rate unit conversion correctly (NINA's shared telescope layer mirrors ASCOM's own rate convention for every backend, INDI included — an easy-to-get-backwards trap; see `SetPerihelionTrackingRate.cs`).
-- **EQMOD RA Rate Correction** (opt-in) — both the Windows ASCOM EQMOD driver and INDI's own separate EQMod driver read the RA tracking rate as raw arcsec/sec rather than the seconds-of-RA-per-sidereal-second NINA itself sends, confirmed independently on each. Without this enabled, a mount driven through EQMOD tracks in RA at roughly 1/15th the intended rate.
-- **Guider coordination** — sets a shift rate so PHD2 doesn't fight the deliberate drift, starting guiding itself first if it isn't already running. Unparks the mount itself if needed rather than silently doing nothing on a parked scope (both failure modes caught against hardware, not just the math in isolation).
-- **Add to Sequence** builds an Advanced Sequencer container (unpark → slew/center → track → guide → imaging loop, with optional meridian-flip and autofocus triggers) and loads it for review — it doesn't auto-start. The tracking-rate item keeps the target's coordinates live for as long as the sequence stays loaded, recomputing every 30 seconds rather than freezing at whatever position was current when the sequence was built. A **Download sequence** button saves the identical JSON as a file instead, for reviewing or importing later.
-- **Quick Track** sets the rate directly, right now, for manual/visual use — independent of the sequencer, and it never slews the mount on its own (that's what **Slew & Center** next to it is for). Optionally re-applies itself on a configurable interval (default 15 minutes) so a long unattended session stays accurate as the object's true rate drifts through the night, rather than holding whatever rate was computed when the button was pressed. A live status readout shows the RA/Dec rate actually sent, when it was last applied, and a countdown to the next re-apply.
-- **Meridian safety cutoff** — Quick Track has no sequence of its own and so no `MeridianFlipTrigger` either, so on a German Equatorial Mount nothing would otherwise stop it tracking straight past the meridian until hardware collides with the pier. Checked roughly once a minute against the mount's own hour angle (not NINA's `TimeToMeridianFlip`, which is designed to never report a negative value and so can't reliably signal "past the limit" to a periodic poll), honoring the same `MaxMinutesAfterMeridian`/`PauseTimeBeforeMeridian` margins already configured in NINA's own Meridian Flip settings. It actually stops tracking and guiding — not a switch to sidereal — the moment the limit is reached, cancelling any in-flight rate re-apply first so nothing can silently re-enable tracking afterward, with a clear reason shown in the Track tab. It stops rather than performing the flip itself, since NINA's raw flip command is just the pier-flip device call, not the full stop-guiding/plate-solve/recenter/resume-guiding sequence `MeridianFlipTrigger` orchestrates — reimplementing that safely outside the one place it's actually tested wasn't worth it for a feature scoped to manual/visual use. Add to Sequence's own optional meridian-flip trigger is unaffected.
-- **Authenticated API** — the standalone HTTP server requires a token on every request. Touch-N-Stars pairs with a fresh install automatically on first contact; any other client is paired by typing the token in once (shown on Touch-N-Stars' own Settings tab, or the Windows Options page, which also has Regenerate/Clear controls). On by default on PINS, since there's no other way to reach the plugin there; off by default on Windows, since the native panel talks to NINA in-process and doesn't need it.
-- The exposure filter list is read from the actually-connected filter wheel, not a hardcoded guess.
-
-**Getting centered first** — before Quick Track, the mount needs to actually be pointed at the object. Two equally valid ways: Celestia Atlas's own search-and-slew (it has its own live comet catalog, independent of Perihelion), or Perihelion's own **Slew & Center** button, which points at Perihelion's own live-computed position instead. Either way, once centered, Quick Track or Add to Sequence takes it from there.
-
-### Offline-first by design
-
-- Comet elements (from the Minor Planet Center) are cached to disk, not just in memory — a restart with no connectivity still has whatever was last synced.
-- Observed brightness from COBS (see below) is disk-cached too, per comet. A cold in-memory-only cache used to make every restart's first Browse-tab load re-fetch all ~30 comets from COBS live before the list could render, measured at 14–18 seconds. Now that cost is paid once per comet as its own 2-hour cache entry lapses, not on every restart.
-- The Browse list never waits on COBS at all — it returns predicted magnitude instantly, then fills in observed-brightness badges one comet at a time in the background.
-- An explicit **Sync Now** action to update comet and asteroid elements on demand, plus a separate **Refresh COBS** action alongside it (a full COBS sweep costs the same network round-trip the disk cache exists to keep off the normal load path, so it stays deliberate rather than riding along with Sync Now).
-- Asteroid elements (from JPL's Small-Body Database) are disk-cached too, refreshed roughly daily — main-belt orbital elements barely move day to day, so a much longer cache window than comets' is both accurate and considerate of JPL's public API.
-- **Import/Export/Clear** for both comet and asteroid elements — comets accept/produce MPC's own `CometEls.txt` format directly (so anyone, not just another Perihelion install, can produce a compatible file); asteroids use Perihelion's own JSON format instead, since no external bulk format fits a threshold-filtered live query. Useful for an observatory behind a shared network egress that MPC/JPL's own APIs might rate-limit or block: fetch once from an unblocked network, then distribute the file locally instead of every rig hitting the live feed.
-
-**Why the lists are short**: comets are filtered to those currently brighter than magnitude 16 against the live MPC feed, capped at 30 shown by default — the number visible on any given day (often around a dozen) reflects how many are actually worth pointing a telescope at, not a limitation of the fetch. Asteroids are filtered server-side by absolute magnitude (a configurable threshold, generous by default), then re-sorted by current apparent brightness and capped at 30 shown by default — a short, focused list beats downloading an entire minor-planet catalog (well over a million objects, the overwhelming majority far too faint for any amateur rig). Both thresholds and caps are configurable from the Windows Options page (Options → Plugins → Perihelion); PINS has no settings UI of its own yet, so they default to their built-in values there.
-
-### Observed brightness
-
-- Cross-checks the predicted (H/G orbital-model) magnitude against observer reports from [COBS](https://cobs.si/) — predictions can be off by several magnitudes during an active outburst, which matters for deciding whether a target is worth a night's imaging time.
-- The Position & Path tab surfaces Alt/Az, Sun distance, Earth distance, solar elongation, the IAU constellation the object currently sits in, and (comets only) the date of perihelion passage — tucked behind a collapsed "More Details" disclosure so they're there when wanted without crowding an already-detailed tab.
-
-### Framing
-
-- A framing view centered on the object's live position (not a static catalog snapshot), with the camera's actual field of view overlaid — pan to compose the shot, then capture that framing as an offset for the built sequence.
-- The object's 10-night path renders directly over the sky imagery in the framing view itself, alongside a separate motion-overview chart with a cos(dec)-compensated drift readout and an angular scale bar — the framing view answers "will this stay in my shot," the chart answers "how much and which way is it actually moving," since a fast mover's full path can exceed the camera's own field of view.
-
-## Native Windows NINA plugin
-
-A genuinely separate front end (`Perihelion.Windows`) for users on Windows NINA who have no PINS box and no Touch-N-Stars — sharing the exact same tracking core (`Perihelion/Api`, `Astrometry`, `SequenceItems`, `Utility`, compiled directly into a second assembly, not forked), with its own native WPF UI instead of a web panel.
-
-**A dockable panel**, in NINA's own Imaging tab: a collapsible **Update Sources** section (per-source record counts, last-updated timestamps, and Update/Import/Export/Clear actions) above a Browse list, then live position, rate, orbital elements, tonight's altitude, and 10-night path for whatever's loaded, then either **Add to Sequence** or **Quick Track** it right now — the same two mechanisms described above, driven natively instead of over HTTP.
-
-**The Perihelion Framing Composer** — a standalone popup window (not a redirect to NINA's own Framing Assistant tab) opened from the panel's **Frame** button:
-
-- A sky-survey image centered on the target, with the camera's FOV rectangle overlaid, scaled and sized from the connected profile's own gear settings. Six sources: five live photographic ones (NASA/HIPS2FITS/STSCI/ESO/SkyServer), plus NINA's own **Offline Sky Map** — NINA's own `SkyMapAnnotator`, not a custom rendering, compositing catalog stars/constellations/grid with whatever photographic tiles already exist in the user's own Sky Survey Cache folder for that field — and a **Cache** source that searches that same on-disk folder directly, so both work fully offline once a target's imagery has been fetched once.
-- Scroll to zoom, drag to pan and reframe — the target marker and its name label track the sky as you pan; the FOV box stays fixed at the viewport's own center.
-- The object's own 10-night path renders directly on the sky map, matching the Touch-N-Stars framing view's own look — the target's name sits on whichever side keeps it clear of the path line.
-- **Slew and Center** (with a settings cog for Slew / Slew & Center / Slew, Center & Rotate) and **Determine Rotation from Camera** (a plate-solve reading of the camera's current rotation, usable with or without a rotator connected). Framing off-center on a comet's tail rather than its nucleus is done by dragging the sky map directly — the offset shown updates live as you drag.
-- **Use This Framing** hands the captured offset and rotation straight to Add to Sequence and Quick Track back on the main panel — it doesn't slew or start anything by itself. **Reset** clears the session's own adjustments without closing the window.
-
-## How this fits with Touch-N-Stars
-
-**Celestia Atlas** can show a comet and center a mount on it — but that's a single, instantaneous coordinate. There's no non-sidereal tracking behind it: the object starts drifting out of frame the moment imaging begins, uncompensated, with no guider coordination. Perihelion is the layer underneath that keeps it centered for the rest of the session. The two are complementary, not overlapping — Celestia Atlas for browsing and framing at a glance, Perihelion for the tracking, automation, and offline reliability an actual session needs. Perihelion's own framing view embeds a second, independent Celestia Atlas viewer instance directly in its panel, reusing the same sky imagery rather than building a separate rendering stack.
-
-**The rest of the app, reused rather than duplicated.** The panel doesn't carry its own copy of anything the app already does well: altitude uses the app's existing `raDecToAltAz()` and the connected profile's own location; the camera FOV overlay uses the same field-of-view calculation Celestia Atlas itself uses. It's built as another Touch-N-Stars plugin — same design tokens, same plugin-registration pattern, its own code-split chunk, every user-facing string in the app's own locale files — not a bolted-on separate app that happens to load in an iframe.
-
-**Entirely optional: OryxAstro's own website.** Perihelion is a complete, standalone plugin on its own — nothing else is required to browse, track, or build a sequence. If you also use OryxAstro's website for planning, it can additionally hand a session straight to a PINS rig — the "Send to PINS" button in its Orbital Export modal builds a sequence and posts it to `ninaAPI`'s existing `/sequence/load` route, landing directly in the Advanced Sequencer with Perihelion's own tracking-rate items already wired in. Planning happens wherever's convenient (a desktop browser, days in advance, with COBS data and framing tools this panel doesn't need to duplicate); execution happens on the rig at the dark site. But this is a bonus integration, not a dependency.
-
-## Architecture
+## Ecosystem
 
 ```mermaid
 flowchart TB
-    subgraph pi["Raspberry Pi (PINS)"]
-        subgraph nina["PINS process"]
-            plugin["Perihelion plugin<br/>(in-process, MEF-loaded)"]
-            mediator["Telescope / Guider<br/>mediators"]
-            plugin -->|SetCustomTrackingRate<br/>SetShiftRate| mediator
-        end
-        api["Perihelion's own HTTP server<br/>(port 1899, self-resolving,<br/>token-authenticated)"]
-        cache[("On-disk cache<br/>~/.local/share/NINA/PerihelionData")]
-        plugin --- api
-        plugin --- cache
+    website["OryxAstro website<br/>(Sky Events planner)"]
+
+    subgraph pirig["Raspberry Pi"]
+        tns["Touch-N-Stars<br/>(phone / tablet web app)"]
+        pins["PINS process"]
+        perihelionpi["Perihelion plugin"]
+        tns -->|HTTP, token-authenticated| perihelionpi
+        perihelionpi -.runs inside.- pins
     end
 
-    tns["Touch-N-Stars panel<br/>(Browse, Position & Path,<br/>Track)"]
-    tns -->|Quick Track, Sync Now,<br/>Add to Sequence| api
-
-    subgraph win["Windows NINA (separate machine)"]
-        subgraph winproc["NINA process"]
-            winplugin["Perihelion.Windows<br/>(dockable panel +<br/>Framing Composer)"]
-            winmediator["Telescope / Guider /<br/>Camera / Rotator mediators"]
-            winplugin -->|SetCustomTrackingRate<br/>SetShiftRate, plate-solve| winmediator
-        end
-        winapi["Same standalone HTTP server<br/>(off by default,<br/>token-authenticated)"]
-        wincache[("On-disk cache<br/>(NINA's own AppData folder)")]
-        winplugin --- winapi
-        winplugin --- wincache
+    subgraph winrig["Windows PC"]
+        nina["N.I.N.A."]
+        perihelionwin["Perihelion.Windows<br/>(dockable panel +<br/>Framing Composer)"]
+        perihelionwin -.runs inside.- nina
     end
 
-    mpc[("MPC comet elements")]
-    cobs[("COBS observed brightness")]
-    api -.sync.-> mpc
-    api -.cross-check.-> cobs
-    winplugin -.sync.-> mpc
-    winplugin -.cross-check.-> cobs
+    website -.->|"Send to PINS"<br/>via ninaAPI's<br/>/sequence/load| pins
 
-    website["OryxAstro website<br/>(sky-events planner,<br/>optional)"]
-    ninaapi["ninaAPI's own<br/>/sequence/load"]
-    website -.->|"Send to PINS<br/>(optional)"| ninaapi
-    ninaapi -.-> nina
+    mpc[("MPC — comet elements")]
+    jpl[("JPL SBDB — asteroid elements")]
+    cobs[("COBS — observed brightness")]
+    perihelionpi -.-> mpc & jpl & cobs
+    perihelionwin -.-> mpc & jpl & cobs
 ```
 
-## Status
+Each rig is independent — a PINS box with Touch-N-Stars needs no Windows machine, and a Windows
+N.I.N.A. install needs no PINS box. The OryxAstro website integration is optional in both cases.
 
-**PINS / Touch-N-Stars**: working prototype, tested against hardware (INDI mount + PHD2 guiding), and separately verified end-to-end against an INDI Telescope Simulator — the auto-reapply timer logged three ticks exactly 15 minutes apart, each with a freshly recomputed (not cached) RA/Dec rate. Light-time, aberration, and topocentric parallax correction, the live coordinate-refresh loop for Add to Sequence, and Add to Sequence's own built container loading and running in the Advanced Sequencer have all been verified against hardware, tested across three separate rigs. **The meridian safety cutoff** (shared code with the Windows plugin) has been verified end-to-end on a Windows NINA test rig and the ASCOM Telescope Simulator — it genuinely stops tracking, not just switches modes, once the configured margin past the meridian is reached; not yet independently re-verified on a PINS deployment specifically, though the code is identical. Distributed as a `.deb` (`pins-plugin-perihelion`) via Touch-N-Stars' own official APT repository — installs and updates like any other PINS plugin through Touch-N-Stars' own update UI, no manual packaging needed on this repo's side.
+## What it does
 
-**Native Windows NINA plugin**: [latest release (1.1.0.13)](https://github.com/OryxAstro/perihelion/releases/tag/v1.1.0.13) is out, built and exercised on a Windows NINA test machine for every release since [first public release (1.0.0.0)](https://github.com/OryxAstro/perihelion/releases/tag/v1.0.0.0) — including live-fetched asteroid elements (replacing an original fixed 13-object table), the EQMOD RA rate correction option, configurable comet/asteroid magnitude thresholds, and Import/Export for both element sets. Not yet listed in NINA's own in-app Plugin Manager — manual install (extract the release archive into `%LocalAppData%\NINA\Plugins\3.0.0\Perihelion\`) only, for now; the official plugin manifest is [submitted and under review](https://github.com/isbeorn/nina.plugin.manifests/pull/687), with several rounds of maintainer feedback already addressed. Add to Sequence's built container has been confirmed loading correctly into the Advanced Sequencer, with the framing offset and rotation both applied immediately, no delay. Still unverified against hardware: the FOV/rotation rectangle's own rotation direction against a physical rotator, and the "Determine Rotation from Camera" plate-solve path end to end.
+### Tracking
+
+- Custom RA/Dec tracking rate computed live from current orbital elements, corrected for
+  light-time, stellar aberration, and topocentric parallax (the observer's actual site, not
+  Earth's center).
+- Correct RA/sidereal-rate unit handling for every backend N.I.N.A. supports (ASCOM, INDI).
+- Optional EQMOD RA rate correction — EQMOD's ASCOM and INDI drivers both read the RA rate in
+  raw arcsec/sec rather than N.I.N.A.'s own seconds-of-RA-per-sidereal-second convention.
+- Guider coordination: sets PHD2's shift rate so guiding doesn't fight the deliberate drift,
+  starting guiding itself if it isn't already running. Unparks the mount if needed.
+
+### Sequencing
+
+- **Add to Sequence** builds an Advanced Sequencer container (unpark → slew/center/rotate →
+  track → guide → filter/exposure loop, with optional meridian-flip and autofocus triggers) and
+  loads it for review — it doesn't auto-start. The target's coordinates and framing stay live,
+  recomputed every 30 seconds for as long as the sequence remains loaded.
+- **Quick Track** sets the rate directly, independent of any sequence, for manual/visual use or
+  a target already centered. Optionally re-applies itself on a timer (default 15 minutes) as the
+  object's true rate drifts through the night.
+- **Meridian safety cutoff**: Quick Track has no sequence and no `MeridianFlipTrigger`, so
+  nothing else would stop it tracking a GEM straight past the meridian. Checked once a minute
+  against the mount's own hour angle, honoring the same `MaxMinutesAfterMeridian`/
+  `PauseTimeBeforeMeridian` margins configured in N.I.N.A.'s own Meridian Flip settings. Actually
+  stops tracking and guiding, not just switches to sidereal — it stops rather than performing the
+  flip itself, since that's a full stop-guiding/plate-solve/recenter/resume-guiding sequence only
+  `MeridianFlipTrigger` orchestrates, inside a sequence. Add to Sequence's own optional
+  meridian-flip trigger is unaffected.
+
+### Framing
+
+- A framing view centered on the object's live position, with the camera's actual field of view
+  overlaid — pan to compose the shot (e.g. off-center on a comet's tail), then capture that
+  offset for the built sequence.
+- The object's 10-night path renders directly over the sky imagery, alongside a separate
+  motion-overview chart with a cos(dec)-compensated drift readout and an angular scale bar.
+- Windows only: the **Framing Composer**, a standalone window with a sky-survey image (five
+  live photographic sources plus N.I.N.A.'s own Offline Sky Map and on-disk cache, so it works
+  offline once imagery is fetched), Slew/Center/Rotate, and "Determine Rotation from Camera" (a
+  plate-solve reading of the camera's current rotation).
+
+### Data
+
+- Comet elements (Minor Planet Center), asteroid elements (JPL Small-Body Database), and
+  observed brightness (COBS) are all disk-cached, not just in-memory — survives a restart with
+  no connectivity.
+- Comet list: objects currently brighter than magnitude 16 from the live MPC feed, capped at 30.
+  Asteroid list: filtered server-side by absolute magnitude (configurable threshold), re-sorted
+  by current apparent brightness, capped at 30.
+- Import/Export/Clear for both element sets — comets use MPC's own `CometEls.txt` format,
+  asteroids use Perihelion's own JSON. Useful for distributing a fetched file to rigs behind a
+  restricted network instead of every rig hitting the live feed.
+- Predicted (H/G orbital-model) magnitude is cross-checked against COBS observer reports, which
+  can differ by several magnitudes during an outburst.
+
+## Architecture
+
+Both platforms share the exact same source (`Astrometry`, `SequenceItems`, `Api`, `Sequencing`),
+compiled into two different assemblies:
+
+```mermaid
+flowchart TB
+    shared["Shared source<br/>Astrometry · SequenceItems · Api · Sequencing"]
+    shared -->|compiled into| pinsdll["Perihelion.dll<br/>net10.0, linux-arm64"]
+    shared -->|compiled into| windll["Perihelion.Windows.dll<br/>net8.0-windows7.0, WPF"]
+
+    pinsdll --- pinsapi["Standalone HTTP API<br/>(port 1899, token-authenticated,<br/>on by default)"]
+    windll --- winui["Dockable panel +<br/>Framing Composer<br/>(native, in-process)"]
+    windll --- winapi["Same standalone HTTP API<br/>(off by default —<br/>native panel doesn't need it)"]
+
+    pinsapi --- tnsclient["Touch-N-Stars"]
+```
+
+Every request to the standalone HTTP API requires a token (`X-Perihelion-Token` header).
+Touch-N-Stars pairs with a fresh install automatically on first contact; any other client is
+paired by typing the token in once, shown on Touch-N-Stars' own Settings tab or the Windows
+Options page (which also has Regenerate/Clear controls).
+
+Both mechanisms for tracking a target converge on the same underlying sequence items:
+
+```mermaid
+flowchart LR
+    browse["Browse or Frame<br/>a target"] --> choice{Quick Track or<br/>Add to Sequence?}
+    choice -->|Quick Track| qt["SetPerihelionTrackingRate<br/>+ optional SetPerihelionGuiderShiftRate<br/>+ meridian safety timer"]
+    choice -->|Add to Sequence| ats["DeepSkyObjectContainer:<br/>unpark → Center/CenterAndRotate →<br/>SetPerihelionTrackingRate → guide → image"]
+    ats --> sequencer["N.I.N.A. Advanced Sequencer<br/>(loaded for review, not auto-started)"]
+```
+
+## Platforms
+
+**PINS / Touch-N-Stars** — distributed as a `.deb` (`pins-plugin-perihelion`) via Touch-N-Stars'
+own official APT repository; installs and updates through Touch-N-Stars' own update UI.
+
+**Windows N.I.N.A.** — [latest release](https://github.com/OryxAstro/perihelion/releases/latest).
+Not yet listed in N.I.N.A.'s in-app Plugin Manager: install manually by extracting the release
+archive into `%LocalAppData%\NINA\Plugins\3.0.0\Perihelion\`. The official plugin manifest is
+[submitted and under review](https://github.com/isbeorn/nina.plugin.manifests/pull/687).
 
 ## License
 
