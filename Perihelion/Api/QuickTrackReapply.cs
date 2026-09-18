@@ -7,6 +7,7 @@ using Perihelion.Astrometry;
 using Perihelion.SequenceItems;
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Perihelion.Api {
 
@@ -28,6 +29,8 @@ namespace Perihelion.Api {
         private static readonly object Gate = new();
         private static Timer? reapplyTimer;
         private static Timer? meridianGuardTimer;
+        private static CancellationTokenSource? sessionCts;
+        private static Task? inFlightReapply;
 
         // Fixed, not user-configurable -- this is a safety check, not a preference (unlike the
         // reapply interval above). 60s is frequent enough to catch the threshold promptly
@@ -37,11 +40,13 @@ namespace Perihelion.Api {
         public static void Start(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding, int? reapplyIntervalSeconds) {
             lock (Gate) {
                 StopLocked();
+                var cts = new CancellationTokenSource();
+                sessionCts = cts;
 
                 if (reapplyIntervalSeconds is > 0) {
                     var interval = TimeSpan.FromSeconds(Math.Max(PerihelionPlugin.MinReapplyIntervalSeconds, reapplyIntervalSeconds.Value));
                     reapplyTimer = new Timer(
-                        _ => Reapply(telescopeMediator, guiderMediator, profileService, objectType, targetName, guiding),
+                        _ => Reapply(telescopeMediator, guiderMediator, profileService, objectType, targetName, guiding, cts.Token),
                         null,
                         interval,
                         interval);
@@ -51,7 +56,7 @@ namespace Perihelion.Api {
                 // Unconditional -- runs whether or not auto re-apply is on, since Quick Track has
                 // no sequence and no MeridianFlipTrigger of its own regardless of that setting.
                 meridianGuardTimer = new Timer(
-                    _ => CheckMeridian(telescopeMediator, guiderMediator, targetName),
+                    _ => CheckMeridian(telescopeMediator, guiderMediator, profileService, targetName),
                     null,
                     MeridianCheckInterval,
                     MeridianCheckInterval);
@@ -69,6 +74,12 @@ namespace Perihelion.Api {
             reapplyTimer = null;
             meridianGuardTimer?.Dispose();
             meridianGuardTimer = null;
+            // Signals any reapply tick already in flight to bail out instead of applying a rate
+            // -- CheckMeridian additionally awaits inFlightReapply itself (see its own comment)
+            // so a tick that's already past this check can still finish before the actual stop
+            // commands go out, rather than racing them.
+            sessionCts?.Cancel();
+            sessionCts = null;
         }
 
         /// <summary>
@@ -89,24 +100,76 @@ namespace Perihelion.Api {
         /// -- so this stops tracking and tells the user to flip manually, the same way a plain
         /// "I've been analog-tracking and forgot the time" situation would require anyway.
         ///
-        /// TimeToMeridianFlip (NINA.Astrometry.MeridianFlip.TimeToMeridianFlip, surfaced on
-        /// TelescopeInfo) already factors in the user's own configured
-        /// MeridianFlipSettings.MaxMinutesAfterMeridian -- reusing it directly means this respects
-        /// whatever safety margin the user already set for their own rig's geometry in NINA's own
-        /// settings, rather than Perihelion guessing at (or hardcoding) a threshold that varies by
-        /// OTA length, dovetail, and mount head clearance.
+        /// Deliberately does NOT use ITelescopeInfo.TimeToMeridianFlip (NINA.Astrometry.
+        /// MeridianFlip.TimeToMeridianFlip) despite it looking like the obvious fit -- confirmed
+        /// by reading that method's own source that it can never return a negative number: the
+        /// moment its internal (RA - LST) difference would go negative, it unconditionally adds
+        /// 12 hours back, specifically so the value stays meaningful as a forward-looking "time
+        /// until the next flip point" for the UI. That means a poll checking "<= 0" has, in the
+        /// literal sense, nothing to ever observe -- the value jumps straight from a small
+        /// positive number to roughly 12 hours with no dwell time in between, so a periodic timer
+        /// will almost always sample on the wrong side of that jump and never see zero. Confirmed
+        /// on live hardware: a Quick Track session run 30+ minutes past its target's actual
+        /// meridian crossing never stopped, and the NINA log showed no meridian-related line at
+        /// all -- consistent with every single 60-second poll landing on the wrapped side.
+        ///
+        /// Hour angle computed directly from ITelescopeInfo.SiderealTime/RightAscension (both
+        /// populated by NINA itself from site longitude and the mount's own reported coordinates,
+        /// not dependent on driver-specific capability flags the way TimeToMeridianFlip partly
+        /// is) sidesteps this: normalized into (-12, 12], HA increases monotonically THROUGH the
+        /// meridian crossing and keeps increasing for a full 12 hours afterward before it wraps,
+        /// so "has HA exceeded the configured grace period" stays true and observable for hours,
+        /// not a single unobservable instant.
+        ///
+        /// The threshold itself still comes from the user's own MeridianFlipSettings -- not just
+        /// MaxMinutesAfterMeridian, but PauseTimeBeforeMeridian too: MeridianFlipTrigger.
+        /// ShouldTrigger treats a configured PauseTimeBeforeMeridian as a hard equipment-clearance
+        /// limit that pulls the required stop BEFORE the meridian rather than after it (a rig
+        /// that physically cannot approach the meridian at all needs this, not just a grace period
+        /// past it) -- confirmed directly from its own source, which substracts MinutesAfterMeridian
+        /// and PauseTimeBeforeMeridian from the raw time-to-meridian when PauseTimeBeforeMeridian is
+        /// non-zero. Perihelion respects the same override so a user who configured that limit for
+        /// their own rig gets the same protection here, not just the after-meridian one.
         /// </summary>
-        private static async void CheckMeridian(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, string targetName) {
+        private static async void CheckMeridian(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, string targetName) {
             try {
                 var info = telescopeMediator.GetInfo();
                 if (!info.Connected) return;
-                // NaN means this backend/driver doesn't report it at all (not every ASCOM/INDI
-                // driver implements TimeToMeridianFlip) -- nothing to act on, and no way to warn
-                // reliably, so this mount is simply outside what this guard can cover.
-                if (double.IsNaN(info.TimeToMeridianFlip)) return;
-                if (info.TimeToMeridianFlip > 0) return;
 
-                StopLocked();
+                // Hours, normalized into (-12, 12]: negative means still approaching the
+                // meridian, 0 is the crossing itself, positive and increasing means further past
+                // it -- unlike TimeToMeridianFlip this never wraps back to a large value until a
+                // full 12 hours after the crossing, giving a 60-second poll a wide, easily-hit
+                // window instead of a single instant.
+                var hourAngle = info.SiderealTime - info.RightAscension;
+                hourAngle %= 24.0;
+                if (hourAngle > 12.0) hourAngle -= 24.0;
+                if (hourAngle <= -12.0) hourAngle += 24.0;
+
+                var settings = profileService.ActiveProfile.MeridianFlipSettings;
+                // A configured PauseTimeBeforeMeridian moves the limit to that many minutes
+                // BEFORE the meridian (negative HA) instead of MaxMinutesAfterMeridian minutes
+                // after it -- same override MeridianFlipTrigger itself applies for a rig that
+                // needs to stop clear of the meridian entirely, not just flip promptly past it.
+                var thresholdHours = settings.PauseTimeBeforeMeridian > 0
+                    ? -settings.PauseTimeBeforeMeridian / 60.0
+                    : settings.MaxMinutesAfterMeridian / 60.0;
+                if (hourAngle < thresholdHours) return;
+
+                Task? pending;
+                lock (Gate) {
+                    StopLocked();
+                    pending = inFlightReapply;
+                }
+                if (pending != null) {
+                    // A tick already past its own cancellation check can still be mid-flight,
+                    // and Timer.Dispose() above doesn't cancel or wait for it -- awaiting it here
+                    // means the stop commands below are always the last word sent to the mount,
+                    // instead of racing a reapply that could otherwise silently re-enable
+                    // tracking (NINA's ASCOM SetCustomTrackingRate does this as a side effect).
+                    await pending.ConfigureAwait(false);
+                }
+
                 telescopeMediator.SetTrackingEnabled(false);
                 if (guiderMediator != null) {
                     await guiderMediator.StopShifting(CancellationToken.None).ConfigureAwait(false);
@@ -125,7 +188,24 @@ namespace Perihelion.Api {
             }
         }
 
-        private static async void Reapply(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding) {
+        private static async void Reapply(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding, CancellationToken ct) {
+            // Registered before awaiting so CheckMeridian can find and await this exact tick if
+            // it fires mid-flight (see CheckMeridian's own comment) -- cleared again once done,
+            // whether it completed, failed, or was cancelled.
+            var work = ReapplyCore(telescopeMediator, guiderMediator, profileService, objectType, targetName, guiding, ct);
+            lock (Gate) { inFlightReapply = work; }
+            try {
+                await work.ConfigureAwait(false);
+            } finally {
+                lock (Gate) {
+                    if (inFlightReapply == work) inFlightReapply = null;
+                }
+            }
+        }
+
+        private static async Task ReapplyCore(ITelescopeMediator telescopeMediator, IGuiderMediator? guiderMediator, IProfileService profileService, OrbitalObjectType objectType, string targetName, bool guiding, CancellationToken ct) {
+            if (ct.IsCancellationRequested) return;
+
             // Same capability check as Track()'s own -- see its doc comment for the driver
             // (ASCOM OnStep) that surfaced this. Checked once per tick since a driver's own
             // capability doesn't change mid-session, but re-fetching info.CanSet* rather than
@@ -137,7 +217,7 @@ namespace Perihelion.Api {
             if (canSetBaseRate) {
                 try {
                     var trackingItem = new SetPerihelionTrackingRate(telescopeMediator, profileService) { ObjectType = objectType, TargetName = targetName };
-                    await trackingItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
+                    await trackingItem.Execute(new Progress<ApplicationStatus>(), ct);
 
                     if (trackingItem.LastAppliedRate is OrbitalRate rate) {
                         // Reported immediately, before attempting guiding below -- a guiding
@@ -171,7 +251,7 @@ namespace Perihelion.Api {
             if (guiding && guiderMediator != null) {
                 try {
                     var guiderItem = new SetPerihelionGuiderShiftRate(telescopeMediator, guiderMediator, profileService) { ObjectType = objectType, TargetName = targetName };
-                    await guiderItem.Execute(new Progress<ApplicationStatus>(), CancellationToken.None);
+                    await guiderItem.Execute(new Progress<ApplicationStatus>(), ct);
                     QuickTrackStatus.GuidingSucceeded();
                     // Same guiding-only fallback as Track() -- see its own doc comment. The
                     // mount never got a base rate this tick (or any tick), so the guider's own
