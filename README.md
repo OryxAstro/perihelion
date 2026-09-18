@@ -100,9 +100,12 @@ N.I.N.A. install needs no PINS box. The OryxAstro website integration is optiona
 - Comet elements (Minor Planet Center), asteroid elements (JPL Small-Body Database), and
   observed brightness (COBS) are all disk-cached, not just in-memory — survives a restart with
   no connectivity.
-- Comet list: objects currently brighter than magnitude 16 from the live MPC feed, capped at 30.
-  Asteroid list: filtered server-side by absolute magnitude (configurable threshold), re-sorted
-  by current apparent brightness, capped at 30.
+- Comet list: objects currently brighter than a configurable magnitude threshold (default 16)
+  from the live MPC feed, capped at a configurable count (default 30). Asteroid list: filtered
+  server-side by a configurable absolute-magnitude threshold (default 9), re-sorted by current
+  apparent brightness, capped at a configurable count (default 30). Both thresholds and both
+  caps are set from Touch-N-Stars' own Settings tab or the Windows Options page — same
+  underlying settings on both platforms.
 - Import/Export/Clear for both element sets — comets use MPC's own `CometEls.txt` format,
   asteroids use Perihelion's own JSON. Useful for distributing a fetched file to rigs behind a
   restricted network instead of every rig hitting the live feed.
