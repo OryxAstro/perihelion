@@ -116,7 +116,7 @@ namespace Perihelion {
         /// <summary>Whether the standalone HTTP server should start at all. Defaults to on for
         /// PINS, off for Windows -- PINS has no other interface to Perihelion at all (no WPF
         /// shell renders there), so leaving it off by default with no UI to turn it on would just
-        /// strand every PINS/Touch-N-Stars user with no way in. Windows has a real alternative
+        /// strand every PINS/Touch-N-Stars user with no way in. Windows has an alternative
         /// (the native dockable panel), so there it stays opt-in. Either way this is no longer
         /// the actual security boundary -- ApiToken/PerihelionAuthModule are -- so defaulting on
         /// for PINS doesn't reopen the gap this was originally added to close. Same "takes effect
@@ -145,12 +145,16 @@ namespace Perihelion {
             get => pluginSettings.GetValueString("ApiToken", string.Empty);
             set {
                 pluginSettings.SetValueString("ApiToken", value);
-                if (string.IsNullOrEmpty(value)) {
-                    // Clearing is also how a user asks to reopen pairing (Regenerate does this
-                    // too) -- otherwise a freshly-generated replacement token would stay stuck
-                    // unclaimed forever if ApiTokenClaimed was already true from before.
-                    ApiTokenClaimed = false;
-                }
+                // Also updates the running server's own copy immediately -- without this,
+                // Regenerate/Clear only changed the persisted setting, and the old token kept
+                // being accepted until the next restart, defeating the point of either button.
+                PerihelionApiController.ApiToken = value;
+                // Every set (first-run generation, Regenerate, or Clear) reopens pairing too --
+                // otherwise a new token would stay stuck unclaimed if ApiTokenClaimed was already
+                // true from before, and Regenerate specifically needs a fresh window, not the
+                // original (likely already-expired) one from startup.
+                ApiTokenClaimed = false;
+                PerihelionApiController.PairingDeadlineUtc = DateTime.UtcNow.Add(PerihelionApiServer.PairingWindow);
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ApiToken)));
             }
         }
@@ -161,8 +165,9 @@ namespace Perihelion {
         public System.Windows.Input.ICommand RegenerateApiTokenCommand { get; }
 
         /// <summary>Wipes ApiToken entirely -- every request is refused (PerihelionAuthModule
-        /// never matches an empty expected token) until Regenerate is used. A deliberate lockout,
-        /// e.g. if an unexpected client claimed pairing and you want to cut it off immediately
+        /// never matches an empty expected token), and /pair itself refuses to hand out an empty
+        /// token too, so every client is locked out immediately until Regenerate is used. Use
+        /// e.g. if an unexpected client claimed pairing and you want to cut it off right away
         /// rather than just rotate. Bound to the Options page's Clear button.</summary>
         public System.Windows.Input.ICommand ClearApiTokenCommand { get; }
 

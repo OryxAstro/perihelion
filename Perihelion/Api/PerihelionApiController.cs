@@ -328,6 +328,7 @@ namespace Perihelion.Api {
         internal static IGuiderMediator? GuiderMediator;
         internal static IProfileService? ProfileService;
         internal static string? ApiToken;
+        internal static DateTime PairingDeadlineUtc;
 
         // One shared HttpClient across the whole plugin (PerihelionHttpClient.cs).
         private static readonly HttpClient HttpClient = PerihelionHttpClient.Instance;
@@ -515,7 +516,7 @@ namespace Perihelion.Api {
         public Task ClearCobs() => RunClear(CometActivity.ClearAsync, "COBS cache cleared");
 
         /// <summary>Shared body for every Import route -- always 200, even on failure, so
-        /// Touch-N-Stars' own global axios interceptor never discards the real Message (see
+        /// Touch-N-Stars' own global axios interceptor never discards the Message (see
         /// ExportComets's own doc comment for the full reasoning).</summary>
         private async Task RunImport(Func<string, CancellationToken, Task<int>> importFn, string label) {
             var response = new ImportResponse();
@@ -711,8 +712,14 @@ namespace Perihelion.Api {
                         Logger.Error("Perihelion: AddTargetToSequence -- ResolveFactory returned null with Initialized true");
                     } else {
                         var trueCoordinates = new Coordinates(request.RaHours, request.DecDeg, Epoch.J2000, Coordinates.RAType.Hours);
+                        // FrameOffsetRaDeg/DecDeg are a delta from RaHours/DecDeg (see their own
+                        // doc comment: "null means slew to RaHours/DecDeg exactly"), not an
+                        // absolute position on their own -- this previously discarded
+                        // trueCoordinates entirely whenever an offset was supplied, slewing to a
+                        // position near the tiny offset value itself (e.g. a few arcminutes from
+                        // RA=0h/Dec=0) instead of near the actual target.
                         var slewCoordinates = request.FrameOffsetRaDeg is double offsetRa && request.FrameOffsetDecDeg is double offsetDec
-                            ? new Coordinates(offsetRa / 15.0, offsetDec, Epoch.J2000, Coordinates.RAType.Hours)
+                            ? new Coordinates(trueCoordinates.RA + offsetRa / 15.0, trueCoordinates.Dec + offsetDec, Epoch.J2000, Coordinates.RAType.Hours)
                             : trueCoordinates;
 
                         NINA.Core.Model.Equipment.FilterInfo? filter = null;
@@ -761,7 +768,9 @@ namespace Perihelion.Api {
         /// deliberately the only unauthenticated route (see PerihelionAuthModule's own
         /// exemption), so Touch-N-Stars can pair with a fresh install with nothing typed in by
         /// hand. A second device gets the token by having it typed in manually instead (visible
-        /// on the first device's own Settings tab, or the Windows Options page).
+        /// on the first device's own Settings tab, or the Windows Options page). Only open for
+        /// PerihelionApiServer.PairingWindow after each startup/Regenerate/Clear -- narrows how
+        /// long a stranger on the same network could race the legitimate user to claim it.
         /// </summary>
         private static readonly object PairLock = new object();
 
@@ -773,14 +782,21 @@ namespace Perihelion.Api {
             }
 
             string? token = null;
+            string? failureMessage = null;
             lock (PairLock) {
-                if (!plugin.ApiTokenClaimed) {
+                if (string.IsNullOrEmpty(plugin.ApiToken)) {
+                    failureMessage = "No token configured -- use Regenerate on Windows, or restart PINS to generate one";
+                } else if (DateTime.UtcNow > PairingDeadlineUtc) {
+                    failureMessage = "Pairing window has closed -- restart the plugin (or use Regenerate on Windows) to reopen it";
+                } else if (plugin.ApiTokenClaimed) {
+                    failureMessage = "Already paired with another client";
+                } else {
                     token = plugin.ApiToken;
                     plugin.ApiTokenClaimed = true;
                 }
             }
 
-            var response = new { Success = token != null, Token = token, Message = token != null ? null : "Already paired with another client" };
+            var response = new { Success = token != null, Token = token, Message = failureMessage };
             return HttpContext.SendStringAsync(JsonConvert.SerializeObject(response), "application/json", Encoding.UTF8);
         }
 
@@ -814,7 +830,7 @@ namespace Perihelion.Api {
                 var json = JObject.Parse(body);
                 // Partial update -- only touches fields the caller actually included, rather than
                 // deserializing into a fully-populated SettingsResponse and writing back all six
-                // unconditionally (a real bug this replaces: Touch-N-Stars' own saveSettings()
+                // unconditionally (a bug this replaces: Touch-N-Stars' own saveSettings()
                 // only ever sends EqmodRaRateCorrection/QuickTrackReapplyIntervalSeconds, so every
                 // call was silently zeroing CometMagnitudeThreshold/MaxComets/
                 // AsteroidMagnitudeThreshold/MaxAsteroids to C#'s own numeric default -- and

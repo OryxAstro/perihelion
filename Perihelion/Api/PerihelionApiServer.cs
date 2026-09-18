@@ -24,6 +24,12 @@ namespace Perihelion.Api {
         // collision at startup self-resolves rather than silently failing to bind.
         public const int DefaultPort = 1899;
 
+        // POST /pair is unauthenticated by design (see PerihelionApiController.Pair), so it's
+        // only ever open for this long after each startup/restart -- narrows the window a
+        // stranger on the same network could race the legitimate user to claim it, without needing
+        // any approval UI PINS has nowhere to render.
+        public static readonly TimeSpan PairingWindow = TimeSpan.FromMinutes(5);
+
         private readonly int port;
         private WebServer? server;
         private Thread? serverThread;
@@ -35,6 +41,7 @@ namespace Perihelion.Api {
             PerihelionApiController.GuiderMediator = guiderMediator;
             PerihelionApiController.ProfileService = profileService;
             PerihelionApiController.ApiToken = apiToken;
+            PerihelionApiController.PairingDeadlineUtc = DateTime.UtcNow.Add(PairingWindow);
         }
 
         /// <summary>
