@@ -3,6 +3,32 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.13] — 2026-09-18
+
+### Fixed
+
+- Quick Track's meridian safety stop could be undone by a reapply tick already
+  in flight when the cutoff fired, which could re-enable tracking as a side
+  effect of applying a rate afterward. The cutoff now cancels and awaits any
+  in-flight reapply before issuing the final stop, and stops guiding too.
+- The meridian stop condition itself checked
+  `ITelescopeInfo.TimeToMeridianFlip <= 0`, a value that never goes negative
+  by design, so the check could never actually observe a stop condition on
+  any mount. Replaced with a direct Hour Angle check that also honors
+  `PauseTimeBeforeMeridian` when configured.
+- `ApiToken`'s Regenerate/Clear controls only updated the persisted setting,
+  not the running server's own copy, so a revoked token stayed accepted
+  until restart. `/pair` now also enforces a 5-minute pairing window instead
+  of staying open indefinitely for whichever client asks first.
+- `POST /sequence/add-target` discarded the target's true coordinates
+  entirely whenever a framing offset was supplied, slewing near RA 0h/Dec 0
+  instead of near the actual target.
+- Add to Sequence's framing offset and rotation are now set on the sequence
+  target directly instead of on the Center/CenterAndRotate step, since
+  NINA's own reset cascade discarded the latter on every attach and every
+  subsequent coordinate refresh. Removes the previous post-attach
+  reapplication step and rotation self-healing loop entirely.
+
 ## [1.1.0.12] — 2026-09-17
 
 ### Fixed
