@@ -114,37 +114,44 @@ namespace Perihelion.Sequencing {
             var dso = factory.GetContainer<DeepSkyObjectContainer>();
             dso.Name = targetName;
             dso.Target.TargetName = targetName;
-            dso.Target.InputCoordinates = new InputCoordinates(trueCoordinates);
+            // The container's own Target holds the FRAMED position/rotation directly (isbeorn's
+            // own suggestion, confirmed against NINA.Sequencer 3.2.0.9001's own source: both
+            // DeepSkyObjectContainer.Target_OnCoordinatesChanged and AddAdvancedTarget's own
+            // attach path cascade AfterParentChanged down to every child, and CenterAndRotate's
+            // own AfterParentChanged unconditionally copies Coordinates/PositionAngle straight
+            // from this same Target -- so setting the framed values here means every future
+            // cascade re-derives the SAME correct values instead of fighting to survive one.
+            // This replaces the earlier approach (setting Inherited=false directly on Center/
+            // CenterAndRotate) which the cascade discarded on every AddAdvancedTarget attach --
+            // see PerihelionSequenceBuilder's own git history / perihelion_isbeorn_review's
+            // finding #8 for why that needed a second, separate ApplyFraming() call after attach
+            // and a self-healing loop for PositionAngle specifically. Neither is needed now.
+            dso.Target.InputCoordinates = new InputCoordinates(slewCoordinates);
+            dso.Target.PositionAngle = rotationAngle ?? 0;
 
             // rotationAngle null means plain Center (no rotator involved) -- with no rotator
             // connected, CenterAndRotate fails validation ("rotator not connected") and blocks
-            // the whole sequence, so this can't be unconditional. A angle means
-            // CenterAndRotate instead. Each branch sets Inherited/Coordinates on its own
-            // concrete type rather than through a shared base variable -- Center/CenterAndRotate
-            // don't share a common base type that resolves against this installed package
-            // version, so this avoids relying on an assumption that doesn't hold here.
-            if (rotationAngle is double angle) {
-                var rotate = factory.GetItem<CenterAndRotate>();
-                rotate.PositionAngle = angle;
-                // Explicitly false, not the JSON export's "Inherited: true" -- Inherited mode
-                // resyncs Coordinates from the parent container's own Target the moment this
-                // item's Parent is set, which would silently discard the offset-adjusted
-                // slewCoordinates below the instant Add() attaches it. Setting Coordinates
-                // directly, with Inherited off, is the only way to guarantee this item slews to
-                // exactly what was asked for.
-                rotate.Inherited = false;
-                rotate.Coordinates = new InputCoordinates(slewCoordinates);
-                dso.Add(rotate);
+            // the whole sequence, so this can't be unconditional. Left at its Inherited=true
+            // default so it just reads Target's own Coordinates/PositionAngle above -- no manual
+            // assignment needed on the item itself at all.
+            if (rotationAngle is double) {
+                dso.Add(factory.GetItem<CenterAndRotate>());
             } else {
-                var center = factory.GetItem<Center>();
-                center.Inherited = false;
-                center.Coordinates = new InputCoordinates(slewCoordinates);
-                dso.Add(center);
+                dso.Add(factory.GetItem<Center>());
             }
 
             var trackingRate = factory.GetItem<SetPerihelionTrackingRate>();
             trackingRate.ObjectType = objectType;
             trackingRate.TargetName = targetName;
+            // The offset this target was framed with, in the same units the live-refresh loop
+            // works in -- kept as a fixed delta from the comet's own true position (not the
+            // framed position itself), since the true position is what moves tick to tick and
+            // the offset is the one thing that should stay constant while it does. See
+            // SetPerihelionTrackingRate's own RefreshTargetCoordinates for how this gets
+            // reapplied to Target on every tick.
+            trackingRate.OffsetRaHours = slewCoordinates.RA - trueCoordinates.RA;
+            trackingRate.OffsetDecDeg = slewCoordinates.Dec - trueCoordinates.Dec;
+            trackingRate.FramingPositionAngle = rotationAngle;
             dso.Add(trackingRate);
 
             if (guiding) {
@@ -207,5 +214,6 @@ namespace Perihelion.Sequencing {
 
             return dso;
         }
+
     }
 }

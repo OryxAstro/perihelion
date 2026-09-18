@@ -74,6 +74,29 @@ namespace Perihelion.SequenceItems {
         [JsonProperty]
         public string TargetName { get; set; } = string.Empty;
 
+        /// <summary>
+        /// The fixed RA/Dec delta between the comet's own true position and wherever the user
+        /// framed the shot (e.g. offset onto a comet's tail) -- set once by
+        /// PerihelionSequenceBuilder.BuildTargetContainer from the same trueCoordinates/
+        /// slewCoordinates pair it uses to build the Center/CenterAndRotate item, then reapplied
+        /// onto the freshly computed true position every refresh tick (see
+        /// RefreshTargetCoordinates) so the framing offset survives even though the true position
+        /// keeps moving. Zero for an unframed (centered-on-object) target.
+        /// </summary>
+        [JsonProperty]
+        public double OffsetRaHours { get; set; }
+
+        [JsonProperty]
+        public double OffsetDecDeg { get; set; }
+
+        /// <summary>
+        /// The rotation this target was framed with, if any -- reapplied onto the container's own
+        /// Target.PositionAngle every refresh tick alongside the coordinate offset above. Null
+        /// means no rotator was involved (a plain Center, not CenterAndRotate).
+        /// </summary>
+        [JsonProperty]
+        public double? FramingPositionAngle { get; set; }
+
         private IList<string> issues = new List<string>();
 
         public IList<string> Issues {
@@ -144,12 +167,23 @@ namespace Perihelion.SequenceItems {
             if (!telescopeMediator.SetCustomTrackingRate(shiftRate)) {
                 throw new SequenceEntityFailedException($"Setting tracking rate to {shiftRate} failed");
             }
-            LastAppliedRate = rate.Value;
+            // RaArcsecPerSec here must be raArcsecPerSec (what was actually sent above), not
+            // rate.Value.RaArcsecPerSec (the cos(dec)-compensated on-sky rate) -- every caller of
+            // LastAppliedRate (QuickTrackStatus, the reapply/engine log lines) reads .RaArcsecPerSec
+            // expecting "what got commanded", and reporting the compensated value there made the
+            // status endpoint disagree with the mount's own ASCOM rate by a factor of 1/cos(dec)
+            // -- confirmed against an ASCOM Telescope Simulator run, not a guess.
+            LastAppliedRate = new OrbitalRate(raArcsecPerSec, rate.Value.DecArcsecPerSec, raArcsecPerSec);
         }
 
         private Observer CurrentObserver() {
             var site = profileService.ActiveProfile.AstrometrySettings;
             return new Observer(site.Latitude, site.Longitude, site.Elevation);
+        }
+
+        private static double NormalizeRaHours(double hours) {
+            hours %= 24.0;
+            return hours < 0 ? hours + 24.0 : hours;
         }
 
         // --- Live coordinate refresh ---
@@ -187,13 +221,21 @@ namespace Perihelion.SequenceItems {
             try {
                 var position = await OrbitalTracking.ComputeApparentPositionAsync(HttpClient, ObjectType, TargetName, DateTime.UtcNow, CurrentObserver(), ct);
                 if (position is (double raHours, double decDeg)) {
-                    var coordinates = new Coordinates(raHours, decDeg, Epoch.J2000, Coordinates.RAType.Hours);
-                    container.Target.InputCoordinates.Coordinates = coordinates;
-                    // Center/CenterAndRotate run with Inherited = false (see
-                    // PerihelionSequenceBuilder) to keep the framing offset, so they never resync
-                    // from Target above on their own -- refresh their own Coordinates directly too.
-                    foreach (var center in container.Items.OfType<Center>().Where(c => !c.Inherited)) {
-                        center.Coordinates.Coordinates = coordinates;
+                    // Writes straight to Target, not to a Center/CenterAndRotate item directly --
+                    // PerihelionSequenceBuilder.BuildTargetContainer now leaves those on their
+                    // Inherited=true default specifically so they just read whatever Target holds,
+                    // the same way NINA's own DeepSkyObjectContainer.Target_OnCoordinatesChanged
+                    // cascade already keeps them in sync on every Target mutation. That cascade is
+                    // the mechanism here, not something to work around -- no per-item looping or
+                    // offset-diffing needed, since the offset is stored on this item directly
+                    // (OffsetRaHours/OffsetDecDeg/FramingPositionAngle) rather than inferred from
+                    // comparing a child item's coordinates against Target's previous value.
+                    container.Target.InputCoordinates.Coordinates = new Coordinates(
+                        NormalizeRaHours(raHours + OffsetRaHours),
+                        decDeg + OffsetDecDeg,
+                        Epoch.J2000, Coordinates.RAType.Hours);
+                    if (FramingPositionAngle is double angle) {
+                        container.Target.PositionAngle = angle;
                     }
                 }
             } catch (Exception ex) {
