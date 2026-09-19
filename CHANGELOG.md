@@ -3,6 +3,18 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.15] — 2026-09-19
+
+### Fixed
+
+- The Position & Path tab in Touch-N-Stars never opened when the profile had no
+  telescope focal length set, which is the default for a profile that hasn't
+  been configured yet. The maximum-exposure figure came out as NaN, was sent
+  to the panel as the string `"NaN"`, and the panel failed while rendering it.
+  An unknown value is now sent as `null`, which the panel already shows as
+  "not configured". The Windows panel had the same calculation and showed
+  `NaN sec` instead of `--`.
+
 ## [1.1.0.14] — 2026-09-19
 
 ### Fixed
