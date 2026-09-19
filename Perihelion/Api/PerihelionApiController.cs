@@ -614,7 +614,11 @@ namespace Perihelion.Api {
                 if (profile != null) {
                     var pixelScale = AstroUtil.ArcsecPerPixel(profile.CameraSettings.PixelSize, profile.TelescopeSettings.FocalLength);
                     var totalRate = Math.Sqrt(rate.Value.RaArcsecPerSec * rate.Value.RaArcsecPerSec + rate.Value.DecArcsecPerSec * rate.Value.DecArcsecPerSec);
-                    maxExposureSeconds = totalRate > 0 ? pixelScale / totalRate : (double?)null;
+                    var candidate = totalRate > 0 ? pixelScale / totalRate : (double?)null;
+                    // A default profile has TelescopeSettings.FocalLength = NaN, which makes this
+                    // NaN too -- and Newtonsoft writes that as the string "NaN", which the panel
+                    // then can't format, breaking the whole Position tab. Null means "unknown".
+                    maxExposureSeconds = candidate is double c && double.IsFinite(c) ? c : null;
                 }
 
                 var response = new RateResponse {

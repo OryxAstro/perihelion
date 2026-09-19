@@ -1038,7 +1038,10 @@ namespace Perihelion.ViewModels {
                     decRateArcsecPerSec = r.DecArcsecPerSec;
                     var pixelScale = AstroUtil.ArcsecPerPixel(profileService.ActiveProfile.CameraSettings.PixelSize, profileService.ActiveProfile.TelescopeSettings.FocalLength);
                     var totalRate = Math.Sqrt(r.RaArcsecPerSec * r.RaArcsecPerSec + r.DecArcsecPerSec * r.DecArcsecPerSec);
-                    maxExposureSeconds = totalRate > 0 ? pixelScale / totalRate : (double?)null;
+                    var candidate = totalRate > 0 ? pixelScale / totalRate : (double?)null;
+                    // A default profile has TelescopeSettings.FocalLength = NaN, which would
+                    // otherwise display as "NaN sec" instead of the "--" for unknown.
+                    maxExposureSeconds = candidate is double c && double.IsFinite(c) ? c : null;
                 } else {
                     raRateArcsecPerSec = decRateArcsecPerSec = maxExposureSeconds = null;
                 }
