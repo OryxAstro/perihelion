@@ -3,6 +3,17 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.14] — 2026-09-19
+
+### Fixed
+
+- Every CORS preflight (`OPTIONS`) request logged a `405 Method Not Allowed`
+  error with a stack trace. The preflight was answered correctly, but the
+  request kept going down the pipeline afterward and hit a route that doesn't
+  exist. Since 1.1.0.12 the `X-Perihelion-Token` header forces a preflight
+  before every cross-origin request, so this appeared on every Touch-N-Stars
+  panel load. Requests were unaffected; only the log was.
+
 ## [1.1.0.13] — 2026-09-18
 
 ### Fixed
