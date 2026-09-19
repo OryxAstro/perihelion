@@ -21,6 +21,10 @@ namespace Perihelion.Api {
             if (context.Request.HttpVerb == HttpVerbs.Options) {
                 context.Response.StatusCode = 200;
                 await context.SendStringAsync(string.Empty, "text/plain", Encoding.UTF8);
+                // IsFinalHandler is false, so without this the request keeps going down the
+                // pipeline after the preflight is already answered, and the Web API module finds
+                // no OPTIONS route and throws a 405 that EmbedIO logs as an error every time.
+                context.SetHandled();
             }
         }
 
