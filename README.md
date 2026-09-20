@@ -150,10 +150,12 @@ flowchart LR
 **PINS / Touch-N-Stars** — distributed as a `.deb` (`pins-plugin-perihelion`) via Touch-N-Stars'
 own official APT repository; installs and updates through Touch-N-Stars' own update UI.
 
-**Windows N.I.N.A.** — [latest release](https://github.com/OryxAstro/perihelion/releases/latest).
-Not yet listed in N.I.N.A.'s in-app Plugin Manager: install manually by extracting the release
-archive into `%LocalAppData%\NINA\Plugins\3.0.0\Perihelion\`. The official plugin manifest is
-[submitted and under review](https://github.com/isbeorn/nina.plugin.manifests/pull/687).
+**Windows N.I.N.A.** — install from N.I.N.A.'s in-app Plugin Manager; Perihelion is in the
+official [plugin manifest](https://github.com/isbeorn/nina.plugin.manifests/pull/687). Requires
+N.I.N.A. 3.2.0.9001 or later. To install a specific release by hand instead, extract the
+`Perihelion-Windows-<version>.zip` from the
+[releases page](https://github.com/OryxAstro/perihelion/releases/latest) into
+`%LocalAppData%\NINA\Plugins\3.0.0\Perihelion\`.
 
 ## License
 
