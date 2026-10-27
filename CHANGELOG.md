@@ -3,6 +3,23 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.16] — 2026-10-27
+
+### Fixed
+
+- **Windows: every install through N.I.N.A.'s own in-app Plugin Manager silently failed.**
+  N.I.N.A.'s installer creates `Plugins\3.0.0\Perihelion\` itself and extracts the release
+  archive's contents into it. Our Windows zip's own top level was *also* a `Perihelion\` folder,
+  so the files landed two levels deep (`Perihelion\Perihelion\Perihelion.dll`). N.I.N.A.'s own
+  plugin loader only looks one level into each subfolder, so the plugin was never even attempted
+  to load -- no error, no log line, it just silently wasn't there after the restart. Reproduced
+  directly: installed via the Plugin Manager, confirmed the nested path, confirmed zero
+  Perihelion-related log lines on the next startup. The Windows release archive now has
+  `Perihelion.dll` and its three dependency DLLs at the archive's root instead of inside a
+  `Perihelion` folder, matching what N.I.N.A.'s installer expects it to unpack into one it creates
+  itself. PINS is unaffected -- it's packaged and installed separately (`.deb`, built from
+  source), never from this archive.
+
 ## [1.1.0.15] — 2026-09-19
 
 ### Fixed
