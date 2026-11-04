@@ -129,11 +129,19 @@ namespace Perihelion.ViewModels {
 
             ObjectTypes = new[] { OrbitalObjectType.Comet, OrbitalObjectType.Asteroid };
             SelectedObjectType = OrbitalObjectType.Comet;
-            BrowseObjects = new ObservableCollection<BrowseObject>();
-            browseObjectsView = CollectionViewSource.GetDefaultView(BrowseObjects);
-            browseObjectsView.Filter = o => o is BrowseObject b
-                && b.ObjectType == SelectedObjectType
-                && (string.IsNullOrWhiteSpace(SearchText) || b.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+            // NINA loads plugins via Task.Run(pluginProvider.Load), so this constructor runs on a
+            // background thread. Dispatcher-affine objects (the collection view, the timer) must be
+            // created on the UI thread, and the bound collection must be registered for cross-thread
+            // mutation because the initial fire-and-forget load below resumes off the UI thread.
+            var uiDispatcher = System.Windows.Application.Current.Dispatcher;
+            uiDispatcher.Invoke(() => {
+                BrowseObjects = new ObservableCollection<BrowseObject>();
+                BindingOperations.EnableCollectionSynchronization(BrowseObjects, browseObjectsSyncLock);
+                browseObjectsView = CollectionViewSource.GetDefaultView(BrowseObjects);
+                browseObjectsView.Filter = o => o is BrowseObject b
+                    && b.ObjectType == SelectedObjectType
+                    && (string.IsNullOrWhiteSpace(SearchText) || b.Name.Contains(SearchText, StringComparison.OrdinalIgnoreCase));
+            });
             SearchCommand = new RelayCommand(() => browseObjectsView.Refresh());
 
             UpdateCometsCommand = new AsyncRelayCommand(UpdateCometsAction);
@@ -147,7 +155,7 @@ namespace Perihelion.ViewModels {
             ClearAsteroidsCommand = new AsyncRelayCommand(ClearAsteroidsAction);
             RefreshLastUpdatedText();
 
-            PathPoints = new PointCollection();
+            PathPoints = FrozenPoints(new PointCollection());
             // ReapplyIntervalSeconds itself always reads the live value with no caching, but a
             // plain property read alone doesn't refresh anything already bound in the UI -- WPF
             // only re-reads a binding when it's told to. Subscribing here means an Options-page
@@ -195,7 +203,7 @@ namespace Perihelion.ViewModels {
             StopQuickTrackCommand = new AsyncRelayCommand(StopQuickTrackAction, () => QuickTrackActive);
             StopQuickTrackCommand.RegisterPropertyChangeNotification(this, nameof(QuickTrackActive));
 
-            statusTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            statusTimer = new DispatcherTimer(DispatcherPriority.Normal, uiDispatcher) { Interval = TimeSpan.FromSeconds(5) };
             statusTimer.Tick += (_, _) => {
                 RefreshQuickTrackStatus();
                 CheckForExternalDataUpdates();
@@ -231,12 +239,13 @@ namespace Perihelion.ViewModels {
             set { selectedObjectType = value; RaisePropertyChanged(); browseObjectsView?.Refresh(); UpdateStatusTextFromCurrentFilter(); }
         }
 
-        public ObservableCollection<BrowseObject> BrowseObjects { get; }
+        public ObservableCollection<BrowseObject> BrowseObjects { get; private set; } = null!;
 
         // CollectionViewSource.GetDefaultView returns the exact same ICollectionView WPF already
         // uses internally for the ListView's own ItemsSource="{Binding BrowseObjects}" binding --
         // setting Filter here affects what that ListView shows with no XAML change needed at all.
-        private readonly ICollectionView browseObjectsView;
+        private ICollectionView browseObjectsView = null!;
+        private readonly object browseObjectsSyncLock = new();
 
         private string searchText = string.Empty;
         public string SearchText {
@@ -1165,7 +1174,7 @@ namespace Perihelion.ViewModels {
             PathGridLines.Clear();
             PathScaleBarInfo = null;
             if (path == null || path.Count == 0) {
-                PathPoints = points;
+                PathPoints = FrozenPoints(points);
                 PathMarkers.Clear();
                 return;
             }
@@ -1283,7 +1292,14 @@ namespace Perihelion.ViewModels {
                 pathLeftLabel = path[^1].date.ToString("MMM d");
                 pathRightLabel = path[0].date.ToString("MMM d");
             }
-            PathPoints = points;
+            PathPoints = FrozenPoints(points);
+        }
+
+        // A frozen Freezable is immutable and readable from any thread; an unfrozen one created
+        // off the UI thread throws when bound there.
+        private static PointCollection FrozenPoints(PointCollection points) {
+            points.Freeze();
+            return points;
         }
 
         // --- Actions that drive hardware ---
