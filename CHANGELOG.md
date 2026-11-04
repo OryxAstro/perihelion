@@ -3,6 +3,21 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.17] — 2026-11-04
+
+### Fixed
+
+- **Windows: opening N.I.N.A.'s Imaging tab crashed with an unhandled `XamlParseException`.**
+  N.I.N.A. loads plugins on a background thread, so the Perihelion panel's view model was
+  constructed there. The 10-night path's `PointCollection` was created on that thread and later
+  bound from the UI thread, which WPF rejects. Every path `PointCollection` is now frozen before
+  it is exposed to bindings.
+- Windows: the panel's status timer was created on the background thread and never ticked. It is
+  now bound to the UI dispatcher.
+- Windows: the first browse-list load resumed off the UI thread and modified the bound list from
+  there. The list and its view are now created on the UI thread, and cross-thread updates are
+  registered with WPF.
+
 ## [1.1.0.16] — 2026-10-27
 
 ### Fixed
