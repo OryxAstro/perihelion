@@ -131,12 +131,10 @@ namespace Perihelion.ViewModels {
             SelectedObjectType = OrbitalObjectType.Comet;
             // NINA loads plugins via Task.Run(pluginProvider.Load), so this constructor runs on a
             // background thread. Dispatcher-affine objects (the collection view, the timer) must be
-            // created on the UI thread, and the bound collection must be registered for cross-thread
-            // mutation because the initial fire-and-forget load below resumes off the UI thread.
+            // created on the UI thread.
             var uiDispatcher = System.Windows.Application.Current.Dispatcher;
             uiDispatcher.Invoke(() => {
                 BrowseObjects = new ObservableCollection<BrowseObject>();
-                BindingOperations.EnableCollectionSynchronization(BrowseObjects, browseObjectsSyncLock);
                 browseObjectsView = CollectionViewSource.GetDefaultView(BrowseObjects);
                 browseObjectsView.Filter = o => o is BrowseObject b
                     && b.ObjectType == SelectedObjectType
@@ -214,10 +212,10 @@ namespace Perihelion.ViewModels {
             lastKnownAsteroidsSyncedUtc = AsteroidOrbits.LastSyncedUtc;
             lastKnownCobsRefreshedUtc = CometActivity.LastFullRefreshUtc;
 
-            // Auto-populate on open rather than waiting for an explicit Refresh click, so a
-            // warm cache shows results immediately. Fire-and-forget is safe here:
-            // RefreshBrowseListAction handles its own IsBusy/StatusText/error reporting.
-            _ = RefreshBrowseListAction();
+            // Auto-populate on open so a warm cache shows results immediately. Started on the UI
+            // dispatcher so every continuation stays on the UI thread, which owns the collection
+            // view. RefreshBrowseListAction handles its own IsBusy/StatusText/error reporting.
+            _ = uiDispatcher.InvokeAsync(RefreshBrowseListAction);
         }
 
         private bool CanSetTrackingRate() {
@@ -245,7 +243,6 @@ namespace Perihelion.ViewModels {
         // uses internally for the ListView's own ItemsSource="{Binding BrowseObjects}" binding --
         // setting Filter here affects what that ListView shows with no XAML change needed at all.
         private ICollectionView browseObjectsView = null!;
-        private readonly object browseObjectsSyncLock = new();
 
         private string searchText = string.Empty;
         public string SearchText {

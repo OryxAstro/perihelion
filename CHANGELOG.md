@@ -15,8 +15,8 @@ All notable changes to Perihelion are documented here. Format loosely follows
 - Windows: the panel's status timer was created on the background thread and never ticked. It is
   now bound to the UI dispatcher.
 - Windows: the first browse-list load resumed off the UI thread and modified the bound list from
-  there. The list and its view are now created on the UI thread, and cross-thread updates are
-  registered with WPF.
+  there, failing with a "different thread owns it" error. The list and its view are now created
+  on the UI thread, and the initial load runs on the UI dispatcher.
 
 ## [1.1.0.16] — 2026-10-27
 
