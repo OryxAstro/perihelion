@@ -150,7 +150,7 @@ namespace Perihelion.ViewModels {
             // switched to a live photographic source doesn't stomp back over it.
             skyMapAnnotatorHandler = (_, e) => {
                 if (e.PropertyName == nameof(SkyMapAnnotator.SkyMapOverlay) && selectedImageSource == SkySurveySource.SKYATLAS) {
-                    SkyImage = skyMapAnnotator.SkyMapOverlay;
+                    SkyImage = ReadSkyMapOverlay();
                 }
             };
             skyMapAnnotator.PropertyChanged += skyMapAnnotatorHandler;
@@ -424,6 +424,11 @@ namespace Perihelion.ViewModels {
         // ImageSource, not the narrower BitmapSource -- SkyMapAnnotator.SkyMapOverlay (the
         // Offline Sky Map's own rendered star chart) is typed ImageSource, and both it and every
         // fetched photographic BitmapSource bind into the same <Image Source="..."> either way.
+        // SkyMapOverlay is a BitmapSource on N.I.N.A. 3.2 and an ImageSource on 3.3; a direct call
+        // binds to one return type and throws MissingMethodException on the other.
+        private ImageSource? ReadSkyMapOverlay() =>
+            typeof(SkyMapAnnotator).GetProperty(nameof(SkyMapAnnotator.SkyMapOverlay))?.GetValue(skyMapAnnotator) as ImageSource;
+
         private ImageSource? skyImage;
         public ImageSource? SkyImage {
             get => skyImage;
@@ -639,7 +644,7 @@ namespace Perihelion.ViewModels {
                     skyMapAnnotator.UseCachedImages = true;
                     await skyMapAnnotator.Initialize(trueCoordinates, vFoVDegrees,
                         SkyMapOfflineRasterSize, SkyMapOfflineRasterSize, 0.0, offlineCache, CancellationToken.None);
-                    SkyImage = skyMapAnnotator.SkyMapOverlay;
+                    SkyImage = ReadSkyMapOverlay();
                     pixelsPerArcmin = SkyMapDisplaySize / requestedFovArcmin;
                 } else if (selectedImageSource == SkySurveySource.CACHE) {
                     // A working NINA API (NINA.WPF.Base.SkySurvey.CacheSkySurvey, confirmed
@@ -687,8 +692,7 @@ namespace Perihelion.ViewModels {
                     pixelsPerArcmin = SkyMapDisplaySize / cachedImage.FoVWidth;
                 } else {
                     var survey = new SkySurveyFactory(imageDataFactory).Create(selectedImageSource);
-                    var image = await survey.GetImage(TargetName, trueCoordinates, requestedFovArcmin,
-                        (int)SkyMapDisplaySize, (int)SkyMapDisplaySize, CancellationToken.None, new Progress<int>());
+                    var image = await GetSurveyImageAsync(survey, requestedFovArcmin);
 
                     SkyImage = image.Image;
                     pixelsPerArcmin = SkyMapDisplaySize / image.FoVWidth;
@@ -730,6 +734,24 @@ namespace Perihelion.ViewModels {
             } finally {
                 SkyMapLoading = false;
             }
+        }
+
+        private const string DefaultHipsSkyMapPath = "CDS/P/DSS2/color";
+
+        // N.I.N.A. 3.3 added a GetImage overload taking a HiPS sky map path and made the plain
+        // overload throw NotImplementedException for HIPS2FITS; 3.2 only has the plain one.
+        private Task<SkySurveyImage> GetSurveyImageAsync(ISkySurvey survey, double fovArcmin) {
+            var size = (int)SkyMapDisplaySize;
+            if (selectedImageSource == SkySurveySource.HIPS2FITS) {
+                var hipsOverload = typeof(ISkySurvey).GetMethod(nameof(ISkySurvey.GetImage), new[] {
+                    typeof(string), typeof(string), typeof(Coordinates), typeof(double), typeof(int), typeof(int),
+                    typeof(CancellationToken), typeof(IProgress<int>) });
+                if (hipsOverload != null) {
+                    return (Task<SkySurveyImage>)hipsOverload.Invoke(survey, new object[] {
+                        TargetName, DefaultHipsSkyMapPath, trueCoordinates, fovArcmin, size, size, CancellationToken.None, new Progress<int>() })!;
+                }
+            }
+            return survey.GetImage(TargetName, trueCoordinates, fovArcmin, size, size, CancellationToken.None, new Progress<int>());
         }
 
         public AsyncRelayCommand SlewAndCenterCommand { get; }
