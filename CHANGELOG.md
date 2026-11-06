@@ -3,6 +3,17 @@
 All notable changes to Perihelion are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.1.0.18] — 2026-11-06
+
+### Fixed
+
+- **Windows: clicking Frame crashed N.I.N.A. 3.3 nightlies** with a `MissingMethodException`. The
+  Offline Sky Map overlay is typed differently in 3.3 than in 3.2, so the direct call no longer
+  resolved. It is now read in a way that works on both.
+- Windows: the HIPS2FITS sky map source threw `NotImplementedException` on 3.3, which replaced the
+  plain image request with one that takes a HiPS sky map path. The new request is used when
+  available, with the previous one as the 3.2 fallback.
+
 ## [1.1.0.17] — 2026-11-04
 
 ### Fixed
